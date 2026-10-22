@@ -191,7 +191,7 @@ function norm(o){
 function uid(){return "s"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 
 /* ---------- storage ---------- */
-function col(n){return S.db.collection("data/users/"+S.uid+"/"+(n||"software"))}
+function col(n){return S.db.doc("data/users/"+S.uid+"/app").collection(n||"software")}
 function listOf(cat){return cat==="ct"?S.contracts:S.items}
 function getItem(cat,id){return listOf(cat).find(function(x){return x.id===id})}
 async function save(id,rec,cat){
