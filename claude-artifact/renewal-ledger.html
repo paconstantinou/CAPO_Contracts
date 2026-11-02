@@ -5,7 +5,7 @@
 /* Layout: sticky header, alert strip, stat row, filterable renewal list; detail/forms open as a side panel over the list. */
 :root{
   --bg:#f0f2f6; --surface:#ffffff; --surface2:#f6f8fb; --ink:#14202e; --muted:#5b6878; --line:#d8dde6;
-  --accent:#2f4ac0; --accent-ink:#ffffff; --accent-soft:#e3e8fb;
+  --accent:#1e3a8a; --accent-ink:#ffffff; --accent-soft:#dde5f6;
   --ok:#1c7a4a; --ok-bg:#dff3e8; --warn:#8a5200; --warn-bg:#ffefcc; --bad:#b3261e; --bad-bg:#fde5e3;
   --shadow:0 12px 40px rgba(20,32,46,.18);
   --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
@@ -112,7 +112,6 @@ label.f small{color:var(--muted);font-weight:400}
 @media (max-width:520px){.kv.wl{grid-template-columns:1fr}.kv.wl dt{margin-top:6px}}
 .tbl td input,.tbl td select{min-height:32px;padding:3px 6px;min-width:128px;width:auto}
 .tbl tr.cur td{background:var(--accent-soft)}
-.credit{margin:4px 0 0;color:var(--muted);font-size:12px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;z-index:40;max-width:90%}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -140,7 +139,6 @@ label.f small{color:var(--muted);font-weight:400}
   </div>
   <div class="list" id="list" aria-label="Software list"></div>
   <p class="hint" id="note" style="margin-top:12px"></p>
-  <p class="credit">Created by Panagiotis Constantinou</p>
 </div>
 <div id="overlay" class="overlay" hidden></div>
 <div id="toast" class="toast" hidden></div>
