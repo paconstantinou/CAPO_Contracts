@@ -3,6 +3,7 @@
  * Plugin Name: Renewal Ledger
  * Description: Μητρώο ανανεώσεων λογισμικού και συμβάσεων με ετήσιες υπενθυμίσεις, συνημμένα, εισαγωγή/εξαγωγή Excel και ειδοποιήσεις email. Τα δεδομένα αποθηκεύονται στη βάση SQL του WordPress.
  * Version: 1.0.0
+ * Author: Panagiotis Constantinou
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Text Domain: renewal-ledger

@@ -100,6 +100,7 @@
 #rl-app .kv.wl dt{margin-top:6px}}
 #rl-app .tbl td input,#rl-app .tbl td select{min-height:32px;padding:3px 6px;min-width:128px;width:auto}
 #rl-app .tbl tr.cur td{background:var(--accent-soft)}
+#rl-app .credit{margin:4px 0 0;color:var(--muted);font-size:12px}
 #rl-app .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;z-index:99995;max-width:90%}
 @media (prefers-reduced-motion:reduce){#rl-app *{transition:none!important}}
 #rl-app [hidden]{display:none!important}

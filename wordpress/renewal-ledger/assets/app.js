@@ -585,13 +585,13 @@ function ctWb(head,rows){
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Συμβάσεις");
   return XLSX.write(wb,{bookType:"xlsx",type:"array"});
 }
-function ctExportXlsx(){if(!S.contracts.length){toast("Δεν υπάρχουν συμβάσεις για εξαγωγή");return}var n=ctMaxYears();offer("contracts-"+todayIso()+".xlsx",ctWb(ctHead(n),ctRowsOut(n)))}
+function ctExportXlsx(){if(needX())return;if(!S.contracts.length){toast("Δεν υπάρχουν συμβάσεις για εξαγωγή");return}var n=ctMaxYears();offer("contracts-"+todayIso()+".xlsx",ctWb(ctHead(n),ctRowsOut(n)))}
 function ctExportCsv(){
   if(!S.contracts.length){toast("Δεν υπάρχουν συμβάσεις για εξαγωγή");return}
   var n=ctMaxYears(),q=function(v){v=String(v==null?"":v);return /[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
   offer("contracts-"+todayIso()+".csv","﻿"+[ctHead(n)].concat(ctRowsOut(n)).map(function(r){return r.map(q).join(",")}).join("\r\n"));
 }
-function ctTemplate(){
+function ctTemplate(){if(needX())return;
   var ex=["Παράδειγμα σύμβασης","12/2026","Περιγραφή","Εταιρεία Α","Όνομα Επώνυμο",24,"2026-01-01","2027-12-31",24000,"2026-01-01","2026-12-31",12000,30,"2027-01-01","2027-12-31",12000,30,"",""];
   offer("contracts-template.xlsx",ctWb(ctHead(2),[ex]));
 }
@@ -701,6 +701,11 @@ async function doImport(){
   closePanel();toast("Imported "+n+" row"+(n==1?"":"s"));
 }
 
+function needX(){
+  if(typeof XLSX!=="undefined")return false;
+  toast("Η βιβλιοθήκη Excel δεν φορτώθηκε. Χρειάζεται σύνδεση στο internet. / Excel library not loaded: internet connection needed.");
+  return true;
+}
 /* ---------- export ---------- */
 var HEAD=["Software Name","Description","Vendor","Website","Username","Password","Date From","Date To","Cost excl. VAT (€)","Reminder (days before)","Attachments","Status"];
 function rowsOut(){
@@ -719,13 +724,13 @@ function wbBuffer(rows,cols){
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Software");
   return XLSX.write(wb,{bookType:"xlsx",type:"array"});
 }
-function exportXlsx(){if(S.cat==="ct")return ctExportXlsx();if(!S.items.length){toast("Nothing to export yet");return}offer("renewal-ledger-"+todayIso()+".xlsx",wbBuffer(rowsOut()))}
+function exportXlsx(){if(needX())return;if(S.cat==="ct")return ctExportXlsx();if(!S.items.length){toast("Nothing to export yet");return}offer("renewal-ledger-"+todayIso()+".xlsx",wbBuffer(rowsOut()))}
 function exportCsv(){if(S.cat==="ct")return ctExportCsv();
   if(!S.items.length){toast("Nothing to export yet");return}
   var q=function(v){v=String(v==null?"":v);return /[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
   offer("renewal-ledger-"+todayIso()+".csv","﻿"+[HEAD].concat(rowsOut()).map(function(r){return r.map(q).join(",")}).join("\r\n"));
 }
-function templateXlsx(){if(S.cat==="ct")return ctTemplate();
+function templateXlsx(){if(needX())return;if(S.cat==="ct")return ctTemplate();
   offer("renewal-ledger-template.xlsx",wbBuffer([["Example App","Team chat","Example Ltd","https://example.com","admin@example.com","","2026-01-01","2026-12-31",120,30,"",""]]));
 }
 function showExport(){if(S.cat==="ct")return ctShowExport();
@@ -793,7 +798,7 @@ ROOT.addEventListener("change",async function(ev){
   if(t.id==="remSel"){var it=byId(S.open);if(it){var rec=norm(it);rec.remindDays=+t.value;rec.attachments=it.attachments;rec.history=it.history;rec.createdAt=it.createdAt;rec.sample=it.sample;if(await save(it.id,rec))toast("Reminder set to "+t.value+" days before expiry")}}
   if(t.id==="fileXlsx"&&t.files[0]){
     var f=t.files[0];t.value="";
-    try{var buf=await f.arrayBuffer();var ct=S.cat==="ct";var rows=ct?parseCtSheet(buf):parseSheet(buf);if(!rows.length){toast(ct?"Δεν βρέθηκαν γραμμές στο πρώτο φύλλο":"No rows found in the first sheet");return}ct?showCtImport(rows):showImport(rows)}
+    try{if(needX())return;var buf=await f.arrayBuffer();var ct=S.cat==="ct";var rows=ct?parseCtSheet(buf):parseSheet(buf);if(!rows.length){toast(ct?"Δεν βρέθηκαν γραμμές στο πρώτο φύλλο":"No rows found in the first sheet");return}ct?showCtImport(rows):showImport(rows)}
     catch(e){toast("Could not read that file")}
   }
   if(S.cw&&(t.id==="c_months"||t.id==="c_dateFrom")){ctCollect();ctRegen();ctRefresh()}
