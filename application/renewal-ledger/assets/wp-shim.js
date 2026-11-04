@@ -103,7 +103,7 @@
       hide("#btnAdd,#emAdd,#btnImport,#emImp,[data-act=pick],[data-act=tpl],[data-act=ctsample],#emSample",root,!P(c,"create"));
       hide("#btnExport",root,!P(c,"export"));
       hide("[data-act=xlsx],[data-act=csv]",root,!P(c,"export"));
-      hide("[data-act=edit],[data-act=renew],[data-act=renewid],[data-act=attach],[data-act=rsave]",root,!P(c,"edit"));
+      hide("[data-act=edit],[data-act=renew],[data-act=renewid],[data-act=attach],[data-act=rsave],[data-act=msadd],[data-act=msedit],[data-act=msdel],[data-act=msdone]",root,!P(c,"edit"));
       hide("[data-act=del],[data-act=ctdel]",root,!P(c,"delete"));
       var sw=document.getElementById("tabSw"),ct=document.getElementById("tabCt");
       if(sw)sw.style.display=P("software","view")?"":"none";

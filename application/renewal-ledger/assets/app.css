@@ -111,3 +111,13 @@
 #rl-app table{table-layout:auto;margin:0}
 #rl-app a{text-decoration:underline}
 #rl-app ul{list-style:none}
+
+/* milestones */
+#rl-app .msyear{display:grid;gap:8px;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+#rl-app .msyh{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+#rl-app .files.ms li{align-items:flex-start;flex-wrap:wrap}
+#rl-app .files.ms li.done .msb b{text-decoration:line-through;opacity:.7}
+#rl-app .msb{display:grid;gap:3px;min-width:0;flex:1 1 220px}
+#rl-app .msc{white-space:pre-wrap;overflow-wrap:anywhere}
+#rl-app .msf{display:flex;gap:6px;flex-wrap:wrap}
+#rl-app .msf a{color:var(--accent);overflow-wrap:anywhere}

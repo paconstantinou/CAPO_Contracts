@@ -49,6 +49,19 @@ class RL_Export {
 		return 'Σε ισχύ';
 	}
 
+	/** One cell: "Έτος 1: description - due (30d) [done]; ..." */
+	private static function milestones( $d ) {
+		$out = array();
+		foreach ( ( isset( $d['milestones'] ) && is_array( $d['milestones'] ) ) ? $d['milestones'] : array() as $m ) {
+			if ( ! is_array( $m ) ) {
+				continue;
+			}
+			$due   = isset( $m['due'] ) && preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $m['due'], $x ) ? $x[3] . '/' . $x[2] . '/' . $x[1] : '-';
+			$out[] = 'Έτος ' . ( isset( $m['year'] ) ? (int) $m['year'] : 1 ) . ': ' . self::g( $m, 'description' ) . ' - ' . $due . ' (' . ( isset( $m['remind'] ) ? (int) $m['remind'] : 30 ) . 'd)' . ( ! empty( $m['done'] ) ? ' [done]' : '' );
+		}
+		return implode( '; ', $out );
+	}
+
 	private static function names( $d ) {
 		$n = array();
 		foreach ( ( isset( $d['attachments'] ) && is_array( $d['attachments'] ) ) ? $d['attachments'] : array() as $a ) {
@@ -76,7 +89,7 @@ class RL_Export {
 				$head[] = 'Username';
 				$head[] = 'Password';
 			}
-			$head = array_merge( $head, array( 'Date From', 'Date To', 'Cost excl. VAT (€)', 'Reminder (days before)', 'Attachments', 'Status' ) );
+			$head = array_merge( $head, array( 'Date From', 'Date To', 'Cost excl. VAT (€)', 'Reminder (days before)', 'Attachments', 'Milestones', 'Status' ) );
 			$rows = array();
 			foreach ( $items as $it ) {
 				$d   = $it['data'];
@@ -90,6 +103,7 @@ class RL_Export {
 				$row[] = isset( $d['cost'] ) ? (float) $d['cost'] : 0;
 				$row[] = isset( $d['remindDays'] ) ? (int) $d['remindDays'] : 30;
 				$row[] = self::names( $d );
+				$row[] = self::milestones( $d );
 				$row[] = self::status_software( $d );
 				$rows[] = $row;
 			}
@@ -104,7 +118,7 @@ class RL_Export {
 		for ( $i = 1; $i <= $max; $i++ ) {
 			array_push( $head, "ΕΤΟΣ $i - ΗΜΕΡ.ΕΝΑΡΞΗΣ", "ΕΤΟΣ $i - ΗΜΕΡ.ΛΗΞΗΣ", "ΕΤΟΣ $i - ΚΟΣΤΟΣ", "ΕΤΟΣ $i - ΥΠΕΝΘΥΜΙΣΗ (ΗΜΕΡΕΣ ΠΡΙΝ)" );
 		}
-		array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'ΚΑΤΑΣΤΑΣΗ' );
+		array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'MILESTONES', 'ΚΑΤΑΣΤΑΣΗ' );
 		$rows = array();
 		foreach ( $items as $it ) {
 			$d   = $it['data'];
@@ -115,6 +129,7 @@ class RL_Export {
 				array_push( $row, self::g( $y, 'from' ), self::g( $y, 'to' ), ( isset( $y['cost'] ) && is_numeric( $y['cost'] ) ) ? (float) $y['cost'] : '', isset( $y['remind'] ) ? (int) $y['remind'] : '' );
 			}
 			$row[]  = self::names( $d );
+			$row[]  = self::milestones( $d );
 			$row[]  = self::status_contract( $d );
 			$rows[] = $row;
 		}

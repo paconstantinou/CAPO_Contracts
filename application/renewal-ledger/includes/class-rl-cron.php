@@ -91,6 +91,29 @@ class RL_Cron {
 				}
 			}
 		}
+		// Milestones of both collections: reminder 30/60 days before the due date; overdue ones for 30 days. Done ones are skipped.
+		foreach ( array( 'software' => 'Λογισμικό', 'contracts' => 'Σύμβαση' ) as $coll => $kind_label ) {
+			foreach ( RL_DB::list_records( $coll ) as $r ) {
+				$d     = $r['data'];
+				$title = 'software' === $coll ? ( isset( $d['name'] ) ? (string) $d['name'] : '(χωρίς όνομα)' ) : ( isset( $d['title'] ) ? (string) $d['title'] : '(χωρίς τίτλο)' );
+				foreach ( ( isset( $d['milestones'] ) && is_array( $d['milestones'] ) ) ? $d['milestones'] : array() as $m ) {
+					if ( ! is_array( $m ) || ! empty( $m['done'] ) || empty( $m['id'] ) ) {
+						continue;
+					}
+					$days = self::days_until( isset( $m['due'] ) ? $m['due'] : '' );
+					if ( null === $days ) {
+						continue;
+					}
+					$remind = ( isset( $m['remind'] ) && 60 === (int) $m['remind'] ) ? 60 : 30;
+					$label  = $kind_label . ' - milestone έτους ' . ( isset( $m['year'] ) ? (int) $m['year'] : 1 ) . ': ' . ( isset( $m['description'] ) ? $m['description'] : '' );
+					if ( $days < 0 && $days >= -30 ) {
+						$items[] = array( 'key' => 'ms:' . $coll . ':' . $r['id'] . ':' . $m['id'] . ':exp', 'title' => $title, 'kind' => 'expired', 'days' => $days, 'date' => $m['due'], 'label' => $label, 'cost' => '' );
+					} elseif ( $days >= 0 && $days <= $remind ) {
+						$items[] = array( 'key' => 'ms:' . $coll . ':' . $r['id'] . ':' . $m['id'] . ':due', 'title' => $title, 'kind' => 'due', 'days' => $days, 'date' => $m['due'], 'label' => $label, 'cost' => '' );
+					}
+				}
+			}
+		}
 		return $items;
 	}
 
@@ -130,7 +153,7 @@ class RL_Cron {
 		$lines = array();
 		foreach ( $send as $it ) {
 			$when    = $it['days'] < 0 ? 'πριν από ' . abs( $it['days'] ) . ' ημ.' : ( 0 === $it['days'] ? 'σήμερα' : 'σε ' . $it['days'] . ' ημ.' );
-			$lines[] = '- ' . $it['title'] . ' [' . $it['label'] . ']: ' . self::fmt( $it['date'] ) . ' (' . $when . '), κόστος ' . self::money( $it['cost'] );
+			$lines[] = '- ' . $it['title'] . ' [' . $it['label'] . ']: ' . self::fmt( $it['date'] ) . ' (' . $when . ')' . ( '' === $it['cost'] ? '' : ', κόστος ' . self::money( $it['cost'] ) );
 		}
 		$site = wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES );
 		$url  = get_option( 'rl_app_url', '' );

@@ -38,7 +38,7 @@ function norm(o){
   return {name:String(o.name||"").trim(),description:String(o.description||"").trim(),vendor:String(o.vendor||"").trim(),
     website:String(o.website||"").trim(),username:String(o.username||"").trim(),password:String(o.password||""),
     dateFrom:o.dateFrom||"",dateTo:o.dateTo||"",cost:o.cost===""||o.cost==null?0:Number(o.cost),
-    remindDays:+o.remindDays||30,attachments:o.attachments||[],history:o.history||[],createdAt:o.createdAt||Date.now(),sample:!!o.sample};
+    remindDays:+o.remindDays||30,attachments:o.attachments||[],history:o.history||[],milestones:o.milestones||[],createdAt:o.createdAt||Date.now(),sample:!!o.sample};
 }
 function uid(){return "s"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 
@@ -87,7 +87,7 @@ function renderSw(){
   function names(a){return a.slice(0,3).map(function(i){return esc(i.name)}).join(", ")+(a.length>3?" +"+(a.length-3)+" more":"")}
   if(ex.length)al+='<div class="alert bad"><span>Expired: '+names(ex)+'</span><button type="button" data-f="expired">Show</button></div>';
   if(du.length)al+='<div class="alert"><span>Renewal due: '+names(du)+'</span><button type="button" data-f="due">Show</button></div>';
-  $("#alerts").innerHTML=al+crossAlert("sw");
+  $("#alerts").innerHTML=al+msAlertHtml("sw")+crossAlert("sw");
   var chips=[["all","All"],["expired","Expired"],["due","Due soon"],["active","Active"]];
   $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("");
   var rows=filtered(),h="";
@@ -146,6 +146,7 @@ function showDetail(id){
    '<div class="sec"><h3>Reminder</h3><label class="f">Alert me before expiry<select id="remSel">'+opts+'</select></label><span class="hint">The alert appears at the top of the ledger from this point until the date passes.</span></div>'+
    '<div class="sec"><h3>Attachments</h3>'+(files?'<ul class="files">'+files+'</ul>':'<span class="hint">No invoices or receipts attached yet.</span>')+
    '<div><button class="btn" type="button" data-act="attach"'+(S.assets?'':' disabled')+'>+ Attach files</button> <span class="hint">'+(S.assets?'Invoices, receipts, PDFs, images (up to 20 MB each).':'Uploads are not available in this view.')+'</span></div></div>'+
+   msSection("sw",it)+
    '<div class="sec"><h3>Renewal</h3><div><button class="btn primary" type="button" data-act="renew">Renew…</button></div>'+
    (hist?'<div class="tbl"><table><thead><tr><th>Previous period</th><th>Cost excl. VAT</th></tr></thead><tbody>'+hist+'</tbody></table></div>':'')+'</div>'+
    '<div class="sec"><div class="actions"><button class="btn" type="button" data-act="edit">Edit details</button><button class="btn danger" type="button" data-act="del">Delete</button></div><div id="delbox"></div></div>'
@@ -264,6 +265,154 @@ async function removeFile(i){
   if(await save(it.id,rec,cat)){try{await S.assets.delete(a.id)}catch(e){}reopen(cat,it.id);toast(cat==="ct"?"Το αρχείο αφαιρέθηκε":"File removed")}
 }
 
+/* =============== MILESTONES (both categories) =============== */
+var REMIND_MS=[30,60];
+function msIsEl(cat){return cat==="ct"}
+function msList(it){return (it&&it.milestones)||[]}
+/* Number of "years" of a record: contracts use their year table; software counts whole years from Date From to Date To. */
+function msYears(cat,it){
+  if(cat==="ct")return Math.max(1,(it.years||[]).length);
+  var a=parseIso(it.dateFrom),b=parseIso(it.dateTo);if(!a||!b||b<a)return 1;
+  var n=1;while(n<60&&addDays(addMonths(it.dateFrom,12*n),-1)<it.dateTo)n++;
+  return n;
+}
+function msYearRange(cat,it,y){
+  if(cat==="ct"){var r=(it.years||[])[y-1];return r?fmtDate(r.from)+" – "+fmtDate(r.to):""}
+  var f=addMonths(it.dateFrom,12*(y-1));if(!parseIso(f))return "";
+  var t=addDays(addMonths(it.dateFrom,12*y),-1);if(it.dateTo&&t>it.dateTo)t=it.dateTo;
+  return fmtDate(f)+" – "+fmtDate(t);
+}
+function msInfo(m){
+  var el=!!m._el,d=daysLeft(m.due);
+  if(m.done)return {k:"ok",t:el?"Ολοκληρώθηκε":"Done",d:d};
+  if(d==null)return {k:"ok",t:el?"Χωρίς ημερομηνία":"No date",d:null};
+  if(d<0)return {k:"bad",t:el?"Εκπρόθεσμο":"Overdue",d:d};
+  if(d<=(+m.remind||30))return {k:"warn",t:el?"Πλησιάζει":"Due soon",d:d};
+  return {k:"ok",t:el?"Προγραμματισμένο":"Scheduled",d:d};
+}
+function msAll(cat){
+  var out=[];
+  listOf(cat).forEach(function(it){msList(it).forEach(function(m){
+    var s=msInfo(Object.assign({_el:cat==="ct"},m));
+    if(s.k!=="ok")out.push({cat:cat,it:it,m:m,s:s});
+  })});
+  out.sort(function(a,b){return a.s.d-b.s.d});
+  return out;
+}
+function msAttn(cat){return msAll(cat).length}
+function msTitle(cat,it){return cat==="ct"?it.title:it.name}
+function msAlertHtml(cat){
+  var l=msAll(cat);if(!l.length)return "";
+  var el=cat==="ct";
+  var h=l.slice(0,4).map(function(x){
+    return '<div class="alert'+(x.s.k==="bad"?' bad':'')+'"><span>'+(el?"Milestone: ":"Milestone: ")+'<b>'+esc(x.m.description)+'</b> · '+esc(msTitle(cat,x.it))+' · '+fmtDate(x.m.due)+' ('+(el?dayTextEl(x.s.d):dayText(x.s.d))+')</span>'+
+      '<button type="button" data-act="openid" data-cat="'+cat+'" data-id="'+esc(x.it.id)+'">'+(el?"Άνοιγμα":"Open")+'</button></div>';
+  }).join("");
+  if(l.length>4)h+='<div class="alert"><span>+'+(l.length-4)+' milestones</span></div>';
+  return h;
+}
+function msFilesHtml(m){
+  var f=(m.attachments||[]).map(function(a){return '<a href="#" data-blob="'+esc(a.id)+'">'+esc(a.name)+'</a>'}).join(" · ");
+  return f?'<div class="msf">'+f+'</div>':"";
+}
+function msSection(cat,it){
+  var el=cat==="ct",L=msList(it),max=msYears(cat,it);
+  L.forEach(function(m){if(m.year>max)max=m.year});
+  var h='<div class="sec"><h3>Milestones</h3><span class="hint">'+(el?"Πρόσθεσε milestones ανά έτος. Η ειδοποίηση εμφανίζεται και στέλνεται με email 30 ή 60 ημέρες πριν την ημερομηνία παράδοσης.":"Add milestones per year. The alert shows on screen and is e-mailed 30 or 60 days before the delivery date.")+'</span>';
+  for(var y=1;y<=max;y++){
+    var rows=L.filter(function(m){return m.year===y}).sort(function(a,b){return (a.due||"9999").localeCompare(b.due||"9999")});
+    h+='<div class="msyear"><div class="msyh"><div><b>'+(el?"Έτος ":"Year ")+y+'</b> <span class="hint">'+msYearRange(cat,it,y)+'</span></div>'+
+      '<button class="btn small" type="button" data-act="msadd" data-year="'+y+'">'+(el?"+ Προσθήκη milestone":"+ Add milestone")+'</button></div>';
+    if(rows.length)h+='<ul class="files ms">'+rows.map(function(m){
+      var s=msInfo(Object.assign({_el:el},m));
+      return '<li class="'+(m.done?"done":"")+'"><div class="msb"><div><b>'+esc(m.description)+'</b> <span class="pill '+s.k+'">'+s.t+'</span></div>'+
+        '<div class="hint">'+fmtDate(m.due)+(s.d!=null&&!m.done?' · '+(el?dayTextEl(s.d):dayText(s.d)):'')+' · '+(el?"ειδοποίηση ":"alert ")+(+m.remind||30)+(el?" ημ. πριν":" days before")+'</div>'+
+        (m.comments?'<div class="msc">'+esc(m.comments)+'</div>':'')+msFilesHtml(m)+'</div>'+
+        '<div class="actions"><button class="btn small" type="button" data-act="msdone" data-mid="'+esc(m.id)+'">'+(m.done?(el?"Επανάνοιγμα":"Reopen"):(el?"Ολοκληρώθηκε":"Mark done"))+'</button>'+
+        '<button class="btn small" type="button" data-act="msedit" data-mid="'+esc(m.id)+'">'+(el?"Επεξεργασία":"Edit")+'</button>'+
+        '<button class="btn small danger" type="button" data-act="msdel" data-mid="'+esc(m.id)+'">'+(el?"Διαγραφή":"Delete")+'</button></div></li>';
+    }).join("")+'</ul>';
+    else h+='<span class="hint">'+(el?"Κανένα milestone για αυτό το έτος.":"No milestones for this year.")+'</span>';
+    h+='</div>';
+  }
+  return h+'</div>';
+}
+function showMsForm(cat,id,mid,year){
+  var it=getItem(cat,id);if(!it)return;
+  var m=mid?msList(it).find(function(x){return x.id===mid}):null;
+  S.ms={cat:cat,id:id,mid:mid||null,year:m?m.year:year,added:[],removed:[],err:"",
+    d:m?JSON.parse(JSON.stringify(m)):{description:"",due:"",remind:30,comments:"",done:false,attachments:[]}};
+  msDraw();
+}
+function msCollect(){
+  var w=S.ms,d=w.d,a=$("#ms_desc");if(!a)return;
+  d.description=a.value;d.due=$("#ms_due").value;d.remind=+$("#ms_rem").value||30;d.comments=$("#ms_com").value;
+}
+function msDraw(){
+  var w=S.ms,d=w.d,el=w.cat==="ct",it=getItem(w.cat,w.id);
+  var files=(d.attachments||[]).map(function(a,i){return '<li><a href="#" data-blob="'+esc(a.id)+'">'+esc(a.name)+'</a><button type="button" class="btn small danger" data-act="msrmfile" data-i="'+i+'">'+(el?"Αφαίρεση":"Remove")+'</button></li>'}).join("");
+  openPanel('<div class="ph"><div><h2>'+(w.mid?(el?"Επεξεργασία milestone":"Edit milestone"):(el?"Νέο milestone":"New milestone"))+'</h2><span class="hint">'+esc(msTitle(w.cat,it))+' · '+(el?"Έτος ":"Year ")+w.year+'</span></div><button class="btn small" type="button" data-act="mscancel">'+(el?"Άκυρο":"Cancel")+'</button></div>'+
+   '<label class="f">'+(el?"Περιγραφή":"Description")+'<textarea id="ms_desc" maxlength="1000">'+esc(d.description)+'</textarea></label>'+
+   '<div class="grid2"><label class="f">'+(el?"Ημερομηνία παράδοσης":"Delivery date")+'<input id="ms_due" type="date" value="'+esc(d.due)+'"></label>'+
+   '<label class="f">'+(el?"Ειδοποίηση":"Alert")+'<select id="ms_rem">'+remOpts(d.remind,REMIND_MS,el?" ημέρες πριν":" days before")+'</select></label></div>'+
+   '<label class="f">'+(el?"Σχόλια":"Comments")+'<textarea id="ms_com" maxlength="4000">'+esc(d.comments)+'</textarea></label>'+
+   '<div class="sec"><h3>'+(el?"Συνημμένα":"Attachments")+'</h3>'+(files?'<ul class="files">'+files+'</ul>':'<span class="hint">'+(el?"Δεν υπάρχουν συνημμένα.":"No attachments yet.")+'</span>')+
+   '<div><button class="btn" type="button" data-act="msattach"'+(S.assets?'':' disabled')+'>'+(el?"+ Προσθήκη αρχείων":"+ Attach files")+'</button></div></div>'+
+   '<div class="err" id="mserr">'+esc(w.err)+'</div><div class="actions"><button class="btn primary" type="button" data-act="mssave">'+(el?"Αποθήκευση":"Save")+'</button></div>',"ms");
+}
+function msPick(){
+  var inp=document.createElement("input");inp.type="file";inp.multiple=true;
+  inp.addEventListener("change",function(){var fl=Array.prototype.slice.call(inp.files);if(fl.length)msUpload(fl)});
+  inp.click();
+}
+async function msUpload(files){
+  var w=S.ms;if(!w||!S.assets)return;msCollect();var el=w.cat==="ct";
+  for(var i=0;i<files.length;i++){
+    var f=files[i],ext=(f.name.split(".").pop()||"").toLowerCase(),type=f.type&&MIME[ext]===f.type?f.type:MIME[ext]||f.type;
+    try{var r=await S.assets.upload(f,type?{type:type}:undefined);w.d.attachments.push({id:r.id,name:f.name,size:r.sizeBytes});w.added.push(r.id)}
+    catch(e){toast(f.name+": "+(e&&e.code==="unsupported_type"?(el?"μη υποστηριζόμενος τύπος":"file type not supported"):e&&e.code==="too_large"?(el?"μεγαλύτερο από 20 MB":"larger than 20 MB"):(el?"αποτυχία μεταφόρτωσης":"upload failed")))}
+  }
+  msDraw();
+}
+async function msSave(){
+  var w=S.ms;msCollect();var d=w.d,el=w.cat==="ct",it=getItem(w.cat,w.id);if(!it)return;
+  var e="";
+  if(!String(d.description).trim())e=el?"Συμπλήρωσε την περιγραφή.":"Enter a description.";
+  else if(!parseIso(d.due))e=el?"Επίλεξε ημερομηνία παράδοσης.":"Choose a delivery date.";
+  if(e){w.err=e;var x=$("#mserr");if(x)x.textContent=e;return}
+  var obj={id:w.mid||uid(),year:w.year,description:String(d.description).trim(),due:d.due,remind:d.remind===60?60:30,comments:String(d.comments||"").trim(),done:!!d.done,attachments:d.attachments||[]};
+  var list=msList(it).slice(),i=list.findIndex(function(x){return x.id===obj.id});
+  if(i>=0)list[i]=obj;else list.push(obj);
+  var rec=strip(it);rec.milestones=list;
+  if(await save(w.id,rec,w.cat)){
+    var gone=(w.removed||[]).slice();
+    for(var k=0;k<gone.length;k++){try{await S.assets.delete(gone[k])}catch(_){}}
+    S.ms=null;toast(el?"Το milestone αποθηκεύτηκε":"Milestone saved");reopen(w.cat,w.id);
+  }
+}
+async function msCancel(){
+  var w=S.ms;if(!w)return;
+  var add=(w.added||[]).slice();S.ms=null;
+  for(var k=0;k<add.length;k++){try{await S.assets.delete(add[k])}catch(_){}}
+  reopen(w.cat,w.id);
+}
+async function msToggleDone(mid){
+  var cat=S.openCat||"sw",it=getItem(cat,S.open);if(!it)return;
+  var list=msList(it).map(function(m){return m.id===mid?Object.assign({},m,{done:!m.done}):m});
+  var rec=strip(it);rec.milestones=list;
+  if(await save(it.id,rec,cat))reopen(cat,it.id);
+}
+async function msDelete(mid){
+  var cat=S.openCat||"sw",it=getItem(cat,S.open);if(!it)return;
+  var m=msList(it).find(function(x){return x.id===mid});if(!m)return;
+  if(!window.confirm(cat==="ct"?"Να διαγραφεί το milestone και τα συνημμένα του;":"Delete this milestone and its attachments?"))return;
+  var rec=strip(it);rec.milestones=msList(it).filter(function(x){return x.id!==mid});
+  if(await save(it.id,rec,cat)){
+    var f=(m.attachments||[]);for(var k=0;k<f.length;k++){try{await S.assets.delete(f[k].id)}catch(_){}}
+    reopen(cat,it.id);
+  }
+}
+
 /* =============== CONTRACTS (Συμβάσεις) =============== */
 var REMIND_CT=[14,30,60,90,120,180];
 var CT_BASE=[
@@ -310,7 +459,7 @@ function ctInfo(c){
 }
 function attn(cat){return listOf(cat).filter(function(i){return (cat==="ct"?ctInfo(i):status(i)).k!=="ok"}).length}
 function crossAlert(cat){
-  var o=cat==="sw"?"ct":"sw",n=attn(o);if(!n)return "";
+  var o=cat==="sw"?"ct":"sw",n=attn(o)+msAttn(o);if(!n)return "";
   return '<div class="alert"><span>'+(o==="ct"?'Συμβάσεις: '+n+' χρειάζονται προσοχή':'Online Renewals: '+n+' need attention')+'</span><button type="button" data-act="gocat" data-cat="'+o+'">'+(o==="ct"?'Προβολή':'View')+'</button></div>';
 }
 function remOpts(v,list,suffix){
@@ -347,7 +496,7 @@ function renderCt(){
     return '<div class="alert'+(x.s.k==="bad"?' bad':'')+'"><span><b>'+esc(x.c.title)+'</b> · '+esc(x.s.sub)+'</span><button type="button" data-act="openid" data-cat="ct" data-id="'+esc(x.c.id)+'">Άνοιγμα</button></div>';
   }).join("");
   if(lines.length>4)al+='<div class="alert"><span>+'+(lines.length-4)+' ακόμη</span><button type="button" data-f="due">Προβολή</button></div>';
-  $("#alerts").innerHTML=al+crossAlert("ct");
+  $("#alerts").innerHTML=al+msAlertHtml("ct")+crossAlert("ct");
   var chips=[["all","Όλες"],["expired","Έληξαν"],["due","Λήγουν σύντομα"],["active","Σε ισχύ"]];
   $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("");
   var rows=ctFiltered(),h="";
@@ -398,6 +547,7 @@ function showCtDetail(id){
    '<span class="hint">Η υπενθύμιση κάθε έτους εμφανίζεται στην κορυφή και στο παράθυρο ειδοποιήσεων από την επιλεγμένη ημερομηνία μέχρι τη λήξη του έτους.</span></div>'+
    '<div class="sec"><h3>Συνημμένα</h3>'+(files?'<ul class="files">'+files+'</ul>':'<span class="hint">Δεν υπάρχουν συνημμένα (συμβάσεις, τιμολόγια, αποδείξεις).</span>')+
    '<div><button class="btn" type="button" data-act="attach"'+(S.assets?'':' disabled')+'>+ Προσθήκη αρχείων</button> <span class="hint">'+(S.assets?'PDF, εικόνες, CSV ή κείμενο, έως 20 MB το καθένα.':'Η μεταφόρτωση δεν είναι διαθέσιμη εδώ.')+'</span></div></div>'+
+   msSection("ct",c)+
    '<div class="sec"><div class="actions"><button class="btn" type="button" data-act="edit">Επεξεργασία</button><button class="btn danger" type="button" data-act="ctdel">Διαγραφή</button></div><div id="delbox"></div></div>'
   ,"detail",true);
 }
@@ -483,7 +633,7 @@ function ctRecord(d){
   var ys=(d.years||[]).map(function(y){return {from:y.from,to:y.to,cost:(y.cost===""||y.cost==null)?"":Number(y.cost),remind:+y.remind||30}});
   var blank=d.cost==null||String(d.cost).trim()==="";
   return {title:String(d.title||"").trim(),tender:String(d.tender||"").trim(),description:String(d.description||"").trim(),contractor:String(d.contractor||"").trim(),coordinator:String(d.coordinator||"").trim(),
-    months:Number(d.months),dateFrom:d.dateFrom,dateTo:d.dateTo,cost:blank?ctSum(ys):Number(d.cost),years:ys,attachments:d.attachments||[],createdAt:d.createdAt||Date.now(),sample:!!d.sample};
+    months:Number(d.months),dateFrom:d.dateFrom,dateTo:d.dateTo,cost:blank?ctSum(ys):Number(d.cost),years:ys,attachments:d.attachments||[],milestones:d.milestones||[],createdAt:d.createdAt||Date.now(),sample:!!d.sample};
 }
 async function ctSave(){
   ctCollect();var w=S.cw,d=w.d;
@@ -619,6 +769,7 @@ function showDigest(){
   var list=[];
   S.items.forEach(function(i){var s=status(i);if(s.k!=="ok")list.push({cat:"sw",id:i.id,k:s.k,t:s.t,d:s.d,name:i.name,sub:fmtDate(i.dateTo)+" · "+dayText(s.d)+" · "+money(i.cost)})});
   S.contracts.forEach(function(c){var s=ctInfo(c);if(s.k!=="ok")list.push({cat:"ct",id:c.id,k:s.k,t:s.t,d:s.d,name:c.title,sub:s.sub+" · "+mc(c.cost)})});
+  ["sw","ct"].forEach(function(cc){msAll(cc).forEach(function(x){list.push({cat:cc,id:x.it.id,k:x.s.k,t:"Milestone",d:x.s.d,name:x.m.description+" · "+msTitle(cc,x.it),sub:fmtDate(x.m.due)+" · "+(cc==="ct"?dayTextEl(x.s.d):dayText(x.s.d))})})});
   if(!list.length)return;
   list.sort(function(a,b){return a.d-b.d});
   var rows=list.map(function(x){
@@ -631,7 +782,7 @@ function showDigest(){
 function maybeDigest(){
   if(S.digestShown||!S.loaded.sw||!S.loaded.ct)return;
   S.digestShown=true;
-  if(attn("sw")+attn("ct")>0)setTimeout(showDigest,500);
+  if(attn("sw")+attn("ct")+msAttn("sw")+msAttn("ct")>0)setTimeout(showDigest,500);
 }
 
 /* ---------- shared render ---------- */
@@ -771,6 +922,14 @@ ROOT.addEventListener("click",async function(ev){
     case "openid":reopen(b.dataset.cat||"sw",b.dataset.id);break;
     case "showpw":var it2=byId(S.open),el=$("#pwv");if(el.dataset.on){el.textContent="••••••••";el.dataset.on="";b.textContent="Show"}else{el.textContent=it2.password;el.dataset.on="1";b.textContent="Hide"}break;
     case "attach":$("#fileAttach").click();break;
+    case "msadd":showMsForm(S.openCat||"sw",S.open,null,+b.dataset.year||1);break;
+    case "msedit":showMsForm(S.openCat||"sw",S.open,b.dataset.mid);break;
+    case "msdel":msDelete(b.dataset.mid);break;
+    case "msdone":msToggleDone(b.dataset.mid);break;
+    case "msattach":msPick();break;
+    case "mssave":msSave();break;
+    case "mscancel":msCancel();break;
+    case "msrmfile":msCollect();var rm=S.ms.d.attachments.splice(+b.dataset.i,1)[0];if(rm){var ai=S.ms.added.indexOf(rm.id);if(ai>=0){S.ms.added.splice(ai,1);try{S.assets.delete(rm.id)}catch(_){}}else S.ms.removed.push(rm.id)}msDraw();break;
     case "renew":showRenew(S.open);break;
     case "rsave":doRenew(b.dataset.id);break;
     case "edit":S.openCat==="ct"?ctStart(S.open):startWizard(S.open);break;

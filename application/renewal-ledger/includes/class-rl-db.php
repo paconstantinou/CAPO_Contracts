@@ -185,9 +185,20 @@ class RL_DB {
 		$t   = self::table_records();
 		$row = $wpdb->get_row( $wpdb->prepare( "SELECT data FROM $t WHERE collection = %s AND doc_id = %s", $collection, $id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if ( $row ) {
-			$data = json_decode( $row['data'], true );
-			if ( is_array( $data ) && ! empty( $data['attachments'] ) && is_array( $data['attachments'] ) ) {
-				foreach ( $data['attachments'] as $a ) {
+			$data  = json_decode( $row['data'], true );
+			$lists = array();
+			if ( is_array( $data ) ) {
+				if ( ! empty( $data['attachments'] ) && is_array( $data['attachments'] ) ) {
+					$lists[] = $data['attachments'];
+				}
+				foreach ( ( ! empty( $data['milestones'] ) && is_array( $data['milestones'] ) ) ? $data['milestones'] : array() as $m ) {
+					if ( is_array( $m ) && ! empty( $m['attachments'] ) && is_array( $m['attachments'] ) ) {
+						$lists[] = $m['attachments'];
+					}
+				}
+			}
+			foreach ( $lists as $list ) {
+				foreach ( $list as $a ) {
 					if ( is_array( $a ) && ! empty( $a['id'] ) ) {
 						self::delete_file( (string) $a['id'] );
 					}
@@ -254,6 +265,41 @@ class RL_DB {
 		return $out;
 	}
 
+	/** Milestones of a record: per year, with their own reminder (30 or 60 days), comments and attachments. */
+	private static function v_milestones( $list, $collection ) {
+		$out  = array();
+		$seen = array();
+		if ( ! is_array( $list ) ) {
+			return $out;
+		}
+		foreach ( array_slice( $list, 0, 300 ) as $m ) {
+			if ( ! is_array( $m ) ) {
+				continue;
+			}
+			$id = isset( $m['id'] ) && is_string( $m['id'] ) && preg_match( '/^[A-Za-z0-9_-]{1,40}$/', $m['id'] ) ? $m['id'] : '';
+			if ( '' === $id || isset( $seen[ $id ] ) ) {
+				continue;
+			}
+			$seen[ $id ] = true;
+			$desc        = self::v_str( isset( $m['description'] ) ? $m['description'] : '', 1000 );
+			if ( '' === $desc ) {
+				continue;
+			}
+			$remind = isset( $m['remind'] ) ? (int) $m['remind'] : 30;
+			$out[]  = array(
+				'id'          => $id,
+				'year'        => max( 1, min( 60, isset( $m['year'] ) ? (int) $m['year'] : 1 ) ),
+				'description' => $desc,
+				'due'         => self::v_date( isset( $m['due'] ) ? $m['due'] : '' ),
+				'remind'      => in_array( $remind, array( 30, 60 ), true ) ? $remind : 30,
+				'comments'    => self::v_str( isset( $m['comments'] ) ? $m['comments'] : '', 4000 ),
+				'done'        => ! empty( $m['done'] ),
+				'attachments' => self::v_attachments( isset( $m['attachments'] ) ? $m['attachments'] : array(), $collection ),
+			);
+		}
+		return $out;
+	}
+
 	/**
 	 * Keep only the fields the application knows, with safe types and lengths.
 	 * @return array|WP_Error
@@ -279,6 +325,7 @@ class RL_DB {
 				'cost'        => self::v_num( $g( 'cost' ) ),
 				'remindDays'  => max( 1, min( 365, (int) $g( 'remindDays' ) ?: 30 ) ),
 				'attachments' => self::v_attachments( $g( 'attachments' ), $collection ),
+				'milestones'  => self::v_milestones( $g( 'milestones' ), $collection ),
 				'history'     => array(),
 				'createdAt'   => $created,
 				'sample'      => ! empty( $d['sample'] ),
@@ -312,6 +359,7 @@ class RL_DB {
 			'cost'        => self::v_num( $g( 'cost' ) ),
 			'years'       => array(),
 			'attachments' => self::v_attachments( $g( 'attachments' ), $collection ),
+			'milestones'  => self::v_milestones( $g( 'milestones' ), $collection ),
 			'createdAt'   => $created,
 			'sample'      => ! empty( $d['sample'] ),
 		);
