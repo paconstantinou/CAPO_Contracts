@@ -1,0 +1,30 @@
+/* Application Management - admin styles. Uses WordPress admin colours and spacing. */
+.am-wrap { max-width: 1280px; }
+.am-nav { display: flex; flex-wrap: wrap; gap: 4px; margin: 12px 0 16px; border-bottom: 1px solid #c3c4c7; }
+.am-nav a { padding: 8px 14px; text-decoration: none; color: #50575e; border: 1px solid transparent; border-bottom: 0; border-radius: 4px 4px 0 0; margin-bottom: -1px; }
+.am-nav a:hover { color: #135e96; }
+.am-nav a.is-active { background: #fff; color: #1d2327; font-weight: 600; border-color: #c3c4c7; }
+.am-panel { background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 14px 18px; margin: 0 0 16px; }
+.am-panel h3 { margin-top: 0; }
+.am-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0 0 16px; }
+.am-card { display: block; background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 14px 16px; text-decoration: none; color: #1d2327; }
+.am-card strong { display: block; font-size: 26px; line-height: 1.2; }
+.am-card span { color: #50575e; }
+.am-card:hover { border-color: #2271b1; }
+.am-scroll { overflow-x: auto; max-width: 100%; margin-bottom: 12px; }
+.am-table td, .am-table th { vertical-align: top; }
+.am-matrix td, .am-matrix th { text-align: center; }
+.am-matrix td:first-child, .am-matrix th:first-child { text-align: left; }
+.am-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; line-height: 1.7; background: #f0f0f1; color: #3c434a; border: 1px solid #dcdcde; }
+.am-pill.am-on { background: #edfaef; color: #00450c; border-color: #68de7c; }
+.am-pill.am-off { background: #fcf0f1; color: #8a1f1f; border-color: #f0a3a8; }
+.am-muted { color: #646970; }
+.am-inline { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 2px 0; }
+.am-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
+.am-checks { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.am-order li { margin-bottom: 4px; }
+.am-details { max-width: 420px; overflow-wrap: anywhere; font-family: Consolas, Menlo, monospace; font-size: 12px; }
+@media (max-width: 782px) {
+	.am-nav a { padding: 8px 10px; }
+	.am-panel { padding: 12px; }
+}

@@ -78,6 +78,7 @@ class RL_DB {
   stored_name varchar(80) NOT NULL,
   mime varchar(100) NOT NULL,
   size bigint(20) unsigned NOT NULL DEFAULT 0,
+  collection varchar(20) NOT NULL DEFAULT '',
   uploaded_by bigint(20) unsigned NOT NULL DEFAULT 0,
   created_at datetime NOT NULL,
   PRIMARY KEY  (id)
@@ -196,6 +197,142 @@ class RL_DB {
 		$wpdb->delete( $t, array( 'collection' => $collection, 'doc_id' => $id ), array( '%s', '%s' ) );
 	}
 
+	/* ---------- single records and validation ---------- */
+
+	public static function get_record( $collection, $id ) {
+		global $wpdb;
+		$t   = self::table_records();
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT data FROM $t WHERE collection = %s AND doc_id = %s", $collection, $id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return $row ? self::unpack( $collection, $row['data'] ) : null;
+	}
+
+	public static function record_exists( $collection, $id ) {
+		global $wpdb;
+		$t = self::table_records();
+		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $t WHERE collection = %s AND doc_id = %s", $collection, $id ) ) > 0; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	private static function v_str( $v, $max ) {
+		$v = is_scalar( $v ) ? (string) $v : '';
+		$v = str_replace( "\0", '', wp_check_invalid_utf8( $v ) );
+		$v = trim( $v );
+		return function_exists( 'mb_substr' ) ? mb_substr( $v, 0, $max ) : substr( $v, 0, $max );
+	}
+
+	private static function v_date( $v ) {
+		if ( is_string( $v ) && preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $v, $m ) && checkdate( (int) $m[2], (int) $m[3], (int) $m[1] ) ) {
+			return $v;
+		}
+		return '';
+	}
+
+	/** @param bool $blank_ok keep an empty value as '' (used for optional per-year costs) */
+	private static function v_num( $v, $blank_ok = false ) {
+		if ( ( '' === $v || null === $v ) && $blank_ok ) {
+			return '';
+		}
+		if ( ! is_numeric( $v ) ) {
+			return 0;
+		}
+		return max( 0, min( 1000000000000, round( (float) $v, 2 ) ) );
+	}
+
+	private static function v_attachments( $list, $collection ) {
+		$out = array();
+		if ( is_array( $list ) ) {
+			foreach ( array_slice( $list, 0, 50 ) as $a ) {
+				if ( ! is_array( $a ) || empty( $a['id'] ) || ! preg_match( '/^[a-f0-9]{32}$/', (string) $a['id'] ) ) {
+					continue;
+				}
+				$row = self::get_file( (string) $a['id'] );
+				if ( ! $row || ( '' !== $row['collection'] && $row['collection'] !== $collection ) ) {
+					continue; // unknown file, or a file that belongs to another module
+				}
+				$out[] = array( 'id' => $row['id'], 'name' => $row['orig_name'], 'size' => (int) $row['size'] );
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Keep only the fields the application knows, with safe types and lengths.
+	 * @return array|WP_Error
+	 */
+	public static function sanitize_record( $collection, $d ) {
+		if ( ! is_array( $d ) ) {
+			return new WP_Error( 'rl_bad_data', 'Invalid data', array( 'status' => 400 ) );
+		}
+		$g = function ( $k ) use ( $d ) {
+			return isset( $d[ $k ] ) ? $d[ $k ] : '';
+		};
+		$created = isset( $d['createdAt'] ) && is_numeric( $d['createdAt'] ) ? (int) $d['createdAt'] : (int) round( microtime( true ) * 1000 );
+		if ( 'software' === $collection ) {
+			$out = array(
+				'name'        => self::v_str( $g( 'name' ), 200 ),
+				'description' => self::v_str( $g( 'description' ), 2000 ),
+				'vendor'      => self::v_str( $g( 'vendor' ), 200 ),
+				'website'     => self::v_str( $g( 'website' ), 500 ),
+				'username'    => self::v_str( $g( 'username' ), 200 ),
+				'password'    => is_string( $g( 'password' ) ) ? self::v_str( $g( 'password' ), 500 ) : '',
+				'dateFrom'    => self::v_date( $g( 'dateFrom' ) ),
+				'dateTo'      => self::v_date( $g( 'dateTo' ) ),
+				'cost'        => self::v_num( $g( 'cost' ) ),
+				'remindDays'  => max( 1, min( 365, (int) $g( 'remindDays' ) ?: 30 ) ),
+				'attachments' => self::v_attachments( $g( 'attachments' ), $collection ),
+				'history'     => array(),
+				'createdAt'   => $created,
+				'sample'      => ! empty( $d['sample'] ),
+			);
+			if ( '' === $out['name'] ) {
+				return new WP_Error( 'rl_bad_data', 'Software Name is required.', array( 'status' => 400 ) );
+			}
+			if ( isset( $d['history'] ) && is_array( $d['history'] ) ) {
+				foreach ( array_slice( $d['history'], 0, 200 ) as $h ) {
+					if ( is_array( $h ) ) {
+						$out['history'][] = array(
+							'from'      => self::v_date( isset( $h['from'] ) ? $h['from'] : '' ),
+							'to'        => self::v_date( isset( $h['to'] ) ? $h['to'] : '' ),
+							'cost'      => self::v_num( isset( $h['cost'] ) ? $h['cost'] : 0 ),
+							'renewedOn' => self::v_date( isset( $h['renewedOn'] ) ? $h['renewedOn'] : '' ),
+						);
+					}
+				}
+			}
+			return $out;
+		}
+		$out = array(
+			'title'       => self::v_str( $g( 'title' ), 300 ),
+			'tender'      => self::v_str( $g( 'tender' ), 100 ),
+			'description' => self::v_str( $g( 'description' ), 4000 ),
+			'contractor'  => self::v_str( $g( 'contractor' ), 300 ),
+			'coordinator' => self::v_str( $g( 'coordinator' ), 300 ),
+			'months'      => max( 0, min( 1200, (int) $g( 'months' ) ) ),
+			'dateFrom'    => self::v_date( $g( 'dateFrom' ) ),
+			'dateTo'      => self::v_date( $g( 'dateTo' ) ),
+			'cost'        => self::v_num( $g( 'cost' ) ),
+			'years'       => array(),
+			'attachments' => self::v_attachments( $g( 'attachments' ), $collection ),
+			'createdAt'   => $created,
+			'sample'      => ! empty( $d['sample'] ),
+		);
+		if ( '' === $out['title'] ) {
+			return new WP_Error( 'rl_bad_data', 'Contract title is required.', array( 'status' => 400 ) );
+		}
+		if ( isset( $d['years'] ) && is_array( $d['years'] ) ) {
+			foreach ( array_slice( $d['years'], 0, 60 ) as $y ) {
+				if ( is_array( $y ) ) {
+					$out['years'][] = array(
+						'from'   => self::v_date( isset( $y['from'] ) ? $y['from'] : '' ),
+						'to'     => self::v_date( isset( $y['to'] ) ? $y['to'] : '' ),
+						'cost'   => self::v_num( isset( $y['cost'] ) ? $y['cost'] : '', true ),
+						'remind' => max( 1, min( 365, (int) ( isset( $y['remind'] ) ? $y['remind'] : 30 ) ?: 30 ) ),
+					);
+				}
+			}
+		}
+		return $out;
+	}
+
 	/* ---------- files ---------- */
 
 	public static function dir() {
@@ -219,7 +356,7 @@ class RL_DB {
 	}
 
 	/** @return array|WP_Error */
-	public static function store_file( $tmp, $orig_name, $size, $user_id ) {
+	public static function store_file( $tmp, $orig_name, $size, $user_id, $collection = '' ) {
 		global $wpdb;
 		$name = sanitize_file_name( wp_basename( $orig_name ) );
 		$ext  = strtolower( pathinfo( $name, PATHINFO_EXTENSION ) );
@@ -244,16 +381,18 @@ class RL_DB {
 				'stored_name' => $stored,
 				'mime'        => $map[ $ext ],
 				'size'        => (int) $size,
+				'collection'  => (string) $collection,
 				'uploaded_by' => (int) $user_id,
 				'created_at'  => current_time( 'mysql', true ),
 			),
-			array( '%s', '%s', '%s', '%s', '%d', '%d', '%s' )
+			array( '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%s' )
 		);
 		return array(
 			'id'   => $id,
 			'name' => $name,
 			'size' => (int) $size,
 			'type' => $map[ $ext ],
+			'collection' => (string) $collection,
 		);
 	}
 

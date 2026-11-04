@@ -3,7 +3,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/** Access control and the Settings > Renewal Ledger page. */
+/**
+ * Settings > Renewal Ledger. Who may use the application is NOT decided here:
+ * users, roles and permissions are managed only in the Application Management plugin.
+ */
 class RL_Settings {
 
 	public static function init() {
@@ -12,36 +15,11 @@ class RL_Settings {
 		add_action( 'admin_post_rl_send_now', array( __CLASS__, 'send_now' ) );
 	}
 
-	/** Administrators always; other roles only when ticked in the settings. */
-	public static function user_allowed( $user_id = 0 ) {
-		$user = $user_id ? get_userdata( $user_id ) : wp_get_current_user();
-		if ( ! $user || ! $user->exists() ) {
-			return false;
-		}
-		if ( user_can( $user, 'manage_options' ) ) {
-			return true;
-		}
-		$roles = (array) get_option( 'rl_allowed_roles', array() );
-		return (bool) array_intersect( $roles, (array) $user->roles );
-	}
-
 	public static function menu() {
 		add_options_page( 'Renewal Ledger', 'Renewal Ledger', 'manage_options', 'renewal-ledger', array( __CLASS__, 'page' ) );
 	}
 
 	public static function register() {
-		register_setting(
-			'rl_settings',
-			'rl_allowed_roles',
-			array(
-				'type'              => 'array',
-				'sanitize_callback' => function ( $v ) {
-					$valid = array_keys( wp_roles()->get_names() );
-					return array_values( array_intersect( array_map( 'sanitize_key', (array) $v ), $valid ) );
-				},
-				'default'           => array(),
-			)
-		);
 		register_setting(
 			'rl_settings',
 			'rl_recipients',
@@ -81,11 +59,10 @@ class RL_Settings {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
-		$allowed = (array) get_option( 'rl_allowed_roles', array() );
-		$roles   = wp_roles()->get_names();
-		$to      = get_option( 'rl_recipients', '' );
-		$repeat  = (int) get_option( 'rl_repeat_days', 7 );
-		$url     = get_option( 'rl_app_url', '' );
+		$to     = get_option( 'rl_recipients', '' );
+		$repeat = (int) get_option( 'rl_repeat_days', 7 );
+		$url    = get_option( 'rl_app_url', '' );
+		$am     = class_exists( 'AM' );
 		?>
 		<div class="wrap">
 			<h1>Renewal Ledger</h1>
@@ -98,6 +75,14 @@ class RL_Settings {
 				</p></div>
 			<?php endif; ?>
 
+			<?php if ( ! $am ) : ?>
+				<div class="notice notice-error"><p><strong>Το πρόσθετο Application Management δεν είναι ενεργό.</strong> Μέχρι να το ενεργοποιήσεις, κανείς δεν έχει πρόσβαση στα δεδομένα του Renewal Ledger.</p></div>
+			<?php else : ?>
+				<div class="notice notice-info inline"><p>Ποιος μπορεί να βλέπει, να δημιουργεί, να επεξεργάζεται, να διαγράφει ή να εξάγει ορίζεται <strong>μόνο</strong> από το
+					<a href="<?php echo esc_url( admin_url( 'admin.php?page=am-users' ) ); ?>">Application Management → Users &amp; Access</a>.
+					Τα modules είναι <code>software</code> και <code>contracts</code>.</p></div>
+			<?php endif; ?>
+
 			<p>Για να εμφανίσεις την εφαρμογή, δημιούργησε μια σελίδα (ιδανικά ιδιωτική) και πρόσθεσε μέσα το shortcode <code>[renewal_ledger]</code>.
 				<?php if ( $url ) : ?>
 					Τρέχουσα σελίδα: <a href="<?php echo esc_url( $url ); ?>"><?php echo esc_html( $url ); ?></a>
@@ -108,20 +93,10 @@ class RL_Settings {
 				<?php settings_fields( 'rl_settings' ); ?>
 				<table class="form-table" role="presentation">
 					<tr>
-						<th scope="row">Ποιοι έχουν πρόσβαση</th>
-						<td>
-							<p><strong>Administrators</strong> έχουν πάντα πρόσβαση. Πρόσθετοι ρόλοι (βλέπουν και επεξεργάζονται όλες τις εγγραφές, μαζί με τους κωδικούς):</p>
-							<?php foreach ( $roles as $slug => $label ) : ?>
-								<?php if ( 'administrator' === $slug ) { continue; } ?>
-								<label style="display:block"><input type="checkbox" name="rl_allowed_roles[]" value="<?php echo esc_attr( $slug ); ?>" <?php checked( in_array( $slug, $allowed, true ) ); ?>> <?php echo esc_html( translate_user_role( $label ) ); ?></label>
-							<?php endforeach; ?>
-						</td>
-					</tr>
-					<tr>
 						<th scope="row"><label for="rl_recipients">Παραλήπτες email υπενθυμίσεων</label></th>
 						<td>
 							<input type="text" class="regular-text" id="rl_recipients" name="rl_recipients" value="<?php echo esc_attr( $to ); ?>" placeholder="<?php echo esc_attr( get_option( 'admin_email' ) ); ?>">
-							<p class="description">Χωρισμένα με κόμμα. Αν μείνει κενό, χρησιμοποιείται το email διαχειριστή του site.</p>
+							<p class="description">Χωρισμένα με κόμμα. Αν μείνει κενό, χρησιμοποιείται το email διαχειριστή του site. Τα email περιέχουν τίτλους, ημερομηνίες και κόστος, ποτέ κωδικούς.</p>
 						</td>
 					</tr>
 					<tr>
@@ -141,7 +116,7 @@ class RL_Settings {
 				<input type="hidden" name="action" value="rl_send_now">
 				<?php wp_nonce_field( 'rl_send_now' ); ?>
 				<?php submit_button( 'Αποστολή τώρα email υπενθυμίσεων', 'secondary', 'submit', false ); ?>
-				<p class="description">Στέλνει αμέσως όσες εγγραφές είναι εντός διαστήματος υπενθύμισης ή έληξαν τις τελευταίες 30 ημέρες. Οι κωδικοί δεν συμπεριλαμβάνονται ποτέ στα email.</p>
+				<p class="description">Στέλνει αμέσως όσες εγγραφές είναι εντός διαστήματος υπενθύμισης ή έληξαν τις τελευταίες 30 ημέρες.</p>
 			</form>
 		</div>
 		<?php

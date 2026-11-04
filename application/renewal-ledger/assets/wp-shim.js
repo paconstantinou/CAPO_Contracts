@@ -13,6 +13,9 @@
       });
     });
   }
+  var perms=cfg.perms||{};
+  function curColl(){var t=document.getElementById("tabCt");return t&&t.getAttribute("aria-selected")==="true"?"contracts":"software"}
+  function P(c,a){return !!(perms[c]&&perms[c][a])}
   var cache={},subs=[],loaded={};
   function snapFor(name){
     var m=cache[name]||{},ids=Object.keys(m);
@@ -51,7 +54,7 @@
   var assets={
     upload:function(blob){
       if(!(blob instanceof Blob)||!blob.size)return Promise.reject({code:"invalid_request",message:"empty file"});
-      var fd=new FormData();fd.append("file",blob,blob.name||"file");
+      var fd=new FormData();fd.append("file",blob,blob.name||"file");fd.append("coll",curColl());
       return api("POST","files",fd,true).then(function(r){return {id:r.id,url:"#",sizeBytes:r.size,contentType:r.type}},function(e){
         var m={rl_too_large:"too_large",rl_bad_type:"unsupported_type"};
         throw {code:m[e.code]||e.code||"upstream_error",message:e.message};
@@ -88,4 +91,44 @@
       if(w){w.location.href=u}else{var d=document.createElement("a");d.href=u;d.download=a.textContent||"file";document.body.appendChild(d);d.click();d.remove()}
     }).catch(function(){if(w)w.close();alert("Το αρχείο δεν βρέθηκε ή δεν έχεις δικαίωμα. / File not found or access denied.")});
   });
+
+  /* Convenience only: hide what the user may not do. The server enforces every one of these again on each request. */
+  var gating=false;
+  function hide(sel,root,yes){[].forEach.call(root.querySelectorAll(sel),function(n){n.hidden=yes;n.style.display=yes?"none":""})}
+  function gate(){
+    if(gating)return;gating=true;
+    try{
+      var root=document.getElementById("rl-app");if(!root)return;
+      var c=curColl();
+      hide("#btnAdd,#emAdd,#btnImport,#emImp,[data-act=pick],[data-act=tpl],[data-act=ctsample],#emSample",root,!P(c,"create"));
+      hide("#btnExport",root,!P(c,"export"));
+      hide("[data-act=xlsx],[data-act=csv]",root,!P(c,"export"));
+      hide("[data-act=edit],[data-act=renew],[data-act=renewid],[data-act=attach],[data-act=rsave]",root,!P(c,"edit"));
+      hide("[data-act=del],[data-act=ctdel]",root,!P(c,"delete"));
+      var sw=document.getElementById("tabSw"),ct=document.getElementById("tabCt");
+      if(sw)sw.style.display=P("software","view")?"":"none";
+      if(ct)ct.style.display=P("contracts","view")?"":"none";
+      if(!P(c,"view")){var other=c==="software"?ct:sw;if(other&&other.style.display!=="none")setTimeout(function(){other.click()},0)}
+    }finally{gating=false}
+  }
+  document.addEventListener("DOMContentLoaded",function(){
+    var root=document.getElementById("rl-app");if(!root)return;
+    new MutationObserver(function(){gate()}).observe(root,{childList:true,subtree:true,attributes:true,attributeFilter:["aria-selected","hidden"]});
+    gate();
+  });
+  /* Exports come from the server, so the Export permission is really enforced and Excel/CSV content matches it. */
+  document.addEventListener("click",function(e){
+    var b=e.target.closest&&e.target.closest("[data-act=xlsx],[data-act=csv]");
+    if(!b||!cfg.serverExport)return;
+    e.preventDefault();e.stopImmediatePropagation();
+    var fmt=b.getAttribute("data-act"),c=curColl();
+    fetch(cfg.rest+"export/"+c+"?format="+fmt,{credentials:"same-origin",headers:{"X-WP-Nonce":cfg.nonce||""}}).then(function(r){
+      if(!r.ok)throw new Error(r.status);
+      var cd=r.headers.get("Content-Disposition")||"",m=/filename="([^"]+)"/.exec(cd);
+      return r.blob().then(function(bl){return {bl:bl,name:m?m[1]:"export."+fmt}});
+    }).then(function(o){
+      var a=document.createElement("a");a.href=URL.createObjectURL(o.bl);a.download=o.name;document.body.appendChild(a);a.click();
+      setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500);
+    }).catch(function(){alert("Η εξαγωγή απέτυχε ή δεν έχεις δικαίωμα. / Export failed or not permitted.")});
+  },true);
 })();

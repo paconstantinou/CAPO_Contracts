@@ -1,0 +1,19 @@
+# secrets and local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# dependencies / build
+node_modules/
+vendor/
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+# local test WordPress and logs
+/tests/.wp/
+*.log
+# release builds are produced by scripts/build.sh and attached to releases
+# (dist/*.zip is committed on purpose so the repository stays installable)

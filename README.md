@@ -1,16 +1,28 @@
-# CAPO Contracts – Renewal Ledger
+# CAPO Contracts – Renewal Ledger + Application Management
 
-Μητρώο ανανεώσεων λογισμικού και συμβάσεων, με ετήσιες υπενθυμίσεις, συνημμένα και εισαγωγή/εξαγωγή Excel.
+Tracker for online software renewals (English) and contracts (Greek, per-year breakdown and reminders), running inside WordPress with central, server-enforced users, roles and permissions.
 
-| Έκδοση | Πού βρίσκεται | Πού αποθηκεύονται τα δεδομένα |
-|---|---|---|
-| **GitHub Pages** | `index.html` | Στον browser του χρήστη (IndexedDB), μόνο σε εκείνη τη συσκευή |
-| **WordPress** | `wordpress/renewal-ledger.zip` (ή ο φάκελος `wordpress/renewal-ledger/`) | Στη βάση SQL του WordPress, τα αρχεία στο `wp-content/uploads/renewal-ledger/` |
-| **Claude** | `claude-artifact/renewal-ledger.html` | Στον λογαριασμό Claude του χρήστη |
+```
+/application
+    renewal-ledger/      WordPress plugin: the app (v2.0.0)
+    standalone/          GitHub Pages / Windows / Claude-artifact copies – local, single user, NO roles
+/wordpress-plugin
+    application-management/   WordPress plugin: users, roles, permissions, modules, activity logs (v1.0.0)
+/documentation           installation, configuration, integration, permissions, API, troubleshooting, testing
+/tests/integration       automated tests (run against a real WordPress)
+/dist                    installable plugin ZIPs
+index.html               GitHub Pages entry (copy of application/standalone/index.html)
+```
 
-## GitHub Pages
-Settings → Pages → Source: *Deploy from a branch* → Branch: `main`, folder `/ (root)`. Η εφαρμογή ανοίγει στο `https://<owner>.github.io/<repo>/`.
-Τα δεδομένα μένουν μόνο στον browser. Κάνε τακτικά «Export» ως αντίγραφο ασφαλείας (τα συνημμένα δεν περιλαμβάνονται στο Excel).
+## Quick start
+1. Install `dist/application-management-1.0.0.zip`, then `dist/renewal-ledger-2.0.0.zip` (Plugins → Add New → Upload) and activate both. The admin who activates Application Management becomes the first Super Admin.
+2. Add `[renewal_ledger]` to a private page.
+3. Application Management → Users & Access: enable users and assign roles.
+Details: `documentation/`.
 
-## WordPress
-Οδηγίες στο `wordpress/renewal-ledger/README.txt`. Συνοπτικά: ανέβασε το zip στα Πρόσθετα, ενεργοποίησε, βάλε το shortcode `[renewal_ledger]` σε μια ιδιωτική σελίδα και όρισε ρόλους και email στις Ρυθμίσεις → Renewal Ledger.
+## Security model
+SSO = the normal WordPress session (cookie + `X-WP-Nonce`); no passwords are exchanged. Every REST route asks Application Management; deny by default; users cannot edit their own access; a WP administrator is not automatically an app Super Admin; inputs are whitelisted and sanitised; wpdb prepared statements; rate limiting and temporary blocking; everything logged; passwords encrypted at rest (AES-256-GCM) and only visible with the *Credentials* permission; CSV formula-injection guard; uploads allow-listed and served only through permission-checked endpoints.
+
+## What has and has not been verified
+Verified by automated tests (WordPress 7.1.4, PHP CLI, **SQLite** test database): 35 engine/service/store checks and 61 HTTP checks (anonymous access, missing nonce, each role on every endpoint, credential hiding/preservation, exports, uploads, input validation).
+**Not verified:** MySQL/MariaDB (only SQLite was available), multisite, the admin screens' POST forms with real nonces in a browser, the front-end permission hiding in a browser, reminder e-mail delivery, uninstall, other PHP versions. The standalone builds were not changed in this work. GitHub Pages must be enabled manually (Settings → Pages → `main`, `/`).
