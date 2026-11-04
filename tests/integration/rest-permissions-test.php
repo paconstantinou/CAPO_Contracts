@@ -6,7 +6,7 @@
  *   php rest-permissions-test.php http://127.0.0.1:8088 /path/to/wp   (wp path only used to prepare users)
  *
  * Expects users: admin (Super Admin), viewer1 (Viewer), editor1 (Editor), manager1 (Manager), nobody (no access).
- * Env: RL_TEST_ADMIN_PASS (default Adm1n-Test-Pass!). Other users have password "Pw-<login>-12345!".
+ * Env: RL_TEST_ADMIN_PASS (required; local throwaway test site only, never a real site). Other users have password "Pw-<login>-12345!".
  */
 $base = rtrim( $argv[1] ?? 'http://127.0.0.1:8088', '/' );
 $pass = 0; $fail = 0;
@@ -46,7 +46,7 @@ foreach ( array( array( 'GET', 'records/software' ), array( 'GET', 'export/softw
 }
 
 echo "no nonce (CSRF)\n";
-$c = client( $base, 'admin', getenv( 'RL_TEST_ADMIN_PASS' ) ?: 'Adm1n-Test-Pass!' );
+$c = client( $base, 'admin', ( getenv( 'RL_TEST_ADMIN_PASS' ) ?: die( "Set RL_TEST_ADMIN_PASS (password of the local test admin)\n" ) ) );
 $nonce = $c->nonce; $c->nonce = '';
 $r = $c->rl( 'PUT', 'records/software/csrf1', $sw( 'CSRF' ) );
 t( 'logged-in cookie without nonce cannot write', in_array( $r['code'], array( 401, 403 ), true ), "got {$r['code']}" );
