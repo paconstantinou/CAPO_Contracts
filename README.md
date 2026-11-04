@@ -5,12 +5,12 @@ Tracker for online software renewals (English) and contracts (Greek, per-year br
 ```
 /application
     renewal-ledger/      WordPress plugin: the app (v2.1.0)
-    standalone/          GitHub Pages / Windows / Claude-artifact copies – local, single user, NO roles
+    standalone/          GitHub Pages (index.html), Windows installer sources (windows/), Claude-artifact copy – local, single user, NO roles
 /wordpress-plugin
     application-management/   WordPress plugin: users, roles, permissions, modules, activity logs (v1.0.0)
 /documentation           installation, configuration, integration, permissions, API, troubleshooting, testing
 /tests/integration       automated tests (run against a real WordPress)
-/dist                    installable plugin ZIPs
+/dist                    plugin ZIPs, RenewalLedger.html (single file) and RenewalLedger-Windows.zip
 index.html               GitHub Pages entry (copy of application/standalone/index.html)
 ```
 
