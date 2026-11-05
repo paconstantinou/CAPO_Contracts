@@ -5,7 +5,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Storage: two SQL tables (records, files) and a protected uploads folder.
- * Passwords of the "software" collection are encrypted before they reach the database.
  */
 class RL_DB {
 
@@ -86,44 +85,10 @@ class RL_DB {
 		);
 	}
 
-	/* ---------- encryption of stored passwords ---------- */
-
-	private static function key() {
-		$material = ( defined( 'AUTH_KEY' ) ? AUTH_KEY : '' ) . ( defined( 'SECURE_AUTH_KEY' ) ? SECURE_AUTH_KEY : '' ) . DB_NAME;
-		return hash( 'sha256', $material, true );
-	}
-
-	public static function encrypt( $plain ) {
-		if ( ! function_exists( 'openssl_encrypt' ) || $plain === '' ) {
-			return $plain;
-		}
-		$iv  = random_bytes( 12 );
-		$tag = '';
-		$ct  = openssl_encrypt( $plain, 'aes-256-gcm', self::key(), OPENSSL_RAW_DATA, $iv, $tag );
-		if ( false === $ct ) {
-			return $plain;
-		}
-		return 'rl1:' . base64_encode( $iv . $tag . $ct );
-	}
-
-	public static function decrypt( $value ) {
-		if ( ! is_string( $value ) || strpos( $value, 'rl1:' ) !== 0 ) {
-			return $value;
-		}
-		$raw = base64_decode( substr( $value, 4 ), true );
-		if ( false === $raw || strlen( $raw ) < 29 ) {
-			return '';
-		}
-		$pt = openssl_decrypt( substr( $raw, 28 ), 'aes-256-gcm', self::key(), OPENSSL_RAW_DATA, substr( $raw, 0, 12 ), substr( $raw, 12, 16 ) );
-		return false === $pt ? '' : $pt;
-	}
-
 	/* ---------- records ---------- */
 
 	private static function pack( $collection, array $data ) {
-		if ( 'software' === $collection && isset( $data['password'] ) && is_string( $data['password'] ) ) {
-			$data['password'] = self::encrypt( $data['password'] );
-		}
+		unset( $data['password'] ); // the application no longer stores passwords
 		return wp_json_encode( $data );
 	}
 
@@ -132,10 +97,25 @@ class RL_DB {
 		if ( ! is_array( $data ) ) {
 			return array();
 		}
-		if ( 'software' === $collection && isset( $data['password'] ) ) {
-			$data['password'] = self::decrypt( $data['password'] );
-		}
+		unset( $data['password'] );
 		return $data;
+	}
+
+	/** One-off clean-up after the upgrade: remove passwords stored by older versions. @return int rows changed */
+	public static function strip_passwords() {
+		global $wpdb;
+		$t = self::table_records();
+		$n = 0;
+		$rows = $wpdb->get_results( "SELECT id, data FROM $t WHERE collection = 'software' AND data LIKE '%\"password\"%'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		foreach ( (array) $rows as $r ) {
+			$d = json_decode( $r['data'], true );
+			if ( is_array( $d ) && array_key_exists( 'password', $d ) ) {
+				unset( $d['password'] );
+				$wpdb->update( $t, array( 'data' => wp_json_encode( $d ) ), array( 'id' => (int) $r['id'] ), array( '%s' ), array( '%d' ) );
+				++$n;
+			}
+		}
+		return $n;
 	}
 
 	public static function list_records( $collection ) {
@@ -265,6 +245,24 @@ class RL_DB {
 		return $out;
 	}
 
+	/** "a@x.gr, b@y.gr" -> normalised string, or WP_Error. */
+	public static function v_emails( $v ) {
+		$list = array();
+		foreach ( preg_split( '/[,;\s]+/', is_string( $v ) ? $v : '', -1, PREG_SPLIT_NO_EMPTY ) as $e ) {
+			$e = sanitize_email( $e );
+			if ( '' === $e || ! is_email( $e ) ) {
+				return new WP_Error( 'rl_bad_email', 'Invalid e-mail address in notification emails.', array( 'status' => 400 ) );
+			}
+			if ( ! isset( $list[ strtolower( $e ) ] ) ) {
+				$list[ strtolower( $e ) ] = $e;
+			}
+		}
+		if ( count( $list ) > 20 ) {
+			return new WP_Error( 'rl_bad_email', 'At most 20 notification e-mail addresses.', array( 'status' => 400 ) );
+		}
+		return implode( ', ', $list );
+	}
+
 	/** Milestones of a record: per year, with their own reminder (30 or 60 days), comments and attachments. */
 	private static function v_milestones( $list, $collection ) {
 		$out  = array();
@@ -311,6 +309,10 @@ class RL_DB {
 		$g = function ( $k ) use ( $d ) {
 			return isset( $d[ $k ] ) ? $d[ $k ] : '';
 		};
+		$emails = self::v_emails( $g( 'emails' ) );
+		if ( is_wp_error( $emails ) ) {
+			return $emails;
+		}
 		$created = isset( $d['createdAt'] ) && is_numeric( $d['createdAt'] ) ? (int) $d['createdAt'] : (int) round( microtime( true ) * 1000 );
 		if ( 'software' === $collection ) {
 			$out = array(
@@ -319,17 +321,18 @@ class RL_DB {
 				'vendor'      => self::v_str( $g( 'vendor' ), 200 ),
 				'website'     => self::v_str( $g( 'website' ), 500 ),
 				'username'    => self::v_str( $g( 'username' ), 200 ),
-				'password'    => is_string( $g( 'password' ) ) ? self::v_str( $g( 'password' ), 500 ) : '',
 				'dateFrom'    => self::v_date( $g( 'dateFrom' ) ),
 				'dateTo'      => self::v_date( $g( 'dateTo' ) ),
 				'cost'        => self::v_num( $g( 'cost' ) ),
 				'remindDays'  => max( 1, min( 365, (int) $g( 'remindDays' ) ?: 30 ) ),
+				'emails'      => '',
 				'attachments' => self::v_attachments( $g( 'attachments' ), $collection ),
 				'milestones'  => self::v_milestones( $g( 'milestones' ), $collection ),
 				'history'     => array(),
 				'createdAt'   => $created,
 				'sample'      => ! empty( $d['sample'] ),
 			);
+			$out['emails'] = $emails;
 			if ( '' === $out['name'] ) {
 				return new WP_Error( 'rl_bad_data', 'Software Name is required.', array( 'status' => 400 ) );
 			}
@@ -358,11 +361,13 @@ class RL_DB {
 			'dateTo'      => self::v_date( $g( 'dateTo' ) ),
 			'cost'        => self::v_num( $g( 'cost' ) ),
 			'years'       => array(),
+			'emails'      => '',
 			'attachments' => self::v_attachments( $g( 'attachments' ), $collection ),
 			'milestones'  => self::v_milestones( $g( 'milestones' ), $collection ),
 			'createdAt'   => $created,
 			'sample'      => ! empty( $d['sample'] ),
 		);
+		$out['emails'] = $emails;
 		if ( '' === $out['title'] ) {
 			return new WP_Error( 'rl_bad_data', 'Contract title is required.', array( 'status' => 400 ) );
 		}

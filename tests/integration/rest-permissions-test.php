@@ -36,7 +36,7 @@ class Client {
 }
 function client( $base, $u, $p ) { $c = new Client( $base ); if ( ! $c->login( $u, $p ) ) { echo "login failed for $u\n"; } return $c; }
 
-$sw = fn( $n ) => array( 'data' => array( 'name' => $n, 'description' => 'd', 'vendor' => 'v', 'website' => 'https://example.com', 'username' => 'secretuser', 'password' => 'secretpass', 'dateFrom' => '2026-01-01', 'dateTo' => '2026-12-31', 'cost' => 100, 'remindDays' => 30 ) );
+$sw = fn( $n ) => array( 'data' => array( 'name' => $n, 'description' => 'd', 'vendor' => 'v', 'website' => 'https://example.com', 'username' => 'secretuser', 'password' => 'legacypass', 'emails' => 'a@example.com; b@example.com', 'dateFrom' => '2026-01-01', 'dateTo' => '2026-12-31', 'cost' => 100, 'remindDays' => 30 ) );
 
 echo "anonymous\n";
 $anon = new Client( $base );
@@ -55,7 +55,11 @@ $c->nonce = $nonce;
 echo "super admin\n";
 $r = $c->rl( 'PUT', 'records/software/s1', $sw( 'Alpha' ) ); t( 'create software', 200 === $r['code'], $r['body'] );
 $r = $c->rl( 'PUT', 'records/contracts/c1', array( 'data' => array( 'title' => 'Σύμβαση Α', 'tender' => 'T-1', 'description' => '', 'contractor' => 'X', 'coordinator' => 'Y', 'months' => 14, 'dateFrom' => '2026-01-01', 'dateTo' => '2027-02-28', 'cost' => 1000, 'years' => array(), 'attachments' => array() ) ) ); t( 'create contract', 200 === $r['code'], $r['body'] );
-$r = $c->rl( 'GET', 'records/software' ); t( 'super admin sees credentials', isset( $r['json']['items'][0]['data']['password'] ) && 'secretpass' === $r['json']['items'][0]['data']['password'] );
+$r = $c->rl( 'GET', 'records/software' ); t( 'super admin sees username', 'secretuser' === ( $r['json']['items'][0]['data']['username'] ?? '' ) );
+t( 'password is no longer stored', ! array_key_exists( 'password', $r['json']['items'][0]['data'] ) && false === strpos( $r['body'], 'legacypass' ) );
+t( 'emails normalised', 'a@example.com, b@example.com' === ( $r['json']['items'][0]['data']['emails'] ?? '' ), json_encode( $r['json']['items'][0]['data']['emails'] ?? null ) );
+$r = $c->rl( 'PUT', 'records/software/bad_em', array( 'data' => array_merge( $sw( 'BadEm' )['data'], array( 'emails' => 'good@example.com, not-an-email' ) ) ) ); t( 'invalid notification e-mail rejected', 400 === $r['code'], "got {$r['code']}" );
+$r = $c->rl( 'PUT', 'records/software/bad_em2', array( 'data' => array_merge( $sw( 'BadEm' )['data'], array( 'emails' => implode( ',', array_map( fn( $i ) => "u$i@example.com", range( 1, 21 ) ) ) ) ) ) ); t( 'more than 20 e-mails rejected', 400 === $r['code'], "got {$r['code']}" );
 $r = $c->rl( 'PUT', 'records/software/s2', array( 'data' => array( 'name' => '' ) ) ); t( 'invalid record rejected (400)', 400 === $r['code'], "got {$r['code']}" );
 $r = $c->rl( 'PUT', 'records/other/s2', $sw( 'x' ) ); t( 'unknown collection rejected', in_array( $r['code'], array( 400, 404 ), true ), "got {$r['code']}" );
 $r = $c->rl( 'PUT', "records/software/a'b", $sw( 'x' ) ); t( 'bad id rejected', in_array( $r['code'], array( 400, 404 ), true ), "got {$r['code']}" );
@@ -88,14 +92,14 @@ foreach ( $cases as $u => $exp ) {
 	$k = client( $base, $u, "Pw-$u-12345!" );
 	$r = $k->rl( 'GET', 'records/software' ); t( "$u view", $ok( $r ) === $exp['view'], "got {$r['code']}" );
 	if ( $exp['view'] ) {
-		$pw = $r['json']['items'][0]['data']['password'] ?? 'MISSING';
-		t( "$u credentials hidden", '' === $pw, "pw=$pw" );
+		$un = $r['json']['items'][0]['data']['username'] ?? 'MISSING';
+		t( "$u username hidden without credentials permission", '' === $un, "username=$un" );
 	}
 	$r = $k->rl( 'PUT', "records/software/new_$u", $sw( "N $u" ) ); t( "$u create", $ok( $r ) === $exp['create'], "got {$r['code']}" );
 	$r = $k->rl( 'PUT', 'records/software/s1', $sw( 'Alpha edited' ) ); t( "$u edit", $ok( $r ) === $exp['edit'], "got {$r['code']}" );
 	$r = $k->rl( 'DELETE', 'records/software/s1' ); t( "$u delete", $ok( $r ) === $exp['delete'], "got {$r['code']}" );
 	$r = $k->rl( 'GET', 'export/software&format=csv' ); t( "$u export", $ok( $r ) === $exp['export'], "got {$r['code']}" );
-	if ( $exp['export'] ) { t( "$u export has no credentials", false === strpos( $r['body'], 'secretpass' ) ); }
+	if ( $exp['export'] ) { t( "$u export has no credentials", false === strpos( $r['body'], 'secretuser' ) ); }
 	$again = $c->req( 'POST', '/?rest_route=/rl/v1/files', array( 'coll' => 'software', 'file' => new CURLFile( $tmp, 'application/pdf', 'inv.pdf' ) ), array(), true );
 	$fid = $again['json']['id'] ?? $fid;
 	$r = $k->rl( 'GET', "files/$fid" ); t( "$u file download", $ok( $r ) === $exp['view'], "got {$r['code']}" );
@@ -106,7 +110,7 @@ foreach ( $cases as $u => $exp ) {
 // editor edit succeeded above: credentials must be preserved
 $r = $c->rl( 'GET', 'records/software' );
 $byid = array(); foreach ( $r['json']['items'] as $i ) { $byid[ $i['id'] ] = $i['data']; }
-t( 'editor edit kept credentials', ( $byid['s1']['password'] ?? '' ) === 'secretpass' && 'Alpha edited' === ( $byid['s1']['name'] ?? '' ), json_encode( $byid['s1'] ?? null ) );
+t( 'editor edit kept username', ( $byid['s1']['username'] ?? '' ) === 'secretuser' && 'Alpha edited' === ( $byid['s1']['name'] ?? '' ), json_encode( $byid['s1'] ?? null ) );
 
 echo "\n$pass passed, $fail failed\n";
 exit( $fail ? 1 : 0 );

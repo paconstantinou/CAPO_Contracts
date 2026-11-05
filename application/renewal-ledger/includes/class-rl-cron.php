@@ -49,7 +49,36 @@ class RL_Cron {
 	 * @return array[] each: key, title, kind (due|expired), days, date, label, cost
 	 */
 	public static function collect() {
+		$items = self::collect_raw();
+		$emails = array();
+		foreach ( array( 'software', 'contracts' ) as $coll ) {
+			foreach ( RL_DB::list_records( $coll ) as $r ) {
+				$emails[ ( 'software' === $coll ? 'sw' : 'ct' ) . ':' . $r['id'] ] = self::parse_emails( isset( $r['data']['emails'] ) ? $r['data']['emails'] : '' );
+				$emails[ 'ms:' . $coll . ':' . $r['id'] ] = $emails[ ( 'software' === $coll ? 'sw' : 'ct' ) . ':' . $r['id'] ];
+			}
+		}
+		foreach ( $items as $i => $it ) {
+			$parts = explode( ':', $it['key'] );
+			$k     = 'ms' === $parts[0] ? 'ms:' . $parts[1] . ':' . $parts[2] : $parts[0] . ':' . $parts[1];
+			$items[ $i ]['to'] = isset( $emails[ $k ] ) ? $emails[ $k ] : array();
+		}
+		return $items;
+	}
+
+	/** "a@x.gr, b@y.gr" -> valid addresses. */
+	public static function parse_emails( $v ) {
+		$out = array();
+		foreach ( preg_split( '/[,;\s]+/', is_string( $v ) ? $v : '', -1, PREG_SPLIT_NO_EMPTY ) as $e ) {
+			if ( is_email( $e ) ) {
+				$out[] = $e;
+			}
+		}
+		return array_values( array_unique( $out ) );
+	}
+
+	private static function collect_raw() {
 		$items = array();
+		$mails = array(); // record key => list of e-mail addresses (empty = default recipients)
 
 		foreach ( RL_DB::list_records( 'software' ) as $r ) {
 			$d = $r['data'];
@@ -150,26 +179,44 @@ class RL_Cron {
 		usort( $send, function ( $a, $b ) {
 			return $a['days'] <=> $b['days'];
 		} );
-		$lines = array();
+		$default = array_filter( array_map( 'trim', explode( ',', (string) get_option( 'rl_recipients', '' ) ) ) );
+		if ( ! $default ) {
+			$default = array( get_option( 'admin_email' ) );
+		}
+		// Items go to the e-mail addresses of their own record; records without addresses use the default recipients.
+		$groups = array();
 		foreach ( $send as $it ) {
-			$when    = $it['days'] < 0 ? 'πριν από ' . abs( $it['days'] ) . ' ημ.' : ( 0 === $it['days'] ? 'σήμερα' : 'σε ' . $it['days'] . ' ημ.' );
-			$lines[] = '- ' . $it['title'] . ' [' . $it['label'] . ']: ' . self::fmt( $it['date'] ) . ' (' . $when . ')' . ( '' === $it['cost'] ? '' : ', κόστος ' . self::money( $it['cost'] ) );
+			$to  = ! empty( $it['to'] ) ? $it['to'] : $default;
+			$set = array_values( array_unique( array_map( 'strtolower', $to ) ) );
+			sort( $set );
+			$key = implode( ',', $set );
+			if ( ! isset( $groups[ $key ] ) ) {
+				$groups[ $key ] = array( 'to' => $to, 'items' => array() );
+			}
+			$groups[ $key ]['items'][] = $it;
 		}
 		$site = wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES );
 		$url  = get_option( 'rl_app_url', '' );
-		$body = "Οι παρακάτω εγγραφές χρειάζονται ενέργεια:\n\n" . implode( "\n", $lines ) . "\n" . ( $url ? "\nΑνοίξτε το Renewal Ledger: " . $url . "\n" : '' );
-
-		$to = array_filter( array_map( 'trim', explode( ',', (string) get_option( 'rl_recipients', '' ) ) ) );
-		if ( ! $to ) {
-			$to = array( get_option( 'admin_email' ) );
+		$ok   = false;
+		$done = array();
+		foreach ( $groups as $g ) {
+			$lines = array();
+			foreach ( $g['items'] as $it ) {
+				$when    = $it['days'] < 0 ? 'πριν από ' . abs( $it['days'] ) . ' ημ.' : ( 0 === $it['days'] ? 'σήμερα' : 'σε ' . $it['days'] . ' ημ.' );
+				$lines[] = '- ' . $it['title'] . ' [' . $it['label'] . ']: ' . self::fmt( $it['date'] ) . ' (' . $when . ')' . ( '' === $it['cost'] ? '' : ', κόστος ' . self::money( $it['cost'] ) );
+			}
+			$body = "Οι παρακάτω εγγραφές χρειάζονται ενέργεια:\n\n" . implode( "\n", $lines ) . "\n" . ( $url ? "\nΑνοίξτε το Renewal Ledger: " . $url . "\n" : '' );
+			if ( wp_mail( $g['to'], '[' . $site . '] Renewal Ledger: ' . count( $g['items'] ) . ' εγγραφές χρειάζονται προσοχή', $body, array( 'Content-Type: text/plain; charset=UTF-8' ) ) ) {
+				$ok   = true;
+				$done = array_merge( $done, $g['items'] );
+			}
 		}
-		$ok = wp_mail( $to, '[' . $site . '] Renewal Ledger: ' . count( $send ) . ' εγγραφές χρειάζονται προσοχή', $body, array( 'Content-Type: text/plain; charset=UTF-8' ) );
 		if ( $ok && ! $force ) {
-			foreach ( $send as $it ) {
+			foreach ( $done as $it ) {
 				$sent[ $it['key'] ] = $today;
 			}
 			update_option( 'rl_notified', $sent, false );
 		}
-		return $ok ? count( $send ) : 0;
+		return count( $done );
 	}
 }

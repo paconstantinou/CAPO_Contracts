@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  *   delete   delete records
  *   export   download CSV/XLSX (server side)
  *   manage   bulk import from Excel (together with create)
- *   credentials (software only)  see and change usernames and passwords
+ *   credentials (software only)  see and change the username
  */
 class RL_REST {
 
@@ -175,7 +175,6 @@ class RL_REST {
 		if ( 'software' === $coll && ! self::can( 'software', 'credentials' ) ) {
 			foreach ( $items as $i => $it ) {
 				$items[ $i ]['data']['username'] = '';
-				$items[ $i ]['data']['password'] = '';
 			}
 		}
 		return rest_ensure_response( array( 'items' => $items ) );
@@ -194,7 +193,6 @@ class RL_REST {
 		if ( 'software' === $coll && ! self::can( 'software', 'credentials' ) ) {
 			// Without the credentials permission the stored values are kept as they are.
 			$data['username'] = $old && isset( $old['username'] ) ? $old['username'] : '';
-			$data['password'] = $old && isset( $old['password'] ) ? $old['password'] : '';
 		}
 		$res = RL_DB::save_record( $coll, $id, $data, get_current_user_id() );
 		if ( is_wp_error( $res ) ) {

@@ -70,9 +70,9 @@ textarea{resize:vertical;min-height:70px}
 .empty .actions{justify-content:center;margin-top:14px}
 @media (max-width:760px){
   .head{display:none}
-  .row{grid-template-columns:1fr auto;gap:4px 12px}
-  .row .c3,.row .c4{grid-column:1/2}
-  .row .c5{grid-column:2/3;grid-row:1/2;justify-self:end}
+  .lw{overflow:visible}
+  .row{grid-template-columns:1fr !important;min-width:0 !important;gap:2px}
+  .row .cell:not([data-first])::before{content:attr(data-l) ": ";color:var(--muted);font-size:12px}
 }
 .overlay{position:fixed;inset:0;background:rgba(10,16,24,.5);z-index:20;display:flex;justify-content:flex-end}
 .panel{background:var(--surface);width:min(560px,100%);height:100%;overflow-y:auto;box-shadow:var(--shadow);padding:20px max(16px,env(safe-area-inset-right,0px)) calc(28px + env(safe-area-inset-bottom,0px)) 20px;display:flex;flex-direction:column;gap:16px}
@@ -123,7 +123,14 @@ label.f small{color:var(--muted);font-weight:400}
 .msc{white-space:pre-wrap;overflow-wrap:anywhere}
 .msf{display:flex;gap:6px;flex-wrap:wrap}
 .msf a{color:var(--accent);overflow-wrap:anywhere}
-</style>
+/* sortable / selectable columns */
+.lw{overflow-x:auto}
+.head .hc{all:unset;cursor:pointer;font:inherit;text-transform:inherit;letter-spacing:inherit;color:inherit;overflow-wrap:anywhere;user-select:none}
+.head .hc:hover,.head .hc:focus-visible{color:var(--ink)}
+.head .hc[aria-sort=ascending],.head .hc[aria-sort=descending]{color:var(--accent);font-weight:700}
+.row .cell{min-width:0;overflow-wrap:anywhere}
+.colpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.colpick label{display:flex;gap:8px;align-items:center;background:var(--surface2);border-radius:8px;padding:8px 10px;cursor:pointer}</style>
 <div class="wrap">
   <header class="top">
     <div class="brand">
@@ -164,10 +171,10 @@ var FIELDS=[
  {k:"vendor",l:"Vendor",q:"Who is the vendor?",ph:"e.g. Microsoft"},
  {k:"website",l:"Website",q:"What is the website address?",ph:"https://"},
  {k:"username",l:"Username",q:"What is the username?"},
- {k:"password",l:"Password",q:"What is the password?",pw:1},
  {k:"dateFrom",l:"Date From",q:"When does the subscription start?",date:1,req:1},
  {k:"dateTo",l:"Date To",q:"When does it expire?",date:1,req:1},
- {k:"cost",l:"Cost excl. VAT (€)",q:"What is the cost excluding VAT (€)?",num:1,req:1}
+ {k:"cost",l:"Cost excl. VAT (€)",q:"What is the cost excluding VAT (€)?",num:1,req:1},
+ {k:"emails",l:"Notification emails",q:"Which e-mail addresses should receive the reminders? Separate several with commas (optional).",ta:1,email:1,ph:"name@example.com, other@example.com"}
 ];
 var REMIND=[7,14,30,60,90];
 var S={items:[],contracts:[],cat:"sw",loaded:{},uid:null,db:null,assets:null,dl:null,filter:"all",q:"",open:null,openCat:null,cw:null,impCat:null,mem:false,unsub:null};
@@ -193,7 +200,7 @@ function dayText(d){if(d==null)return "";if(d<0)return Math.abs(d)+" day"+(Math.
 function toast(m){var t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(function(){t.hidden=true},3200)}
 function norm(o){
   return {name:String(o.name||"").trim(),description:String(o.description||"").trim(),vendor:String(o.vendor||"").trim(),
-    website:String(o.website||"").trim(),username:String(o.username||"").trim(),password:String(o.password||""),
+    website:String(o.website||"").trim(),username:String(o.username||"").trim(),emails:String(o.emails||"").trim(),
     dateFrom:o.dateFrom||"",dateTo:o.dateTo||"",cost:o.cost===""||o.cost==null?0:Number(o.cost),
     remindDays:+o.remindDays||30,attachments:o.attachments||[],history:o.history||[],milestones:o.milestones||[],createdAt:o.createdAt||Date.now(),sample:!!o.sample};
 }
@@ -221,14 +228,14 @@ function strip(it){var o=Object.assign({},it);delete o.id;return o}
 /* ---------- list rendering ---------- */
 function filtered(){
   var q=S.q.toLowerCase();
-  return S.items.filter(function(it){
+  return sortList("sw",S.items.filter(function(it){
     var st=status(it).k;
     if(S.filter==="expired"&&st!=="bad")return false;
     if(S.filter==="due"&&st!=="warn")return false;
     if(S.filter==="active"&&st!=="ok")return false;
     if(!q)return true;
     return [it.name,it.vendor,it.website,it.description].join(" ").toLowerCase().indexOf(q)>=0;
-  }).sort(function(a,b){return (a.dateTo||"9999").localeCompare(b.dateTo||"9999")});
+  }));
 }
 function renderSw(){
   var all=S.items,exp=0,due=0,act=0,spend=0;
@@ -246,23 +253,14 @@ function renderSw(){
   if(du.length)al+='<div class="alert"><span>Renewal due: '+names(du)+'</span><button type="button" data-f="due">Show</button></div>';
   $("#alerts").innerHTML=al+msAlertHtml("sw")+crossAlert("sw");
   var chips=[["all","All"],["expired","Expired"],["due","Due soon"],["active","Active"]];
-  $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("");
+  $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("")+'<button type="button" class="chip" data-act="cols">⚙ Columns</button>';
   var rows=filtered(),h="";
   if(!all.length){
     h='<div class="empty"><h2>No software added yet</h2><p>Add your first subscription one field at a time, or import many at once from an Excel file.</p><div class="actions"><button class="btn primary" type="button" id="emAdd">+ Add software</button><button class="btn" type="button" id="emImp">Import Excel</button><button class="btn" type="button" id="emSample">Load 3 sample rows</button></div></div>';
   }else if(!rows.length){
     h='<div class="empty"><h2>No matches</h2><p>Try another search or filter.</p></div>';
   }else{
-    h='<div class="head"><span>Software</span><span>Expires</span><span>Status</span><span>Cost excl. VAT</span><span>Files</span></div>'+
-    rows.map(function(it){
-      var s=status(it);
-      return '<button type="button" class="row" data-id="'+esc(it.id)+'">'+
-        '<span class="c1"><span class="n">'+esc(it.name)+(it.sample?' <span class="hint">(sample)</span>':'')+'</span><br><span class="sub">'+esc(it.vendor||"—")+'</span></span>'+
-        '<span class="c2 mono">'+fmtDate(it.dateTo)+'<br><span class="sub">from '+fmtDate(it.dateFrom)+'</span></span>'+
-        '<span class="c3"><span class="pill '+s.k+'">'+s.t+'</span><br><span class="sub">'+dayText(s.d)+'</span></span>'+
-        '<span class="c4 num">'+money(it.cost)+'</span>'+
-        '<span class="c5 sub">'+((it.attachments||[]).length?(it.attachments.length+" file"+(it.attachments.length>1?"s":"")):"—")+'</span></button>';
-    }).join("");
+    h=listHtml("sw",rows);
   }
   $("#list").innerHTML=h;
 }
@@ -296,7 +294,7 @@ function showDetail(id){
    '<dt>Vendor</dt><dd>'+esc(it.vendor||"—")+'</dd>'+
    '<dt>Website</dt><dd>'+web+'</dd>'+
    '<dt>Username</dt><dd>'+(it.username?'<span class="mono">'+esc(it.username)+'</span> <button class="btn small" type="button" data-copy="username">Copy</button>':"—")+'</dd>'+
-   '<dt>Password</dt><dd>'+(it.password?'<span class="mono" id="pwv">••••••••</span> <button class="btn small" type="button" data-act="showpw">Show</button> <button class="btn small" type="button" data-copy="password">Copy</button>':"—")+'</dd>'+
+   '<dt>Notification emails</dt><dd>'+esc(it.emails||"—")+'</dd>'+
    '<dt>Date From</dt><dd class="mono">'+fmtDate(it.dateFrom)+'</dd>'+
    '<dt>Date To</dt><dd class="mono">'+fmtDate(it.dateTo)+'</dd>'+
    '<dt>Cost excl. VAT</dt><dd class="num">'+money(it.cost)+'</dd></dl>'+
@@ -314,7 +312,7 @@ function showDetail(id){
 function inputHtml(f,val,pre){
   var id=pre+f.k,v=val==null?"":val;
   if(f.ta)return '<textarea id="'+id+'" placeholder="'+esc(f.ph||"")+'">'+esc(v)+'</textarea>';
-  var t=f.date?"date":f.num?"number":f.pw?"password":f.k==="website"?"url":"text";
+  var t=f.date?"date":f.num?"number":f.k==="website"?"url":"text";
   return '<input id="'+id+'" type="'+t+'"'+(f.num?' step="0.01" min="0" inputmode="decimal"':'')+' value="'+esc(v)+'" placeholder="'+esc(f.ph||"")+'" autocomplete="off">';
 }
 function remindSel(v,id){return '<select id="'+id+'">'+REMIND.map(function(n){return '<option value="'+n+'"'+(+v===n?" selected":"")+'>'+n+' days before expiry</option>'}).join("")+'</select>'}
@@ -335,6 +333,7 @@ function validate(keys){
     var v=d[f.k];
     if(f.req&&(v==null||String(v).trim()===""))return f.l+" is required.";
     if(f.date&&v&&!parseIso(v))return f.l+" is not a valid date.";
+    if(f.email&&v&&emailsErr(v))return emailsErr(v);
     if(f.num&&v!==""&&v!=null&&(!isFinite(Number(v))||Number(v)<0))return "Enter the cost as a number, for example 120.50.";
   }
   if(keys.indexOf("dateTo")>=0&&d.dateFrom&&d.dateTo&&d.dateTo<d.dateFrom)return "Date To must be on or after Date From.";
@@ -570,6 +569,120 @@ async function msDelete(mid){
   }
 }
 
+/* Passwords are no longer kept: records saved by older versions lose theirs the first time they are loaded. */
+async function purgePasswords(){
+  var old=S.items.filter(function(i){return Object.prototype.hasOwnProperty.call(i,"password")});
+  for(var k=0;k<old.length;k++){var rec=strip(old[k]);delete rec.password;try{await col("software").doc(old[k].id).set(rec)}catch(e){}}
+}
+
+/* ---------- list columns: choose which to show, sort every column ---------- */
+function emailsErr(v,el){
+  var l=String(v||"").split(/[,;\s]+/).filter(Boolean);
+  if(l.length>20)return el?"Έως 20 διευθύνσεις email.":"At most 20 e-mail addresses.";
+  for(var i=0;i<l.length;i++){if(!/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]{2,}$/.test(l[i]))return (el?"Μη έγκυρο email: ":"Invalid e-mail address: ")+l[i]}
+  return "";
+}
+function msOpen(it){return msList(it).filter(function(m){return !m.done}).length}
+function msText(it){
+  return msList(it).map(function(m){return "Έτος "+m.year+": "+m.description+" - "+fmtDate(m.due)+" ("+(+m.remind||30)+"d)"+(m.done?" [done]":"")}).join("; ");
+}
+function cTxt(f){return {v:function(it){return esc(it[f]||"—")},s:function(it){return it[f]||""}}}
+function cNum(f){return {v:function(it){return '<span class="num">'+(it[f]===""||it[f]==null?"—":money(it[f]))+'</span>'},s:function(it){return it[f]===""||it[f]==null?"":Number(it[f])}}}
+function cDate(f){return {v:function(it){return '<span class="mono">'+fmtDate(it[f])+'</span>'},s:function(it){return it[f]||""}}}
+function cFiles(){return {v:function(it){var n=(it.attachments||[]).length;return '<span class="sub">'+(n?n+" file"+(n>1?"s":""):"—")+'</span>'},s:function(it){return (it.attachments||[]).length}}}
+function cMs(){return {v:function(it){var a=msList(it).length,o=msOpen(it);return '<span class="num">'+(a?o+" / "+a:"—")+'</span>'},s:function(it){return msOpen(it)}}}
+function cEm(){return {v:function(it){return '<span class="sub">'+esc(it.emails||"—")+'</span>'},s:function(it){return it.emails||""}}}
+function cdef(k,l,d,w,o){return Object.assign({k:k,l:l,d:d,w:w},o)}
+var COLS={
+ sw:[
+  cdef("name","Software",1,"2fr",{v:function(it){return '<span class="n">'+esc(it.name)+(it.sample?' <span class="hint">(sample)</span>':'')+'</span>'},s:function(it){return it.name||""}}),
+  cdef("vendor","Vendor",1,"1.2fr",cTxt("vendor")),
+  cdef("description","Description",0,"2fr",cTxt("description")),
+  cdef("website","Website",0,"1.4fr",cTxt("website")),
+  cdef("username","Username",0,"1.2fr",cTxt("username")),
+  cdef("dateFrom","Date From",1,"1fr",cDate("dateFrom")),
+  cdef("dateTo","Expires",1,"1fr",cDate("dateTo")),
+  cdef("status","Status",1,"1.2fr",{v:function(it){var s=status(it);return '<span class="pill '+s.k+'">'+s.t+'</span> <span class="sub">'+dayText(s.d)+'</span>'},s:function(it){var d=status(it).d;return d==null?"":d}}),
+  cdef("cost","Cost excl. VAT",1,"1fr",cNum("cost")),
+  cdef("remindDays","Reminder",0,"1fr",{v:function(it){return '<span class="num">'+(+it.remindDays||30)+' d</span>'},s:function(it){return +it.remindDays||30}}),
+  cdef("milestones","Milestones",0,"1fr",cMs()),
+  cdef("emails","Notification emails",0,"1.6fr",cEm()),
+  cdef("files","Files",1,"90px",cFiles())
+ ],
+ ct:[
+  cdef("title","Σύμβαση",1,"2fr",{v:function(c){return '<span class="n">'+esc(c.title)+(c.sample?' <span class="hint">(δείγμα)</span>':'')+'</span>'},s:function(c){return c.title||""}}),
+  cdef("tender","Αρ. διαγωνισμού",1,"1fr",cTxt("tender")),
+  cdef("description","Περιγραφή",0,"2fr",cTxt("description")),
+  cdef("contractor","Ανάδοχος",1,"1.3fr",cTxt("contractor")),
+  cdef("coordinator","Συντονιστής",0,"1.2fr",cTxt("coordinator")),
+  cdef("months","Διάρκεια (μήνες)",0,"1fr",{v:function(c){return '<span class="num">'+esc(c.months||"—")+'</span>'},s:function(c){return Number(c.months)||""}}),
+  cdef("dateFrom","Έναρξη",0,"1fr",cDate("dateFrom")),
+  cdef("dateTo","Λήξη",1,"1fr",cDate("dateTo")),
+  cdef("status","Κατάσταση",1,"1.3fr",{v:function(c){var s=ctInfo(c);return '<span class="pill '+s.k+'">'+s.t+'</span> <span class="sub">'+esc(s.sub)+'</span>'},s:function(c){var d=ctInfo(c).d;return d==null?"":d}}),
+  cdef("cost","Κόστος",1,"1fr",cNum("cost")),
+  cdef("milestones","Milestones",0,"1fr",cMs()),
+  cdef("emails","Email ειδοποιήσεων",0,"1.6fr",cEm()),
+  cdef("files","Αρχεία",1,"90px",cFiles())
+ ]
+};
+function loadPrefs(){
+  var d={cols:{sw:[],ct:[]},sort:{sw:{k:"dateTo",dir:1},ct:{k:"dateTo",dir:1}}},p=null;
+  try{p=JSON.parse(localStorage.getItem("rl.listprefs")||"null")}catch(e){}
+  ["sw","ct"].forEach(function(c){
+    var keys=COLS[c].map(function(x){return x.k}),sel=p&&p.cols&&Array.isArray(p.cols[c])?p.cols[c].filter(function(k){return keys.indexOf(k)>=0}):null;
+    d.cols[c]=sel&&sel.length?sel:COLS[c].filter(function(x){return x.d}).map(function(x){return x.k});
+    var so=p&&p.sort&&p.sort[c];if(so&&keys.indexOf(so.k)>=0)d.sort[c]={k:so.k,dir:so.dir===-1?-1:1};
+  });
+  return d;
+}
+function savePrefs(){try{localStorage.setItem("rl.listprefs",JSON.stringify({cols:S.cols,sort:S.sort}))}catch(e){}}
+function colsOf(cat){var sel=S.cols[cat];return COLS[cat].filter(function(c){return sel.indexOf(c.k)>=0})}
+function sortList(cat,list){
+  var so=S.sort[cat],c=COLS[cat].filter(function(x){return x.k===so.k})[0]||COLS[cat].filter(function(x){return x.k==="dateTo"})[0];
+  return list.slice().sort(function(a,b){
+    var x=c.s(a),y=c.s(b),xe=x===""||x==null,ye=y===""||y==null;
+    if(xe||ye)return xe&&ye?0:xe?1:-1; /* empty values always last */
+    var r=typeof x==="number"&&typeof y==="number"?x-y:String(x).localeCompare(String(y),"el",{numeric:true,sensitivity:"base"});
+    return r*so.dir||String(a.id).localeCompare(String(b.id));
+  });
+}
+function listHtml(cat,rows){
+  var cs=colsOf(cat),so=S.sort[cat],el=cat==="ct";
+  var tpl=cs.map(function(c){return "minmax(0,"+c.w+")"}).join(" "),mw=Math.max(0,cs.length-5)*130;
+  var st='grid-template-columns:'+tpl+(mw?';min-width:'+(560+mw)+'px':'');
+  var h='<div class="lw"><div class="head"'+(el?' lang="el"':'')+' style="'+st+'">'+cs.map(function(c){
+    var on=so.k===c.k;
+    return '<button type="button" class="hc" data-sort="'+c.k+'" aria-sort="'+(on?(so.dir===1?"ascending":"descending"):"none")+'" title="'+(el?"Ταξινόμηση":"Sort")+'">'+esc(c.l)+'<span class="ar">'+(on?(so.dir===1?" ▲":" ▼"):"")+'</span></button>';
+  }).join("")+'</div>';
+  h+=rows.map(function(it){
+    return '<button type="button" class="row" data-id="'+esc(it.id)+'" style="'+st+'">'+cs.map(function(c,i){
+      return '<span class="cell" data-l="'+esc(c.l)+'"'+(i?'':' data-first="1"')+'>'+c.v(it)+'</span>';
+    }).join("")+'</button>';
+  }).join("")+'</div>';
+  return h;
+}
+function setSort(k){
+  var cat=S.cat,so=S.sort[cat];
+  S.sort[cat]=so.k===k?{k:k,dir:-so.dir}:{k:k,dir:1};
+  savePrefs();render();
+}
+function showCols(){
+  var cat=S.cat,el=cat==="ct",sel=S.cols[cat];
+  var h='<div class="ph"><h2>'+(el?"Στήλες λίστας":"List columns")+'</h2><button class="btn small" type="button" data-act="close">'+(el?"Κλείσιμο":"Close")+'</button></div>'+
+   '<p class="hint">'+(el?"Επίλεξε ποιες στήλες θα εμφανίζονται στην αρχική σελίδα. Μπορείς να ταξινομήσεις οποιαδήποτε στήλη πατώντας στην επικεφαλίδα της.":"Choose which columns are shown on the main page. Click any column heading to sort it ascending or descending.")+'</p>'+
+   '<div class="colpick">'+COLS[cat].map(function(c){return '<label><input type="checkbox" data-col="'+c.k+'"'+(sel.indexOf(c.k)>=0?' checked':'')+'> '+esc(c.l)+'</label>'}).join("")+'</div>'+
+   '<div class="actions"><button class="btn" type="button" data-act="colsreset">'+(el?"Προεπιλογή":"Reset to default")+'</button></div>';
+  openPanel(h,"cols");
+}
+function toggleCol(k,on){
+  var cat=S.cat,sel=S.cols[cat].slice(),i=sel.indexOf(k);
+  if(on&&i<0)sel.push(k);if(!on&&i>=0)sel.splice(i,1);
+  if(!sel.length){showCols();return}
+  S.cols[cat]=sel;savePrefs();render();
+}
+function resetCols(){S.cols[S.cat]=COLS[S.cat].filter(function(x){return x.d}).map(function(x){return x.k});S.sort[S.cat]={k:"dateTo",dir:1};savePrefs();render();showCols()}
+var PREFS=loadPrefs();S.cols=PREFS.cols;S.sort=PREFS.sort;
+
 /* =============== CONTRACTS (Συμβάσεις) =============== */
 var REMIND_CT=[14,30,60,90,120,180];
 var CT_BASE=[
@@ -581,7 +694,8 @@ var CT_BASE=[
  {k:"months",l:"ΔΙΑΡΚΕΙΑ ΣΥΜΒΑΣΗΣ (ΜΗΝΕΣ)",q:"Ποια είναι η διάρκεια της σύμβασης σε μήνες;",num:1,req:1,ph:"π.χ. 62"},
  {k:"dateFrom",l:"ΗΜΕΡ. ΕΝΑΡΞΗΣ",q:"Πότε ξεκινά η σύμβαση;",date:1,req:1},
  {k:"dateTo",l:"ΗΜΕΡ. ΛΗΞΗΣ",q:"Πότε λήγει; Υπολογίζεται από τη διάρκεια, μπορείς να την αλλάξεις.",date:1,req:1},
- {k:"cost",l:"ΚΟΣΤΟΣ (€)",q:"Ποιο είναι το συνολικό κόστος (€);",num:1}
+ {k:"cost",l:"ΚΟΣΤΟΣ (€)",q:"Ποιο είναι το συνολικό κόστος (€);",num:1},
+ {k:"emails",l:"EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ",q:"Σε ποια email να στέλνονται οι ειδοποιήσεις; Χώρισε πολλά με κόμμα (προαιρετικό).",ta:1,email:1}
 ];
 function mc(v){return v===""||v==null?"—":money(v)}
 function dayTextEl(d){if(d==null)return "";if(d<0){var n=-d;return "πριν από "+n+(n==1?" ημέρα":" ημέρες")}if(d==0)return "σήμερα";return "σε "+d+(d==1?" ημέρα":" ημέρες")}
@@ -628,14 +742,14 @@ function remOpts(v,list,suffix){
 /* ---------- list ---------- */
 function ctFiltered(){
   var q=S.q.toLowerCase();
-  return S.contracts.filter(function(c){
+  return sortList("ct",S.contracts.filter(function(c){
     var k=ctInfo(c).k;
     if(S.filter==="expired"&&k!=="bad")return false;
     if(S.filter==="due"&&k!=="warn")return false;
     if(S.filter==="active"&&k!=="ok")return false;
     if(!q)return true;
     return [c.title,c.tender,c.description,c.contractor,c.coordinator].join(" ").toLowerCase().indexOf(q)>=0;
-  }).sort(function(a,b){return (a.dateTo||"9999").localeCompare(b.dateTo||"9999")});
+  }));
 }
 function renderCt(){
   var all=S.contracts,exp=0,due=0,act=0,spend=0;
@@ -655,23 +769,14 @@ function renderCt(){
   if(lines.length>4)al+='<div class="alert"><span>+'+(lines.length-4)+' ακόμη</span><button type="button" data-f="due">Προβολή</button></div>';
   $("#alerts").innerHTML=al+msAlertHtml("ct")+crossAlert("ct");
   var chips=[["all","Όλες"],["expired","Έληξαν"],["due","Λήγουν σύντομα"],["active","Σε ισχύ"]];
-  $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("");
+  $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("")+'<button type="button" class="chip" data-act="cols">⚙ Στήλες</button>';
   var rows=ctFiltered(),h="";
   if(!all.length){
     h='<div class="empty"><h2>Δεν υπάρχουν συμβάσεις ακόμα</h2><p>Πρόσθεσε την πρώτη σύμβαση πεδίο-πεδίο ή εισήγαγε πολλές μαζί από αρχείο Excel. Τα έτη και οι υπενθυμίσεις δημιουργούνται αυτόματα από τη διάρκεια.</p><div class="actions"><button class="btn primary" type="button" id="emAdd">+ Νέα σύμβαση</button><button class="btn" type="button" id="emImp">Εισαγωγή Excel</button><button class="btn" type="button" id="emSample">Φόρτωση 2 δειγμάτων</button></div></div>';
   }else if(!rows.length){
     h='<div class="empty"><h2>Κανένα αποτέλεσμα</h2><p>Δοκίμασε άλλη αναζήτηση ή φίλτρο.</p></div>';
   }else{
-    h='<div class="head" lang="el"><span>Σύμβαση</span><span>Λήξη</span><span>Κατάσταση</span><span>Κόστος</span><span>Αρχεία</span></div>'+
-    rows.map(function(c){
-      var s=ctInfo(c),n=(c.attachments||[]).length;
-      return '<button type="button" class="row" data-id="'+esc(c.id)+'">'+
-        '<span class="c1"><span class="n">'+esc(c.title)+(c.sample?' <span class="hint">(δείγμα)</span>':'')+'</span><br><span class="sub">'+esc([c.tender,c.contractor].filter(Boolean).join(" · ")||"—")+'</span></span>'+
-        '<span class="c2 mono">'+fmtDate(c.dateTo)+'<br><span class="sub">'+(c.months?esc(c.months)+" μήνες · ":"")+'από '+fmtDate(c.dateFrom)+'</span></span>'+
-        '<span class="c3"><span class="pill '+s.k+'">'+s.t+'</span><br><span class="sub">'+esc(s.sub)+'</span></span>'+
-        '<span class="c4 num">'+mc(c.cost)+'</span>'+
-        '<span class="c5 sub">'+(n?n+" αρχεί"+(n>1?"α":"ο"):"—")+'</span></button>';
-    }).join("");
+    h=listHtml("ct",rows);
   }
   $("#list").innerHTML=h;
 }
@@ -699,7 +804,8 @@ function showCtDetail(id){
    '<dt>ΔΙΑΡΚΕΙΑ (ΜΗΝΕΣ)</dt><dd class="num">'+esc(c.months||"—")+'</dd>'+
    '<dt>ΗΜΕΡ. ΕΝΑΡΞΗΣ</dt><dd class="mono">'+fmtDate(c.dateFrom)+'</dd>'+
    '<dt>ΗΜΕΡ. ΛΗΞΗΣ</dt><dd class="mono">'+fmtDate(c.dateTo)+'</dd>'+
-   '<dt>ΚΟΣΤΟΣ</dt><dd class="num">'+mc(c.cost)+'</dd></dl>'+
+   '<dt>ΚΟΣΤΟΣ</dt><dd class="num">'+mc(c.cost)+'</dd>'+
+   '<dt>EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ</dt><dd>'+esc(c.emails||"—")+'</dd></dl>'+
    '<div class="sec"><h3>Έτη και υπενθυμίσεις</h3><div class="tbl"><table><thead><tr><th>Έτος</th><th>ΗΜΕΡ. ΕΝΑΡΞΗΣ</th><th>ΗΜΕΡ. ΛΗΞΗΣ</th><th>ΚΟΣΤΟΣ</th><th>Υπενθύμιση</th><th></th></tr></thead><tbody>'+yr+'</tbody></table></div>'+
    '<span class="hint">Η υπενθύμιση κάθε έτους εμφανίζεται στην κορυφή και στο παράθυρο ειδοποιήσεων από την επιλεγμένη ημερομηνία μέχρι τη λήξη του έτους.</span></div>'+
    '<div class="sec"><h3>Συνημμένα</h3>'+(files?'<ul class="files">'+files+'</ul>':'<span class="hint">Δεν υπάρχουν συνημμένα (συμβάσεις, τιμολόγια, αποδείξεις).</span>')+
@@ -773,6 +879,7 @@ function ctValidateBase(keys){
     if(f.req&&blank)return f.l+": υποχρεωτικό πεδίο.";
     if(f.k==="months"&&!blank){var m=Number(v);if(!isFinite(m)||m<1||Math.floor(m)!==m)return "Η διάρκεια πρέπει να είναι ακέραιος αριθμός μηνών, π.χ. 62."}
     if(f.date&&!blank&&!parseIso(v))return f.l+": μη έγκυρη ημερομηνία.";
+    if(f.email&&!blank&&emailsErr(v,1))return emailsErr(v,1);
     if(f.k==="cost"&&!blank&&(!isFinite(Number(v))||Number(v)<0))return "Το κόστος πρέπει να είναι αριθμός, π.χ. 12000.50.";
   }
   if(keys.indexOf("dateTo")>=0&&d.dateFrom&&d.dateTo&&d.dateTo<d.dateFrom)return "Η ημερομηνία λήξης πρέπει να είναι μετά την ημερομηνία έναρξης.";
@@ -790,7 +897,7 @@ function ctRecord(d){
   var ys=(d.years||[]).map(function(y){return {from:y.from,to:y.to,cost:(y.cost===""||y.cost==null)?"":Number(y.cost),remind:+y.remind||30}});
   var blank=d.cost==null||String(d.cost).trim()==="";
   return {title:String(d.title||"").trim(),tender:String(d.tender||"").trim(),description:String(d.description||"").trim(),contractor:String(d.contractor||"").trim(),coordinator:String(d.coordinator||"").trim(),
-    months:Number(d.months),dateFrom:d.dateFrom,dateTo:d.dateTo,cost:blank?ctSum(ys):Number(d.cost),years:ys,attachments:d.attachments||[],milestones:d.milestones||[],createdAt:d.createdAt||Date.now(),sample:!!d.sample};
+    months:Number(d.months),dateFrom:d.dateFrom,dateTo:d.dateTo,cost:blank?ctSum(ys):Number(d.cost),years:ys,emails:String(d.emails||"").trim(),attachments:d.attachments||[],milestones:d.milestones||[],createdAt:d.createdAt||Date.now(),sample:!!d.sample};
 }
 async function ctSave(){
   ctCollect();var w=S.cw,d=w.d;
@@ -812,7 +919,7 @@ async function ctSave(){
 /* ---------- Excel import ---------- */
 function nh(s){return String(s==null?"":s).normalize("NFD").replace(/[̀-ͯ]/g,"").toUpperCase().replace(/[\s.\-–()_:,;]/g,"")}
 var CT_ALIAS={title:["ΣΥΜΒΑΣΗ","CONTRACT"],tender:["ΑΡΙΘΜΟΣΔΙΑΓΩΝΙΣΜΟΥ","ΑΡΔΙΑΓΩΝΙΣΜΟΥ","TENDER"],description:["ΠΕΡΙΓΡΑΦΗ","DESCRIPTION"],contractor:["ΑΝΑΔΟΧΟΣ","CONTRACTOR"],
- coordinator:["ΣΥΝΤΟΝΙΣΤΗΣΣΥΜΒΑΣΗΣ","ΣΥΝΤΟΝΙΣΤΗΣ"],months:["ΔΙΑΡΚΕΙΑΣΥΜΒΑΣΗΣΜΗΝΕΣ","ΔΙΑΡΚΕΙΑΜΗΝΕΣ","ΔΙΑΡΚΕΙΑ","ΜΗΝΕΣ"],dateFrom:["ΗΜΕΡΕΝΑΡΞΗΣ","ΕΝΑΡΞΗ"],dateTo:["ΗΜΕΡΛΗΞΗΣ","ΛΗΞΗ"],cost:["ΚΟΣΤΟΣ","ΣΥΝΟΛΙΚΟΚΟΣΤΟΣ"]};
+ coordinator:["ΣΥΝΤΟΝΙΣΤΗΣΣΥΜΒΑΣΗΣ","ΣΥΝΤΟΝΙΣΤΗΣ"],months:["ΔΙΑΡΚΕΙΑΣΥΜΒΑΣΗΣΜΗΝΕΣ","ΔΙΑΡΚΕΙΑΜΗΝΕΣ","ΔΙΑΡΚΕΙΑ","ΜΗΝΕΣ"],dateFrom:["ΗΜΕΡΕΝΑΡΞΗΣ","ΕΝΑΡΞΗ"],dateTo:["ΗΜΕΡΛΗΞΗΣ","ΛΗΞΗ"],cost:["ΚΟΣΤΟΣ","ΣΥΝΟΛΙΚΟΚΟΣΤΟΣ"],emails:["EMAILΕΙΔΟΠΟΙΗΣΕΩΝ","EMAILΕΙΔΟΠΟΙΗΣΗΣ","EMAILS","EMAIL","NOTIFICATIONEMAILS"]};
 function numOf(v){
   if(v===""||v==null)return "";
   if(typeof v==="number")return v;
@@ -847,9 +954,10 @@ function parseCtSheet(buf){
     });
     var cost=numOf(base.cost);
     var rec={title:String(base.title||"").trim(),tender:String(base.tender==null?"":base.tender).trim(),description:String(base.description||"").trim(),contractor:String(base.contractor||"").trim(),coordinator:String(base.coordinator||"").trim(),
-      months:months===""?0:months,dateFrom:from,dateTo:to,cost:cost===""?ctSum(g):cost,years:g,attachments:[],createdAt:Date.now(),sample:false};
+      months:months===""?0:months,dateFrom:from,dateTo:to,cost:cost===""?ctSum(g):cost,years:g,emails:String(base.emails||"").trim(),attachments:[],createdAt:Date.now(),sample:false};
     var errs=[];
     if(!rec.title)errs.push("λείπει η σύμβαση");
+    if(emailsErr(rec.emails,1))errs.push(emailsErr(rec.emails,1));
     if(!from)errs.push("ΗΜΕΡ. ΕΝΑΡΞΗΣ λείπει/άκυρη");
     if(!(rec.months>0))errs.push("άκυρη διάρκεια");
     if(from&&to&&to<from)errs.push("λήξη πριν την έναρξη");
@@ -875,14 +983,14 @@ function showCtImport(rows){
 function ctHead(n){
   var h=["ΣΥΜΒΑΣΗ","ΑΡΙΘΜΟΣ ΔΙΑΓΩΝΙΣΜΟΥ","ΠΕΡΙΓΡΑΦΗ","ΑΝΑΔΟΧΟΣ","ΣΥΝΤΟΝΙΣΤΗΣ ΣΥΜΒΑΣΗΣ","ΔΙΑΡΚΕΙΑ ΣΥΜΒΑΣΗΣ (ΜΗΝΕΣ)","ΗΜΕΡ. ΕΝΑΡΞΗΣ","ΗΜΕΡ. ΛΗΞΗΣ","ΚΟΣΤΟΣ"];
   for(var i=1;i<=n;i++)h.push("ΕΤΟΣ "+i+" - ΗΜΕΡ.ΕΝΑΡΞΗΣ","ΕΤΟΣ "+i+" - ΗΜΕΡ.ΛΗΞΗΣ","ΕΤΟΣ "+i+" - ΚΟΣΤΟΣ","ΕΤΟΣ "+i+" - ΥΠΕΝΘΥΜΙΣΗ (ΗΜΕΡΕΣ ΠΡΙΝ)");
-  h.push("ΣΥΝΗΜΜΕΝΑ","ΚΑΤΑΣΤΑΣΗ");return h;
+  h.push("ΣΥΝΗΜΜΕΝΑ","EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ","MILESTONES","ΚΑΤΑΣΤΑΣΗ");return h;
 }
 function ctMaxYears(){return S.contracts.reduce(function(a,c){return Math.max(a,(c.years||[]).length)},1)}
 function ctRowsOut(n){
   return S.contracts.slice().sort(function(a,b){return (a.dateTo||"").localeCompare(b.dateTo||"")}).map(function(c){
     var r=[c.title,c.tender,c.description,c.contractor,c.coordinator,c.months,c.dateFrom,c.dateTo,c.cost],ys=c.years||[];
     for(var i=0;i<n;i++){var y=ys[i]||{};r.push(y.from||"",y.to||"",y.cost===undefined?"":y.cost,y.remind||"")}
-    r.push((c.attachments||[]).map(function(a){return a.name}).join("; "),ctInfo(c).t);
+    r.push((c.attachments||[]).map(function(a){return a.name}).join("; "),c.emails||"",msText(c),ctInfo(c).t);
     return r;
   });
 }
@@ -899,7 +1007,7 @@ function ctExportCsv(){
   offer("contracts-"+todayIso()+".csv","﻿"+[ctHead(n)].concat(ctRowsOut(n)).map(function(r){return r.map(q).join(",")}).join("\r\n"));
 }
 function ctTemplate(){if(needX())return;
-  var ex=["Παράδειγμα σύμβασης","12/2026","Περιγραφή","Εταιρεία Α","Όνομα Επώνυμο",24,"2026-01-01","2027-12-31",24000,"2026-01-01","2026-12-31",12000,30,"2027-01-01","2027-12-31",12000,30,"",""];
+  var ex=["Παράδειγμα σύμβασης","12/2026","Περιγραφή","Εταιρεία Α","Όνομα Επώνυμο",24,"2026-01-01","2027-12-31",24000,"2026-01-01","2026-12-31",12000,30,"2027-01-01","2027-12-31",12000,30,"","a@example.com, b@example.com","",""];
   offer("contracts-template.xlsx",ctWb(ctHead(2),[ex]));
 }
 function ctShowExport(){
@@ -960,7 +1068,7 @@ function render(){
 
 /* ---------- Excel import ---------- */
 var ALIAS={name:["software name","name","software","ονομασία λογισμικού"],description:["description","περιγραφή"],vendor:["vendor","supplier","προμηθευτής"],
- website:["website","web site","url","site","ιστοσελίδα"],username:["username","user name","user","login"],password:["password","pass"],
+ website:["website","web site","url","site","ιστοσελίδα"],username:["username","user name","user","login"],emails:["notification emails","notification email","emails","email","e-mail","email ειδοποιήσεων"],
  dateFrom:["date from","from","start","start date"],dateTo:["date to","to","end","end date","expiry","expiry date","expires"],
  cost:["cost excl. vat (€)","cost excl. vat","cost without vat","cost","price","amount"],remindDays:["reminder","reminder days","remind days","alert days"]};
 function hk(s){return String(s||"").trim().toLowerCase().replace(/\s+/g," ")}
@@ -981,13 +1089,14 @@ function parseSheet(buf){
     var map={};Object.keys(r).forEach(function(k){map[hk(k)]=r[k]});
     var o={};
     Object.keys(ALIAS).forEach(function(key){for(var i=0;i<ALIAS[key].length;i++){var a=ALIAS[key][i];if(map[a]!==undefined&&map[a]!==""){o[key]=map[a];break}}});
-    var rec=norm({name:o.name,description:o.description,vendor:o.vendor,website:o.website,username:o.username,password:o.password==null?"":String(o.password),
+    var rec=norm({name:o.name,description:o.description,vendor:o.vendor,website:o.website,username:o.username,emails:o.emails==null?"":String(o.emails),
       dateFrom:toIsoDate(o.dateFrom),dateTo:toIsoDate(o.dateTo),cost:o.cost==null?"":Number(String(o.cost).replace(/[€\s,]/g,function(c){return c===","?".":""})),remindDays:o.remindDays});
     var errs=[];
     if(!rec.name)errs.push("name missing");
     if(!rec.dateTo)errs.push("Date To missing/invalid");
     if(rec.dateFrom&&rec.dateTo&&rec.dateTo<rec.dateFrom)errs.push("Date To before Date From");
     if(!isFinite(rec.cost))errs.push("cost invalid");
+    if(emailsErr(rec.emails))errs.push(emailsErr(rec.emails));
     return {n:idx+2,rec:rec,errs:errs};
   });
 }
@@ -1015,10 +1124,10 @@ function needX(){
   return true;
 }
 /* ---------- export ---------- */
-var HEAD=["Software Name","Description","Vendor","Website","Username","Password","Date From","Date To","Cost excl. VAT (€)","Reminder (days before)","Attachments","Status"];
+var HEAD=["Software Name","Description","Vendor","Website","Username","Date From","Date To","Cost excl. VAT (€)","Reminder (days before)","Notification emails","Attachments","Milestones","Status"];
 function rowsOut(){
   return S.items.slice().sort(function(a,b){return (a.dateTo||"").localeCompare(b.dateTo||"")}).map(function(i){
-    return [i.name,i.description,i.vendor,i.website,i.username,i.password,i.dateFrom,i.dateTo,Number(i.cost)||0,i.remindDays,(i.attachments||[]).map(function(a){return a.name}).join("; "),status(i).t];
+    return [i.name,i.description,i.vendor,i.website,i.username,i.dateFrom,i.dateTo,Number(i.cost)||0,i.remindDays,i.emails||"",(i.attachments||[]).map(function(a){return a.name}).join("; "),msText(i),status(i).t];
   });
 }
 async function offer(name,data){
@@ -1039,12 +1148,12 @@ function exportCsv(){if(S.cat==="ct")return ctExportCsv();
   offer("renewal-ledger-"+todayIso()+".csv","﻿"+[HEAD].concat(rowsOut()).map(function(r){return r.map(q).join(",")}).join("\r\n"));
 }
 function templateXlsx(){if(needX())return;if(S.cat==="ct")return ctTemplate();
-  offer("renewal-ledger-template.xlsx",wbBuffer([["Example App","Team chat","Example Ltd","https://example.com","admin@example.com","","2026-01-01","2026-12-31",120,30,"",""]]));
+  offer("renewal-ledger-template.xlsx",wbBuffer([["Example App","Team chat","Example Ltd","https://example.com","admin@example.com","2026-01-01","2026-12-31",120,30,"a@example.com, b@example.com","","",""]]));
 }
 function showExport(){if(S.cat==="ct")return ctShowExport();
   openPanel('<div class="ph"><h2>Export &amp; import</h2><button class="btn small" type="button" data-act="close">Close</button></div>'+
-   '<div class="sec"><h3>Export all software</h3><p class="hint">Includes every field, the reminder setting, attachment file names and the current status. Passwords are included, so keep the file safe.</p><div class="actions"><button class="btn primary" type="button" data-act="xlsx">Excel (.xlsx)</button><button class="btn" type="button" data-act="csv">CSV</button></div></div>'+
-   '<div class="sec"><h3>Import template</h3><p class="hint">Use these column headings: '+HEAD.slice(0,9).join(", ")+'. Optional: Reminder (days before). Dates can be dd/mm/yyyy or yyyy-mm-dd.</p><div class="actions"><button class="btn" type="button" data-act="tpl">Download template</button><button class="btn" type="button" data-act="pick">Choose Excel file to import…</button></div></div>',"export");
+   '<div class="sec"><h3>Export all software</h3><p class="hint">Includes every field, the reminder setting, attachment file names and the current status. Keep the file safe.</p><div class="actions"><button class="btn primary" type="button" data-act="xlsx">Excel (.xlsx)</button><button class="btn" type="button" data-act="csv">CSV</button></div></div>'+
+   '<div class="sec"><h3>Import template</h3><p class="hint">Use these column headings: '+HEAD.slice(0,8).join(", ")+'. Optional: Reminder (days before), Notification emails (several separated by commas). Dates can be dd/mm/yyyy or yyyy-mm-dd.</p><div class="actions"><button class="btn" type="button" data-act="tpl">Download template</button><button class="btn" type="button" data-act="pick">Choose Excel file to import…</button></div></div>',"export");
 }
 
 
@@ -1055,6 +1164,7 @@ document.addEventListener("click",async function(ev){
   var b=t.closest("button,[data-f]");if(!b)return;
   var a=b.dataset.act;
   if(b.dataset.f&&!a){S.filter=b.dataset.f;render();return}
+  if(b.dataset.sort)return setSort(b.dataset.sort);
   if(b.id==="btnAdd"||b.id==="emAdd")return S.cat==="ct"?ctStart():startWizard();
   if(b.id==="btnImport"||b.id==="emImp"){$("#fileXlsx").click();return}
   if(b.id==="btnExport")return showExport();
@@ -1077,7 +1187,8 @@ document.addEventListener("click",async function(ev){
     case "back":showDetail(b.dataset.id);break;
     case "renewid":S.open=b.dataset.id;S.openCat="sw";showRenew(b.dataset.id);break;
     case "openid":reopen(b.dataset.cat||"sw",b.dataset.id);break;
-    case "showpw":var it2=byId(S.open),el=$("#pwv");if(el.dataset.on){el.textContent="••••••••";el.dataset.on="";b.textContent="Show"}else{el.textContent=it2.password;el.dataset.on="1";b.textContent="Hide"}break;
+    case "cols":showCols();break;
+    case "colsreset":resetCols();break;
     case "attach":$("#fileAttach").click();break;
     case "msadd":showMsForm(S.openCat||"sw",S.open,null,+b.dataset.year||1);break;
     case "msedit":showMsForm(S.openCat||"sw",S.open,b.dataset.mid);break;
@@ -1111,6 +1222,7 @@ document.addEventListener("keydown",function(ev){
 });
 document.addEventListener("change",async function(ev){
   var t=ev.target;
+  if(t.dataset&&t.dataset.col){toggleCol(t.dataset.col,t.checked);return}
   if(t.id==="remSel"){var it=byId(S.open);if(it){var rec=norm(it);rec.remindDays=+t.value;rec.attachments=it.attachments;rec.history=it.history;rec.createdAt=it.createdAt;rec.sample=it.sample;if(await save(it.id,rec))toast("Reminder set to "+t.value+" days before expiry")}}
   if(t.id==="fileXlsx"&&t.files[0]){
     var f=t.files[0];t.value="";
@@ -1146,7 +1258,7 @@ async function start(){
     if(db&&id){
       S.db=db;S.uid=id;
       S.loaded={};
-      var sub=function(name,cat,key){return col(name).onSnapshot(function(snap){S[key]=snap.docs.map(function(d){return Object.assign({id:d.id},d.data())});S.loaded[cat]=true;render();maybeDigest()},function(){toast("Live sync stopped — reload the page")})};
+      var sub=function(name,cat,key){return col(name).onSnapshot(function(snap){S[key]=snap.docs.map(function(d){return Object.assign({id:d.id},d.data())});S.loaded[cat]=true;if(key==="items")purgePasswords();render();maybeDigest()},function(){toast("Live sync stopped — reload the page")})};
       S.unsub=[sub("software","sw","items"),sub("contracts","ct","contracts")];
     }
   }catch(e){}

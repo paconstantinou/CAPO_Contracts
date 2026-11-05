@@ -21,3 +21,8 @@ Uploads: type allow-list, 20 MB, stored outside direct web access with a random 
 
 ## Milestones
 Each record (software or contract) may carry `milestones`: `[{id, year, description, due, remind (30|60), comments, done, attachments[]}]`, saved with the record through `PUT /rl/v1/records/{coll}/{id}` and therefore governed by **create/edit**. Server-side: ids must be unique `[A-Za-z0-9_-]`, description required (max 1000), `year` 1–60, `remind` forced to 30 or 60, dates validated, attachments must be existing files of the same module; max 300 per record. Deleting a record deletes the milestone attachments. Open (not done) milestones are included in the daily reminder e-mail: from 30/60 days before the due date, and for 30 days after it is overdue.
+
+## Notification e-mails and passwords (2.2.0)
+* Records have `emails`: one or more addresses separated by comma, semicolon or space (max 20). Invalid addresses are rejected with 400 (`rl_bad_email`). Stored normalised as `a@x.gr, b@y.gr`.
+* Reminders (expiry, yearly expiry of contracts and milestones) are e-mailed to the record's own addresses; records without addresses use the default recipients from Settings → Renewal Ledger. One message per distinct recipient set.
+* The `password` field no longer exists. Any value sent is ignored, and the upgrade removes passwords already stored.

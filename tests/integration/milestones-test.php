@@ -42,7 +42,7 @@ $sw = fn( $n ) => array( 'data' => array( 'name' => $n, 'description' => 'd', 'v
 $tmp = tempnam( sys_get_temp_dir(), 'up' ); file_put_contents( $tmp, "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF" );
 $c = client( $base, 'admin', getenv( 'RL_TEST_ADMIN_PASS' ) ?: die( "Set RL_TEST_ADMIN_PASS\n" ) );
 $up = function ( $k, $coll ) use ( $tmp ) { $r = $k->req( 'POST', '/?rest_route=/rl/v1/files', array( 'coll' => $coll, 'file' => new CURLFile( $tmp, 'application/pdf', 'ms.pdf' ) ), array(), true ); return $r['json']['id'] ?? ''; };
-$rec = fn( $ms ) => array( 'data' => array( 'name' => 'MS Test', 'description' => '', 'vendor' => '', 'website' => '', 'username' => 'u', 'password' => 'p', 'dateFrom' => '2026-01-01', 'dateTo' => '2028-12-31', 'cost' => 1, 'remindDays' => 30, 'milestones' => $ms ) );
+$rec = fn( $ms ) => array( 'data' => array( 'name' => 'MS Test', 'description' => '', 'vendor' => '', 'website' => '', 'username' => 'u', 'dateFrom' => '2026-01-01', 'dateTo' => '2028-12-31', 'cost' => 1, 'remindDays' => 30, 'milestones' => $ms ) );
 $get = function ( $k, $coll, $id ) { $r = $k->rl( 'GET', "records/$coll" ); foreach ( $r['json']['items'] ?? array() as $i ) { if ( $i['id'] === $id ) { return $i['data']; } } return null; };
 
 echo "milestones: sanitising\n";
@@ -74,7 +74,7 @@ $ed = client( $base, 'editor1', 'Pw-editor1-12345!' ); $vw = client( $base, 'vie
 $d = $get( $vw, 'software', 'mst1' ); t( 'viewer can read milestones', 2 === count( $d['milestones'] ?? array() ) );
 $r = $vw->rl( 'PUT', 'records/software/mst1', $rec( array() ) ); t( 'viewer cannot change/remove milestones', 403 === $r['code'], "got {$r['code']}" );
 $r = $ed->rl( 'PUT', 'records/software/mst1', $rec( array( array( 'id' => 'e1', 'year' => 1, 'description' => 'by editor', 'due' => '2026-02-02' ) ) ) ); t( 'editor can edit milestones', 200 === $r['code'], $r['body'] );
-$d = $get( $c, 'software', 'mst1' ); t( 'editor edit kept credentials', 'p' === $d['password'] && 'u' === $d['username'] );
+$d = $get( $c, 'software', 'mst1' ); t( 'editor edit kept username', 'u' === $d['username'] );
 $r = $vw->rl( 'GET', "files/$f1" ); t( 'attachment of replaced milestone still referenced? (file kept until client deletes it)', in_array( $r['code'], array( 200, 404 ), true ) );
 
 echo "milestones: cleanup on delete\n";

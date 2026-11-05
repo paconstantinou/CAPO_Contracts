@@ -74,7 +74,7 @@ class RL_Export {
 
 	/**
 	 * @param string $collection software|contracts
-	 * @param bool   $with_credentials include usernames and passwords (software only)
+	 * @param bool   $with_credentials include usernames (software only)
 	 * @return array [ header[], rows[][] ]
 	 */
 	public static function table( $collection, $with_credentials ) {
@@ -87,21 +87,20 @@ class RL_Export {
 			$head = array( 'Software Name', 'Description', 'Vendor', 'Website' );
 			if ( $with_credentials ) {
 				$head[] = 'Username';
-				$head[] = 'Password';
 			}
-			$head = array_merge( $head, array( 'Date From', 'Date To', 'Cost excl. VAT (€)', 'Reminder (days before)', 'Attachments', 'Milestones', 'Status' ) );
+			$head = array_merge( $head, array( 'Date From', 'Date To', 'Cost excl. VAT (€)', 'Reminder (days before)', 'Notification emails', 'Attachments', 'Milestones', 'Status' ) );
 			$rows = array();
 			foreach ( $items as $it ) {
 				$d   = $it['data'];
 				$row = array( self::g( $d, 'name' ), self::g( $d, 'description' ), self::g( $d, 'vendor' ), self::g( $d, 'website' ) );
 				if ( $with_credentials ) {
 					$row[] = self::g( $d, 'username' );
-					$row[] = self::g( $d, 'password' );
 				}
 				$row[] = self::g( $d, 'dateFrom' );
 				$row[] = self::g( $d, 'dateTo' );
 				$row[] = isset( $d['cost'] ) ? (float) $d['cost'] : 0;
 				$row[] = isset( $d['remindDays'] ) ? (int) $d['remindDays'] : 30;
+				$row[] = self::g( $d, 'emails' );
 				$row[] = self::names( $d );
 				$row[] = self::milestones( $d );
 				$row[] = self::status_software( $d );
@@ -118,7 +117,7 @@ class RL_Export {
 		for ( $i = 1; $i <= $max; $i++ ) {
 			array_push( $head, "ΕΤΟΣ $i - ΗΜΕΡ.ΕΝΑΡΞΗΣ", "ΕΤΟΣ $i - ΗΜΕΡ.ΛΗΞΗΣ", "ΕΤΟΣ $i - ΚΟΣΤΟΣ", "ΕΤΟΣ $i - ΥΠΕΝΘΥΜΙΣΗ (ΗΜΕΡΕΣ ΠΡΙΝ)" );
 		}
-		array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'MILESTONES', 'ΚΑΤΑΣΤΑΣΗ' );
+		array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ', 'MILESTONES', 'ΚΑΤΑΣΤΑΣΗ' );
 		$rows = array();
 		foreach ( $items as $it ) {
 			$d   = $it['data'];
@@ -129,6 +128,7 @@ class RL_Export {
 				array_push( $row, self::g( $y, 'from' ), self::g( $y, 'to' ), ( isset( $y['cost'] ) && is_numeric( $y['cost'] ) ) ? (float) $y['cost'] : '', isset( $y['remind'] ) ? (int) $y['remind'] : '' );
 			}
 			$row[]  = self::names( $d );
+			$row[]  = self::g( $d, 'emails' );
 			$row[]  = self::milestones( $d );
 			$row[]  = self::status_contract( $d );
 			$rows[] = $row;
