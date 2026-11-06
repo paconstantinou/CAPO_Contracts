@@ -38,6 +38,19 @@ class RL_Settings {
 			array(
 				'type'              => 'string',
 				'sanitize_callback' => function ( $v ) {
+					if ( is_array( $v ) ) { // rows from the table: code, desc, cat, catDesc, split
+						$lines = array();
+						foreach ( $v as $row ) {
+							if ( ! is_array( $row ) ) {
+								continue;
+							}
+							$g = function ( $k ) use ( $row ) {
+								return isset( $row[ $k ] ) ? str_replace( array( '|', "\t", "\r", "\n" ), ' ', (string) $row[ $k ] ) : '';
+							};
+							$lines[] = implode( ' | ', array( $g( 'code' ), $g( 'desc' ), $g( 'cat' ), $g( 'catDesc' ), ! empty( $row['split'] ) && 'NAI' === $row['split'] ? 'ΝΑΙ' : 'ΌΧΙ' ) );
+						}
+						$v = implode( "\n", $lines );
+					}
 					return self::serialize_articles( self::parse_articles( (string) $v ) );
 				},
 				'default'           => self::default_articles_text(),
@@ -192,10 +205,37 @@ TXT;
 						</td>
 					</tr>
 					<tr>
-						<th scope="row"><label for="rl_budget_articles">Άρθρα προϋπολογισμού</label></th>
+						<th scope="row">Άρθρα προϋπολογισμού</th>
 						<td>
-							<textarea id="rl_budget_articles" name="rl_budget_articles" rows="12" class="large-text code"><?php echo esc_textarea( self::serialize_articles( self::articles() ) ); ?></textarea>
-							<p class="description">Ένα άρθρο ανά γραμμή, στη μορφή: ΚΩΔΙΚΟΣ | Περιγραφή άρθρου | Κατηγορία | Περιγραφή κατηγορίας | ΝΑΙ ή ΌΧΙ (ποσό ανάλυσης ανά έτος). Μπορείς να κάνεις επικόλληση απευθείας από Excel. Οι εγγραφές αποθηκεύουν τον ΚΩΔΙΚΟ του άρθρου. ΝΑΙ = το ποσό κατανέμεται ανά μήνα στα ημερολογιακά έτη της περιόδου (καρτέλα Προϋπολογισμός), ΌΧΙ = ολόκληρο στο έτος έναρξης.</p>
+							<table class="widefat striped" id="rl-art-table" style="max-width:1100px">
+								<thead><tr><th>Κωδικός</th><th>Περιγραφή άρθρου</th><th>Κατηγορία</th><th>Περιγραφή κατηγορίας</th><th>Ποσό ανάλυσης ανά έτος</th><th></th></tr></thead>
+								<tbody>
+								<?php foreach ( self::articles() as $i => $a ) : ?>
+									<tr>
+										<td><input type="text" name="rl_budget_articles[<?php echo (int) $i; ?>][code]" value="<?php echo esc_attr( $a['code'] ); ?>" size="8"></td>
+										<td><input type="text" name="rl_budget_articles[<?php echo (int) $i; ?>][desc]" value="<?php echo esc_attr( $a['desc'] ); ?>" class="large-text"></td>
+										<td><input type="text" name="rl_budget_articles[<?php echo (int) $i; ?>][cat]" value="<?php echo esc_attr( $a['cat'] ); ?>" size="8"></td>
+										<td><input type="text" name="rl_budget_articles[<?php echo (int) $i; ?>][catDesc]" value="<?php echo esc_attr( $a['catDesc'] ); ?>" class="large-text"></td>
+										<td><select name="rl_budget_articles[<?php echo (int) $i; ?>][split]"><option value="NAI" <?php selected( $a['split'] ); ?>>ΝΑΙ</option><option value="OXI" <?php selected( ! $a['split'] ); ?>>ΌΧΙ</option></select></td>
+										<td><button type="button" class="button-link-delete rl-art-del">Διαγραφή</button></td>
+									</tr>
+								<?php endforeach; ?>
+								</tbody>
+							</table>
+							<p><button type="button" class="button" id="rl-art-add">+ Προσθήκη νέου άρθρου</button></p>
+							<p class="description">Η στήλη «Ποσό ανάλυσης ανά έτος»: ΝΑΙ = το ποσό κατανέμεται ανά μήνα στα ημερολογιακά έτη της περιόδου (καρτέλα Προϋπολογισμός), ΌΧΙ = ολόκληρο στο έτος έναρξης. Οι εγγραφές αποθηκεύουν τον ΚΩΔΙΚΟ του άρθρου, γι' αυτό μην αλλάζεις κωδικό άρθρου που ήδη χρησιμοποιείται. Αν διαγράψεις ένα άρθρο που χρησιμοποιείται, τα ποσά του εμφανίζονται στο «Χωρίς άρθρο». Πάτησε «Αποθήκευση αλλαγών» κάτω.</p>
+							<script>
+							(function(){
+								var t=document.querySelector('#rl-art-table tbody');
+								function renumber(){[].forEach.call(t.rows,function(r,i){[].forEach.call(r.querySelectorAll('[name]'),function(n){n.name=n.name.replace(/rl_budget_articles\[\d+\]/,'rl_budget_articles['+i+']')})})}
+								document.getElementById('rl-art-add').addEventListener('click',function(){
+									var r=t.insertRow(-1);
+									r.innerHTML='<td><input type="text" name="rl_budget_articles[0][code]" size="8"></td><td><input type="text" name="rl_budget_articles[0][desc]" class="large-text"></td><td><input type="text" name="rl_budget_articles[0][cat]" size="8"></td><td><input type="text" name="rl_budget_articles[0][catDesc]" class="large-text"></td><td><select name="rl_budget_articles[0][split]"><option value="NAI">ΝΑΙ</option><option value="OXI" selected>ΌΧΙ</option></select></td><td><button type="button" class="button-link-delete rl-art-del">Διαγραφή</button></td>';
+									renumber();r.querySelector('input').focus();
+								});
+								t.addEventListener('click',function(e){var b=e.target.closest('.rl-art-del');if(b){b.closest('tr').remove();renumber()}});
+							})();
+							</script>
 						</td>
 					</tr>
 				</table>

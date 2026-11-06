@@ -21,4 +21,21 @@ t( 'round trip', RL_Settings::parse_articles( RL_Settings::serialize_articles( $
 update_option( 'rl_budget_articles', '' );
 t( 'an emptied list stays empty (no silent fallback to default)', 0 === count( RL_Settings::articles() ) );
 delete_option( 'rl_budget_articles' );
+
+/* settings table posts rows; the sanitize callback turns them into the stored list */
+$rows = array(
+	array( 'code' => 'NEW1', 'desc' => 'Νέο | άρθρο', 'cat' => '09', 'catDesc' => 'Κατ', 'split' => 'NAI' ),
+	array( 'code' => '03461', 'desc' => 'Άλλο', 'cat' => '03300', 'catDesc' => 'X', 'split' => 'OXI' ),
+	array( 'code' => '', 'desc' => 'blank code row is ignored', 'cat' => '', 'catDesc' => '', 'split' => 'NAI' ),
+	array( 'code' => 'NEW1', 'desc' => 'duplicate', 'cat' => '', 'catDesc' => '', 'split' => 'NAI' ),
+);
+RL_Settings::register();
+$clean = apply_filters( 'sanitize_option_rl_budget_articles', $rows );
+$list = RL_Settings::parse_articles( $clean );
+t( 'table rows: blank and duplicate codes dropped', 2 === count( $list ) );
+t( 'table rows: pipe inside a value cannot break the line format', 'Νέο   άρθρο' === $list[0]['desc'] || 'Νέο άρθρο' === preg_replace( '/\s+/u', ' ', $list[0]['desc'] ) );
+t( 'table rows: split NAI -> true, OXI -> false', $list[0]['split'] && ! $list[1]['split'] );
+update_option( 'rl_budget_articles', $clean );
+t( 'saved list is used (new article available)', null !== array_values( array_filter( RL_Settings::articles(), function ( $x ) { return 'NEW1' === $x['code']; } ) )[0] );
+delete_option( 'rl_budget_articles' );
 echo "\n$ok passed, $bad failed\n"; exit( $bad ? 1 : 0 );

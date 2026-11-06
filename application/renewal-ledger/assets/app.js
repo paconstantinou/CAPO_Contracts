@@ -602,17 +602,28 @@ function bpDetail(it,el){
 function bpText(it){
   return (it.budget||[]).map(function(p){return "Έτος "+p.year+": "+Number(p.amount).toFixed(2)+(p.article?" ["+artLabel(p.article)+"]":"")}).join("; ");
 }
+function artRow(a){
+  a=a||{code:"",desc:"",cat:"",catDesc:"",split:false};
+  return '<tr><td><input data-k="code" value="'+esc(a.code)+'" size="7" aria-label="Κωδικός"></td><td><input data-k="desc" value="'+esc(a.desc)+'" aria-label="Περιγραφή άρθρου"></td><td><input data-k="cat" value="'+esc(a.cat)+'" size="7" aria-label="Κατηγορία"></td><td><input data-k="catDesc" value="'+esc(a.catDesc)+'" aria-label="Περιγραφή κατηγορίας"></td>'+
+   '<td><select data-k="split" aria-label="Ποσό ανάλυσης ανά έτος"><option value="1"'+(a.split?' selected':'')+'>ΝΑΙ</option><option value="0"'+(a.split?'':' selected')+'>ΌΧΙ</option></select></td>'+
+   '<td><button class="btn small" type="button" data-act="artdel" title="Διαγραφή άρθρου">✕</button></td></tr>';
+}
 function showArticles(){
-  var el=S.cat==="ct";
+  var el=S.cat!=="sw";
   openPanel('<div class="ph"><h2>'+(el?"Άρθρα προϋπολογισμού":"Budget articles")+'</h2><button class="btn small" type="button" data-act="close">'+(el?"Κλείσιμο":"Close")+'</button></div>'+
-   '<p class="hint">'+(el?"Ένα άρθρο ανά γραμμή: ΚΩΔΙΚΟΣ | Περιγραφή | Κατηγορία | Περιγραφή κατηγορίας | ΝΑΙ ή ΌΧΙ (ποσό ανάλυσης ανά έτος). Μπορείς να κάνεις επικόλληση από Excel.":"One article per line: CODE | description | category | category description | ΝΑΙ or ΌΧΙ (split per year). You can paste from Excel.")+'</p>'+
-   '<textarea id="artText" rows="14" style="width:100%">'+esc(artLines(articles()))+'</textarea>'+
-   '<div class="actions"><button class="btn primary" type="button" data-act="artsave">'+(el?"Αποθήκευση":"Save")+'</button></div>',"arts");
+   '<p class="hint">'+(el?"Κάθε γραμμή είναι ένα άρθρο. «Ποσό ανάλυσης ανά έτος»: ΝΑΙ = το ποσό κατανέμεται ανά μήνα στα έτη της περιόδου, ΌΧΙ = στο έτος έναρξης. Οι εγγραφές αποθηκεύουν τον κωδικό, γι' αυτό μην αλλάζεις κωδικό που χρησιμοποιείται.":"Each row is one article. Split per year: ΝΑΙ = spread by month over the years of the period, ΌΧΙ = start year. Records store the code, so do not change a code that is in use.")+'</p>'+
+   '<div class="tbl"><table class="art"><thead><tr><th>Κωδικός</th><th>Περιγραφή άρθρου</th><th>Κατηγορία</th><th>Περιγραφή κατηγορίας</th><th>Ανάλυση ανά έτος</th><th></th></tr></thead><tbody id="artRows">'+articles().map(artRow).join("")+'</tbody></table></div>'+
+   '<div class="actions"><button class="btn" type="button" data-act="artadd">'+(el?"+ Προσθήκη νέου άρθρου":"+ Add article")+'</button><button class="btn primary" type="button" data-act="artsave">'+(el?"Αποθήκευση":"Save")+'</button></div>',"arts");
 }
 function saveArticles(){
-  var l=parseArtLines($("#artText").value);
-  try{localStorage.setItem("rl.articles",JSON.stringify(l))}catch(e){}
-  closePanel();toast(S.cat==="ct"?"Τα άρθρα αποθηκεύτηκαν":"Articles saved");
+  var list=[],seen={};
+  [].forEach.call(document.querySelectorAll("#artRows tr"),function(tr){
+    var o={};[].forEach.call(tr.querySelectorAll("[data-k]"),function(n){o[n.dataset.k]=n.value.replace(/[|\t\r\n]/g," ").trim()});
+    if(!o.code||seen[o.code])return;seen[o.code]=1;
+    list.push({code:o.code.slice(0,40),desc:(o.desc||"").slice(0,200),cat:(o.cat||"").slice(0,40),catDesc:(o.catDesc||"").slice(0,200),split:o.split==="1"});
+  });
+  try{localStorage.setItem("rl.articles",JSON.stringify(list.slice(0,500)))}catch(e){}
+  closePanel();toast(S.cat!=="sw"?"Τα άρθρα αποθηκεύτηκαν":"Articles saved");
   if(S.cat==="bd")render();
 }
 function bpRedraw(){
@@ -729,7 +740,7 @@ function renderBd(){
   var opts='<option value="all">Όλα τα άρθρα</option>'+arts.map(function(a){var n=(B.byArt[a.code]||[]).length;return '<option value="'+esc(a.code)+'"'+(sel===a.code?' selected':'')+'>'+esc(a.code+" — "+a.desc)+(n?" ("+n+")":"")+'</option>'}).join("")+
     (B.byArt[""]?'<option value="none"'+(sel==="none"?' selected':'')+'>Χωρίς άρθρο ('+B.byArt[""].length+')</option>':'');
   if(sel==="all")opts=opts.replace('<option value="all">','<option value="all" selected>');
-  $("#chips").innerHTML='<label class="bdsel">Άρθρο <select id="bdArt">'+opts+'</select></label>';
+  $("#chips").innerHTML='<label class="bdsel">Άρθρο <select id="bdArt">'+opts+'</select></label>'+(window.RL_CFG?'':' <button type="button" class="chip" data-act="arts">Άρθρα προϋπολογισμού</button>');
   var h="";
   function secFor(a){return bdTable(a.code+" — "+a.desc,"Κατηγορία "+a.cat+(a.catDesc?" · "+a.catDesc:"")+" · Ποσό ανάλυσης ανά έτος: "+(a.split?"ΝΑΙ (κατανομή ανά μήνα στα έτη)":"ΌΧΙ (στο έτος έναρξης)"),B.byArt[a.code]||[],years)}
   if(sel==="all"){
@@ -1292,6 +1303,8 @@ ROOT.addEventListener("click",async function(ev){
     case "cols":showCols();break;
     case "arts":showArticles();break;
     case "artsave":saveArticles();break;
+    case "artadd":{var rows=$("#artRows");rows.insertAdjacentHTML("beforeend",artRow());var ins=rows.querySelectorAll("tr");ins[ins.length-1].querySelector("input").focus();break}
+    case "artdel":{var tr=b.closest("tr");if(tr)tr.remove();break}
     case "bpadd":{var dd=S.cat==="ct"?(ctCollect(),S.cw.d):(collect(),S.wiz.data);dd.budget=dd.budget||[];dd.budget.push({year:+b.dataset.year||1,amount:"",article:""});bpRedraw();break}
     case "bpdel":{var dd2=S.cat==="ct"?(ctCollect(),S.cw.d):(collect(),S.wiz.data);dd2.budget.splice(+b.dataset.i,1);if(S.cat==="ct")(dd2.years||[]).forEach(function(y,i){if(!bpHas(dd2,i+1)&&false)y.cost=""});bpRedraw();break}
     case "colsreset":resetCols();break;
