@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 rm -f dist/*.zip
 (cd wordpress-plugin && zip -qr ../dist/application-management-1.0.0.zip application-management -x '*.DS_Store')
-(cd application && zip -qr ../dist/renewal-ledger-2.4.0.zip renewal-ledger -x '*.DS_Store')
+(cd application && zip -qr ../dist/renewal-ledger-2.4.1.zip renewal-ledger -x '*.DS_Store')
 cp index.html dist/RenewalLedger.html
 (cd application/standalone/windows && zip -qr ../../../dist/RenewalLedger-Windows.zip RenewalLedger -x '*.DS_Store')
 ls -l dist

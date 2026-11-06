@@ -17,3 +17,5 @@ Note: the REST tests deliberately provoke denied requests; running them repeated
 Budget breakdown: `php tests/integration/budget-test.php <base-url>` (HTTP; needs `RL_TEST_ADMIN_PASS`).
 
 Unit tests (Node, no WordPress needed): `node tests/unit/budget-calc-test.js` (budget calculation) and `node tests/unit/budget-export-test.js` (structure of the Excel export against a SheetJS stub). `php tests/integration/articles-test.php <wp-load.php>` checks the article list.
+
+WordPress UI in a real browser: `RL_URL=… RL_PAGE=/page-with-shortcode/ RL_USER=… RL_PASS=… node tests/browser/wp-ui-test.js` (needs Playwright). It checks that the page does not freeze and the tabs respond; run it for an admin and for a restricted user (e.g. viewer1).

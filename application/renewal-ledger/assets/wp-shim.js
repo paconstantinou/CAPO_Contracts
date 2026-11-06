@@ -95,7 +95,8 @@
 
   /* Convenience only: hide what the user may not do. The server enforces every one of these again on each request. */
   var gating=false;
-  function hide(sel,root,yes){[].forEach.call(root.querySelectorAll(sel),function(n){n.hidden=yes;n.style.display=yes?"none":""})}
+  /* Only write when the value changes: re-setting `hidden` to true queues a mutation record every time, and the observer below would then call gate() forever. */
+  function hide(sel,root,yes){[].forEach.call(root.querySelectorAll(sel),function(n){var d=yes?"none":"";if(n.hidden!==yes)n.hidden=yes;if(n.style.display!==d)n.style.display=d})}
   function gate(){
     if(gating)return;gating=true;
     try{
