@@ -65,7 +65,7 @@ class RL_Export {
 	private static function budget( $d ) {
 		$out = array();
 		foreach ( ( isset( $d['budget'] ) && is_array( $d['budget'] ) ) ? $d['budget'] : array() as $p ) {
-			$out[] = 'Έτος ' . (int) $p['year'] . ': ' . number_format( (float) $p['amount'], 2, '.', '' ) . ( ! empty( $p['article'] ) ? ' [' . $p['article'] . ']' : '' );
+			$out[] = 'Έτος ' . (int) $p['year'] . ': ' . number_format( (float) $p['amount'], 2, '.', '' ) . ( ! empty( $p['article'] ) ? ' [' . RL_Settings::article_label( $p['article'] ) . ']' : '' );
 		}
 		return implode( '; ', $out );
 	}

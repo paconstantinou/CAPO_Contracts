@@ -15,6 +15,7 @@
   }
   var perms=cfg.perms||{};
   function curColl(){var t=document.getElementById("tabCt");return t&&t.getAttribute("aria-selected")==="true"?"contracts":"software"}
+  function onBd(){var t=document.getElementById("tabBd");return !!t&&t.getAttribute("aria-selected")==="true"}
   function P(c,a){return !!(perms[c]&&perms[c][a])}
   var cache={},subs=[],loaded={};
   function snapFor(name){
@@ -100,6 +101,15 @@
     try{
       var root=document.getElementById("rl-app");if(!root)return;
       var c=curColl();
+      var bdt=document.getElementById("tabBd");
+      if(bdt)bdt.style.display=(P("software","view")||P("contracts","view"))?"":"none";
+      if(onBd()){
+        /* budget sheet is calculated from the records the user may view; nothing to add or import here */
+        hide("#btnAdd,#emAdd,#btnImport,#emImp",root,true);
+        hide("#btnExport",root,!(P("software","export")||P("contracts","export")));
+        if(!(P("software","view")||P("contracts","view")))setTimeout(function(){var x=document.getElementById("tabSw");x&&x.click()},0);
+        return;
+      }
       hide("#btnAdd,#emAdd,#btnImport,#emImp,[data-act=pick],[data-act=tpl],[data-act=ctsample],#emSample",root,!P(c,"create"));
       hide("#btnExport",root,!P(c,"export"));
       hide("[data-act=xlsx],[data-act=csv]",root,!P(c,"export"));

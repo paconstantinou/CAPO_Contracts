@@ -28,3 +28,8 @@ Records may also carry `budget`: `[{year, amount, article}]` (partial amounts; m
 * Records have `emails`: one or more addresses separated by comma, semicolon or space (max 20). Invalid addresses are rejected with 400 (`rl_bad_email`). Stored normalised as `a@x.gr, b@y.gr`.
 * Reminders (expiry, yearly expiry of contracts and milestones) are e-mailed to the record's own addresses; records without addresses use the default recipients from Settings → Renewal Ledger. One message per distinct recipient set.
 * The `password` field no longer exists. Any value sent is ignored, and the upgrade removes passwords already stored.
+
+
+## Budget sheet (Προϋπολογισμός)
+
+Third tab, calculated in the browser from the records the user may view (no extra REST route). Articles are `{code, desc, cat, catDesc, split}` from Settings → Renewal Ledger (`rl_budget_articles`, one line per article: `code | description | category | category description | ΝΑΙ/ΌΧΙ`; default = the 17 organisation articles). Records store the article **code**. For each record and article: `split` (ΝΑΙ) spreads the amount by month over the calendar years of the period (a part-month counts by its share of days; rounding remainder goes to the last year); otherwise the whole amount is placed in the year of the period's start date. Amounts without an article appear under «Χωρίς άρθρο». The tab is visible to users who can view software or contracts. The Excel export is generated in the browser, so the Export permission is enforced in the UI only (the data is what the user may already view).

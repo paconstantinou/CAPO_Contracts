@@ -38,16 +38,9 @@ class RL_Settings {
 			array(
 				'type'              => 'string',
 				'sanitize_callback' => function ( $v ) {
-					$seen = array();
-					foreach ( preg_split( '/\r?\n/', (string) $v ) as $l ) {
-						$l = trim( sanitize_text_field( $l ) );
-						if ( '' !== $l && mb_strlen( $l ) <= 200 ) {
-							$seen[ $l ] = $l;
-						}
-					}
-					return implode( "\n", array_slice( array_values( $seen ), 0, 500 ) );
+					return self::serialize_articles( self::parse_articles( (string) $v ) );
 				},
-				'default'           => '',
+				'default'           => self::default_articles_text(),
 			)
 		);
 		register_setting(
@@ -63,16 +56,78 @@ class RL_Settings {
 		);
 	}
 
-	/** Budget articles for the drop-down, one per line in the settings. */
-	public static function articles() {
+	/** Default list of the organisation's budget articles: code | description | category | category description | split per year (ΝΑΙ/ΌΧΙ). */
+	public static function default_articles_text() {
+		return <<<'TXT'
+03460 | Τηλεπικοινωνιακός, Μηχανογραφικός και Άλλος Εξοπλισμός | 03300 | ΣΥΝΤΗΡΗΣΕΙΣ ΚΑΙ ΕΠΙΔΙΟΡΘΩΣΕΙΣ | ΝΑΙ
+03461 | Συντήρηση Μηχανογραφικού Εξοπλισμού | 03300 | ΣΥΝΤΗΡΗΣΕΙΣ ΚΑΙ ΕΠΙΔΙΟΡΘΩΣΕΙΣ | ΝΑΙ
+03462 | Συντήρηση Τηλεπικοινωνιακού Εξοπλισμού | 03300 | ΣΥΝΤΗΡΗΣΕΙΣ ΚΑΙ ΕΠΙΔΙΟΡΘΩΣΕΙΣ | ΝΑΙ
+03466 | Συντήρηση Εξοπλισμού Γραφείου | 03300 | ΣΥΝΤΗΡΗΣΕΙΣ ΚΑΙ ΕΠΙΔΙΟΡΘΩΣΕΙΣ | ΝΑΙ
+03468 | Συντήρηση Άλλου Εξοπλισμού | 03300 | ΣΥΝΤΗΡΗΣΕΙΣ ΚΑΙ ΕΠΙΔΙΟΡΘΩΣΕΙΣ | ΝΑΙ
+03583 | Αγορά Υπηρεσιών | 03580 | ΣΥΜΒΑΣΗ ΥΠΗΡΕΣΙΩΝ | ΝΑΙ
+07651 | Αγορά Μηχανολογικού και Ηλεκτρονικού Εξοπλισμού | 07650 | ΑΓΟΡΑ ΕΞΟΠΛΙΣΜΟΥ | ΌΧΙ
+07654 | Αγορά Εξοπλισμού Γραφείων | 07650 | ΑΓΟΡΑ ΕΞΟΠΛΙΣΜΟΥ | ΌΧΙ
+07655 | Αγορά Τηλεπικοινωνιακού Εξοπλισμού | 07650 | ΑΓΟΡΑ ΕΞΟΠΛΙΣΜΟΥ | ΌΧΙ
+07661 | Αγορά Ηλεκτρονικών Συστημάτων Ασφάλειας | 07650 | ΑΓΟΡΑ ΕΞΟΠΛΙΣΜΟΥ | ΌΧΙ
+07663 | Αγορά Συστημάτων Πυρασφάλειας | 07650 | ΑΓΟΡΑ ΕΞΟΠΛΙΣΜΟΥ | ΌΧΙ
+07681 | Αγορά Μηχανογραφικού Εξοπλισμού, Προγραμμάτων και Υπηρεσιών | 07650 | ΑΓΟΡΑ ΕΞΟΠΛΙΣΜΟΥ | ΌΧΙ
+07755 | Εφαρμογή του Προτύπου ISO 27002 | 07750 | ΑΓΟΡΑ ΑΛΛΩΝ ΣΤΟΙΧΕΙΩΝ ΕΝΕΡΓΗΤΙΚΟΥ | ΌΧΙ
+07758 | Δορυφορικές Εικόνες | 07750 | ΑΓΟΡΑ ΑΛΛΩΝ ΣΤΟΙΧΕΙΩΝ ΕΝΕΡΓΗΤΙΚΟΥ | ΌΧΙ
+07759 | Ανάπτυξη Συστήματος Διαχείρισης Μέτρων του Προγράμματος Αγροτικής Ανάπτυξης | 07750 | ΑΓΟΡΑ ΑΛΛΩΝ ΣΤΟΙΧΕΙΩΝ ΕΝΕΡΓΗΤΙΚΟΥ | ΌΧΙ
+07760 | Επανασχεδιασμός Ολοκληρωμένου Συστήματος Διαχείρισης και Ελέγχου (ΟΣΔΕ) | 07750 | ΑΓΟΡΑ ΑΛΛΩΝ ΣΤΟΙΧΕΙΩΝ ΕΝΕΡΓΗΤΙΚΟΥ | ΌΧΙ
+07761 | Ανάπτυξη Μηχανογραφικών Συστημάτων για την Νέα Κοινή Αγροτική Πολιτική (ΚΑΠ) | 07750 | ΑΓΟΡΑ ΑΛΛΩΝ ΣΤΟΙΧΕΙΩΝ ΕΝΕΡΓΗΤΙΚΟΥ | ΌΧΙ
+TXT;
+	}
+
+	/**
+	 * Parse "code | description | category | category description | ΝΑΙ/ΌΧΙ" lines (tabs work too, so a paste from Excel is fine).
+	 * "ΝΑΙ" = the amount is spread over the calendar years of the period by month; anything else = whole amount in the start year.
+	 */
+	public static function parse_articles( $text ) {
 		$out = array();
-		foreach ( preg_split( '/\r?\n/', (string) get_option( 'rl_budget_articles', '' ) ) as $l ) {
-			$l = trim( $l );
-			if ( '' !== $l ) {
-				$out[] = $l;
+		foreach ( preg_split( '/\r?\n/', (string) $text ) as $line ) {
+			$p = array_map( 'trim', preg_split( '/\t|\|/', $line ) );
+			$code = isset( $p[0] ) ? mb_substr( sanitize_text_field( $p[0] ), 0, 40 ) : '';
+			if ( '' === $code || isset( $out[ $code ] ) ) {
+				continue;
+			}
+			$flag = isset( $p[4] ) ? mb_strtoupper( $p[4] ) : '';
+			$out[ $code ] = array(
+				'code'    => $code,
+				'desc'    => isset( $p[1] ) ? mb_substr( sanitize_text_field( $p[1] ), 0, 200 ) : '',
+				'cat'     => isset( $p[2] ) ? mb_substr( sanitize_text_field( $p[2] ), 0, 40 ) : '',
+				'catDesc' => isset( $p[3] ) ? mb_substr( sanitize_text_field( $p[3] ), 0, 200 ) : '',
+				'split'   => (bool) preg_match( '/^(Ν|N|YES|Y)/u', $flag ),
+			);
+			if ( count( $out ) >= 500 ) {
+				break;
 			}
 		}
-		return $out;
+		return array_values( $out );
+	}
+
+	public static function serialize_articles( $list ) {
+		$lines = array();
+		foreach ( $list as $a ) {
+			$lines[] = implode( ' | ', array( $a['code'], $a['desc'], $a['cat'], $a['catDesc'], $a['split'] ? 'ΝΑΙ' : 'ΌΧΙ' ) );
+		}
+		return implode( "\n", $lines );
+	}
+
+	/** Budget articles for the drop-down and the budget sheet (structured). */
+	public static function articles() {
+		$raw = get_option( 'rl_budget_articles', false );
+		return self::parse_articles( false === $raw ? self::default_articles_text() : $raw );
+	}
+
+	/** "code description" for an article code, or the stored text if unknown. */
+	public static function article_label( $code ) {
+		foreach ( self::articles() as $a ) {
+			if ( $a['code'] === $code ) {
+				return trim( $a['code'] . ' ' . $a['desc'] );
+			}
+		}
+		return (string) $code;
 	}
 
 	public static function send_now() {
@@ -139,8 +194,8 @@ class RL_Settings {
 					<tr>
 						<th scope="row"><label for="rl_budget_articles">Άρθρα προϋπολογισμού</label></th>
 						<td>
-							<textarea id="rl_budget_articles" name="rl_budget_articles" rows="12" class="large-text code"><?php echo esc_textarea( get_option( 'rl_budget_articles', '' ) ); ?></textarea>
-							<p class="description">Ένα άρθρο ανά γραμμή. Εμφανίζονται στη λίστα επιλογής των επιμέρους ποσών ανά έτος, σε Online Renewals και Συμβάσεις. Αν αλλάξεις ένα άρθρο, οι υπάρχουσες εγγραφές κρατούν το παλιό κείμενο.</p>
+							<textarea id="rl_budget_articles" name="rl_budget_articles" rows="12" class="large-text code"><?php echo esc_textarea( self::serialize_articles( self::articles() ) ); ?></textarea>
+							<p class="description">Ένα άρθρο ανά γραμμή, στη μορφή: ΚΩΔΙΚΟΣ | Περιγραφή άρθρου | Κατηγορία | Περιγραφή κατηγορίας | ΝΑΙ ή ΌΧΙ (ποσό ανάλυσης ανά έτος). Μπορείς να κάνεις επικόλληση απευθείας από Excel. Οι εγγραφές αποθηκεύουν τον ΚΩΔΙΚΟ του άρθρου. ΝΑΙ = το ποσό κατανέμεται ανά μήνα στα ημερολογιακά έτη της περιόδου (καρτέλα Προϋπολογισμός), ΌΧΙ = ολόκληρο στο έτος έναρξης.</p>
 						</td>
 					</tr>
 				</table>

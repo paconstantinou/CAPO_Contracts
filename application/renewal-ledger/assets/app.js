@@ -529,16 +529,47 @@ function resetCols(){S.cols[S.cat]=COLS[S.cat].filter(function(x){return x.d}).m
 var PREFS=loadPrefs();S.cols=PREFS.cols;S.sort=PREFS.sort;
 
 /* ---------- budget breakdown: partial amounts per year, each with a budget article ---------- */
-var DEFAULT_ARTICLES=[];
+var DEFAULT_ARTICLES=[{"code":"03460","desc":"Τηλεπικοινωνιακός, Μηχανογραφικός και Άλλος Εξοπλισμός","cat":"03300","catDesc":"ΣΥΝΤΗΡΗΣΕΙΣ ΚΑΙ ΕΠΙΔΙΟΡΘΩΣΕΙΣ","split":true},{"code":"03461","desc":"Συντήρηση Μηχανογραφικού Εξοπλισμού","cat":"03300","catDesc":"ΣΥΝΤΗΡΗΣΕΙΣ ΚΑΙ ΕΠΙΔΙΟΡΘΩΣΕΙΣ","split":true},{"code":"03462","desc":"Συντήρηση Τηλεπικοινωνιακού Εξοπλισμού","cat":"03300","catDesc":"ΣΥΝΤΗΡΗΣΕΙΣ ΚΑΙ ΕΠΙΔΙΟΡΘΩΣΕΙΣ","split":true},{"code":"03466","desc":"Συντήρηση Εξοπλισμού Γραφείου","cat":"03300","catDesc":"ΣΥΝΤΗΡΗΣΕΙΣ ΚΑΙ ΕΠΙΔΙΟΡΘΩΣΕΙΣ","split":true},{"code":"03468","desc":"Συντήρηση Άλλου Εξοπλισμού","cat":"03300","catDesc":"ΣΥΝΤΗΡΗΣΕΙΣ ΚΑΙ ΕΠΙΔΙΟΡΘΩΣΕΙΣ","split":true},{"code":"03583","desc":"Αγορά Υπηρεσιών","cat":"03580","catDesc":"ΣΥΜΒΑΣΗ ΥΠΗΡΕΣΙΩΝ","split":true},{"code":"07651","desc":"Αγορά Μηχανολογικού και Ηλεκτρονικού Εξοπλισμού","cat":"07650","catDesc":"ΑΓΟΡΑ ΕΞΟΠΛΙΣΜΟΥ","split":false},{"code":"07654","desc":"Αγορά Εξοπλισμού Γραφείων","cat":"07650","catDesc":"ΑΓΟΡΑ ΕΞΟΠΛΙΣΜΟΥ","split":false},{"code":"07655","desc":"Αγορά Τηλεπικοινωνιακού Εξοπλισμού","cat":"07650","catDesc":"ΑΓΟΡΑ ΕΞΟΠΛΙΣΜΟΥ","split":false},{"code":"07661","desc":"Αγορά Ηλεκτρονικών Συστημάτων Ασφάλειας","cat":"07650","catDesc":"ΑΓΟΡΑ ΕΞΟΠΛΙΣΜΟΥ","split":false},{"code":"07663","desc":"Αγορά Συστημάτων Πυρασφάλειας","cat":"07650","catDesc":"ΑΓΟΡΑ ΕΞΟΠΛΙΣΜΟΥ","split":false},{"code":"07681","desc":"Αγορά Μηχανογραφικού Εξοπλισμού, Προγραμμάτων και Υπηρεσιών","cat":"07650","catDesc":"ΑΓΟΡΑ ΕΞΟΠΛΙΣΜΟΥ","split":false},{"code":"07755","desc":"Εφαρμογή του Προτύπου ISO 27002","cat":"07750","catDesc":"ΑΓΟΡΑ ΑΛΛΩΝ ΣΤΟΙΧΕΙΩΝ ΕΝΕΡΓΗΤΙΚΟΥ","split":false},{"code":"07758","desc":"Δορυφορικές Εικόνες","cat":"07750","catDesc":"ΑΓΟΡΑ ΑΛΛΩΝ ΣΤΟΙΧΕΙΩΝ ΕΝΕΡΓΗΤΙΚΟΥ","split":false},{"code":"07759","desc":"Ανάπτυξη Συστήματος Διαχείρισης Μέτρων του Προγράμματος Αγροτικής Ανάπτυξης","cat":"07750","catDesc":"ΑΓΟΡΑ ΑΛΛΩΝ ΣΤΟΙΧΕΙΩΝ ΕΝΕΡΓΗΤΙΚΟΥ","split":false},{"code":"07760","desc":"Επανασχεδιασμός Ολοκληρωμένου Συστήματος Διαχείρισης και Ελέγχου (ΟΣΔΕ)","cat":"07750","catDesc":"ΑΓΟΡΑ ΑΛΛΩΝ ΣΤΟΙΧΕΙΩΝ ΕΝΕΡΓΗΤΙΚΟΥ","split":false},{"code":"07761","desc":"Ανάπτυξη Μηχανογραφικών Συστημάτων για την Νέα Κοινή Αγροτική Πολιτική (ΚΑΠ)","cat":"07750","catDesc":"ΑΓΟΡΑ ΑΛΛΩΝ ΣΤΟΙΧΕΙΩΝ ΕΝΕΡΓΗΤΙΚΟΥ","split":false}];
 function r2(x){return Math.round((Number(x)||0)*100)/100}
-function articles(){
-  if(window.RL_CFG&&Array.isArray(window.RL_CFG.articles))return window.RL_CFG.articles;
-  var a=null;try{a=JSON.parse(localStorage.getItem("rl.articles")||"null")}catch(e){}
-  return Array.isArray(a)?a:DEFAULT_ARTICLES;
+/* article = {code, desc, cat, catDesc, split}; split = "ΠΟΣΟ ΑΝΑΛΥΣΗΣ ΑΝΑ ΕΤΟΣ" is ΝΑΙ */
+function normArt(x){
+  if(typeof x==="string")return parseArtLines(x)[0]||null;
+  if(!x||!x.code)return null;
+  return {code:String(x.code),desc:String(x.desc||""),cat:String(x.cat||""),catDesc:String(x.catDesc||""),split:!!x.split};
 }
+function parseArtLines(text){
+  var out=[],seen={};
+  String(text||"").split(/\r?\n/).forEach(function(line){
+    var p=line.split(/\t|\|/).map(function(x){return x.trim()}),code=(p[0]||"").slice(0,40);
+    if(!code||seen[code])return;seen[code]=1;
+    out.push({code:code,desc:(p[1]||"").slice(0,200),cat:(p[2]||"").slice(0,40),catDesc:(p[3]||"").slice(0,200),split:/^(Ν|N|YES|Y)/i.test((p[4]||"").trim())});
+  });
+  return out.slice(0,500);
+}
+function artLines(list){return list.map(function(a){return [a.code,a.desc,a.cat,a.catDesc,a.split?"ΝΑΙ":"ΌΧΙ"].join(" | ")}).join("\n")}
+function articles(){
+  var a=null;
+  if(window.RL_CFG&&Array.isArray(window.RL_CFG.articles))a=window.RL_CFG.articles;
+  else{try{a=JSON.parse(localStorage.getItem("rl.articles")||"null")}catch(e){}}
+  if(!Array.isArray(a))a=DEFAULT_ARTICLES;
+  return a.map(normArt).filter(Boolean);
+}
+/* find an article by its code (also accepts "code description" text) */
+function artFind(v,list){
+  v=String(v||"").trim();if(!v)return null;list=list||articles();
+  for(var i=0;i<list.length;i++)if(list[i].code===v)return list[i];
+  var t=v.split(/\s/)[0];
+  for(var j=0;j<list.length;j++)if(list[j].code===t)return list[j];
+  return null;
+}
+function artLabel(v){var a=artFind(v);return a?(a.code+" — "+a.desc):String(v||"")}
 function artOpts(v,el){
-  var l=articles().slice();if(v&&l.indexOf(v)<0)l.push(v);
-  return '<option value="">'+(el?"— Άρθρο προϋπολογισμού —":"— Budget article —")+'</option>'+l.map(function(a){return '<option value="'+esc(a)+'"'+(a===v?' selected':'')+'>'+esc(a)+'</option>'}).join("");
+  var l=articles(),cur=artFind(v,l),val=cur?cur.code:String(v||""),groups=[],map={};
+  l.forEach(function(a){var k=a.cat+"|"+a.catDesc;if(!map[k]){map[k]={t:(a.cat+(a.catDesc?" · "+a.catDesc:"")).trim(),l:[]};groups.push(map[k])}map[k].l.push(a)});
+  var opt=function(a){return '<option value="'+esc(a.code)+'"'+(a.code===val?' selected':'')+'>'+esc(a.code+" — "+a.desc)+'</option>'};
+  var h='<option value="">'+(el?"— Άρθρο προϋπολογισμού —":"— Budget article —")+'</option>'+groups.map(function(g){return '<optgroup label="'+esc(g.t)+'">'+g.l.map(opt).join("")+'</optgroup>'}).join("");
+  if(val&&!cur)h+='<option value="'+esc(val)+'" selected>'+esc(val)+'</option>';
+  return h;
 }
 function bpHas(d,year){return (d.budget||[]).some(function(p){return year==null||+p.year===year})}
 function bpSum(list,year){return r2((list||[]).filter(function(p){return year==null||+p.year===year}).reduce(function(a,p){return a+(Number(p.amount)||0)},0))}
@@ -566,22 +597,23 @@ function bpDetail(it,el){
   return '<div class="sec"><h3>'+(el?"Επιμέρους ποσά ανά έτος":"Cost breakdown")+'</h3>'+years.map(function(y){
     var rows=l.filter(function(p){return +p.year===y});
     return '<div class="msyear"><div class="msyh"><b>'+(el?"Έτος ":"Year ")+y+'</b><span class="num">'+(el?"Σύνολο ":"Total ")+(el?mc(bpSum(l,y)):money(bpSum(l,y)))+'</span></div><ul class="files">'+rows.map(function(p){
-      return '<li><span>'+esc(p.article||(el?"(χωρίς άρθρο)":"(no article)"))+'</span><span class="num">'+(el?mc(p.amount):money(p.amount))+'</span></li>'}).join("")+'</ul></div>'}).join("")+'</div>';
+      return '<li><span>'+esc(p.article?artLabel(p.article):(el?"(χωρίς άρθρο)":"(no article)"))+'</span><span class="num">'+(el?mc(p.amount):money(p.amount))+'</span></li>'}).join("")+'</ul></div>'}).join("")+'</div>';
 }
 function bpText(it){
-  return (it.budget||[]).map(function(p){return "Έτος "+p.year+": "+Number(p.amount).toFixed(2)+(p.article?" ["+p.article+"]":"")}).join("; ");
+  return (it.budget||[]).map(function(p){return "Έτος "+p.year+": "+Number(p.amount).toFixed(2)+(p.article?" ["+artLabel(p.article)+"]":"")}).join("; ");
 }
 function showArticles(){
   var el=S.cat==="ct";
   openPanel('<div class="ph"><h2>'+(el?"Άρθρα προϋπολογισμού":"Budget articles")+'</h2><button class="btn small" type="button" data-act="close">'+(el?"Κλείσιμο":"Close")+'</button></div>'+
-   '<p class="hint">'+(el?"Ένα άρθρο ανά γραμμή (π.χ. «2310 – Συντήρηση λογισμικού»). Εμφανίζονται στη λίστα επιλογής των επιμέρους ποσών.":"One article per line. They appear in the drop-down of the partial amounts.")+'</p>'+
-   '<textarea id="artText" rows="14" style="width:100%">'+esc(articles().join("\n"))+'</textarea>'+
+   '<p class="hint">'+(el?"Ένα άρθρο ανά γραμμή: ΚΩΔΙΚΟΣ | Περιγραφή | Κατηγορία | Περιγραφή κατηγορίας | ΝΑΙ ή ΌΧΙ (ποσό ανάλυσης ανά έτος). Μπορείς να κάνεις επικόλληση από Excel.":"One article per line: CODE | description | category | category description | ΝΑΙ or ΌΧΙ (split per year). You can paste from Excel.")+'</p>'+
+   '<textarea id="artText" rows="14" style="width:100%">'+esc(artLines(articles()))+'</textarea>'+
    '<div class="actions"><button class="btn primary" type="button" data-act="artsave">'+(el?"Αποθήκευση":"Save")+'</button></div>',"arts");
 }
 function saveArticles(){
-  var seen={},l=[];$("#artText").value.split(/\r?\n/).forEach(function(x){x=x.trim().slice(0,200);if(x&&!seen[x]){seen[x]=1;l.push(x)}});
-  try{localStorage.setItem("rl.articles",JSON.stringify(l.slice(0,500)))}catch(e){}
+  var l=parseArtLines($("#artText").value);
+  try{localStorage.setItem("rl.articles",JSON.stringify(l))}catch(e){}
   closePanel();toast(S.cat==="ct"?"Τα άρθρα αποθηκεύτηκαν":"Articles saved");
+  if(S.cat==="bd")render();
 }
 function bpRedraw(){
   if(S.cat==="ct"){ctCollect();ctRefresh(true)}else{collect();drawWizard()}
@@ -589,6 +621,159 @@ function bpRedraw(){
 function bpLive(){
   if(S.cat==="ct"){ctCollect();(S.cw.d.years||[]).forEach(function(y,i){var c=$("#cy_cost_"+i);if(c&&bpHas(S.cw.d,i+1))c.value=y.cost});var sp=$("#cSum");if(sp)sp.textContent=mc(ctSum(S.cw.d.years))}
   else{collect();var c=$("#w_cost");if(c&&bpHas(S.wiz.data))c.value=bpSum(S.wiz.data.budget)}
+}
+
+/* =============== BUDGET SHEET (Προϋπολογισμός) =============== */
+/*BD-CALC-START*/
+function bdParts(s){var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||"");return m?{y:+m[1],m:+m[2],d:+m[3]}:null}
+function bdGr(s){var p=bdParts(s);return p?(p.d<10?"0":"")+p.d+"/"+(p.m<10?"0":"")+p.m+"/"+p.y:"—"}
+function bdEur(n){var v=r2(n),s=Math.abs(v).toFixed(2).split(".");return (v<0?"-":"")+s[0].replace(/\B(?=(\d{3})+(?!\d))/g,".")+","+s[1]+" €"}
+function bdNum(n){return bdEur(n).replace(" €","")}
+function bdMo(x){return String(Math.round(x*100)/100).replace(".",",")}
+/* months of the period that fall in each calendar year; a part-month counts by the share of its days */
+function bdMonths(f,t){
+  var a=bdParts(f),b=bdParts(t);if(!a||!b||t<f)return null;
+  var by={},tot=0,y=a.y,m=a.m;
+  while(y<b.y||(y===b.y&&m<=b.m)){
+    var dim=new Date(Date.UTC(y,m,0)).getUTCDate(),s=(y===a.y&&m===a.m)?a.d:1,e=(y===b.y&&m===b.m)?b.d:dim,fr=(e-s+1)/dim;
+    by[y]=(by[y]||0)+fr;tot+=fr;m++;if(m>12){m=1;y++}
+  }
+  return {by:by,total:tot};
+}
+/* split=true (ΝΑΙ): spread by month over the calendar years of the period; otherwise the whole amount goes to the start year */
+function bdAlloc(amount,from,to,split){
+  var f=bdParts(from);if(!f)return null;
+  var by={},txt,note="";
+  if(split){
+    var mo=bdMonths(from,to);
+    if(mo){
+      var ys=Object.keys(mo.by).map(Number).sort(function(a,b){return a-b});
+      if(ys.length===1){by[ys[0]]=r2(amount);txt="όλο το διάστημα εντός του "+ys[0]}
+      else{
+        var acc=0,parts=[];
+        ys.forEach(function(y,i){
+          var v=i===ys.length-1?r2(amount-acc):r2(amount*mo.by[y]/mo.total);acc=r2(acc+v);by[y]=v;
+          parts.push(y+": "+bdMo(mo.by[y])+"/"+bdMo(mo.total)+" μήνες = "+bdEur(v));
+        });
+        txt="κατανομή ανά μήνα ("+parts.join(", ")+")";
+      }
+      return {by:by,text:txt};
+    }
+    note=" (χωρίς έγκυρη ημερομηνία λήξης)";
+  }
+  by[f.y]=r2(amount);
+  return {by:by,text:"ολόκληρο το ποσό στο έτος έναρξης "+f.y+note};
+}
+/* rows: one per record and article; amounts per calendar year */
+function bdBuild(arts,items,contracts){
+  var rows={},order=[],warn=[];
+  function rowFor(code,kind,id,desc,head){var k=code+"|"+kind+"|"+id;if(!rows[k]){rows[k]={code:code,kind:kind,id:id,desc:desc,how:head.slice(),by:{}};order.push(k)}return rows[k]}
+  function seg(kind,id,desc,head,label,from,to,parts,cost){
+    var list=(parts||[]).filter(function(p){var n=Number(p.amount);return p.amount!==""&&p.amount!=null&&isFinite(n)&&n!==0});
+    if(!list.length&&Number(cost)>0)list=[{amount:Number(cost),article:""}];
+    var groups={},gorder=[];
+    list.forEach(function(p){
+      var a=artFind(p.article,arts),code=a?a.code:"",g=groups[code];
+      if(!g){g=groups[code]={a:a,sum:0,amts:[],raw:""};gorder.push(code)}
+      g.sum=r2(g.sum+Number(p.amount));g.amts.push(Number(p.amount));
+      if(!a&&p.article)g.raw=String(p.article);
+    });
+    gorder.forEach(function(code){
+      var g=groups[code],al=bdAlloc(g.sum,from,to,!!(g.a&&g.a.split));
+      if(!al){warn.push(desc+" ("+label+"): δεν έχει έγκυρη ημερομηνία έναρξης, το ποσό "+bdEur(g.sum)+" δεν περιλαμβάνεται.");return}
+      var r=rowFor(code,kind,id,desc,head);
+      Object.keys(al.by).forEach(function(y){r.by[y]=r2((r.by[y]||0)+al.by[y])});
+      r.how.push(label+" ("+bdGr(from)+" – "+bdGr(to)+"): "+bdEur(g.sum)+(g.amts.length>1?" = "+g.amts.map(bdNum).join(" + "):"")+" — "+al.text+(g.raw?" · το άρθρο «"+g.raw+"» δεν υπάρχει στη λίστα άρθρων":(code===""?" · χωρίς άρθρο":"")));
+    });
+  }
+  (items||[]).forEach(function(it){
+    seg("sw",it.id,it.name||"",["Ανανέωση: "+bdGr(it.dateFrom)+" – "+bdGr(it.dateTo)],"Ποσό",it.dateFrom,it.dateTo,it.budget,it.cost);
+  });
+  (contracts||[]).forEach(function(c){
+    var head=["Διαγωνισμός: "+(c.tender||"—")+" · Διάρκεια: "+(c.months!==""&&c.months!=null?c.months:"—")+" μήνες","Σύμβαση: "+bdGr(c.dateFrom)+" – "+bdGr(c.dateTo)];
+    (c.years||[]).forEach(function(y,i){
+      seg("ct",c.id,c.title||"",head,"Έτος "+(i+1),y.from,y.to,(c.budget||[]).filter(function(p){return +p.year===i+1}),y.cost);
+    });
+  });
+  var byArt={},min=null,max=null;
+  order.forEach(function(k){
+    var r=rows[k];(byArt[r.code]=byArt[r.code]||[]).push(r);
+    Object.keys(r.by).forEach(function(y){y=+y;if(min===null||y<min)min=y;if(max===null||y>max)max=y});
+  });
+  Object.keys(byArt).forEach(function(c){byArt[c].sort(function(a,b){return a.desc.localeCompare(b.desc,"el")})});
+  var years=[];if(min!==null)for(var y=min;y<=max;y++)years.push(y);
+  return {byArt:byArt,years:years,warn:warn};
+}
+function bdTotals(rows,years){return years.map(function(y){return r2(rows.reduce(function(a,r){return a+(r.by[y]||0)},0))})}
+/*BD-CALC-END*/
+function bdSel(){
+  var v=S.bdArt;if(v==null){try{v=localStorage.getItem("rl.bdart")}catch(e){}}
+  return v||"all";
+}
+function bdTable(title,sub,rows,years){
+  var tot=bdTotals(rows,years);
+  return '<section class="bds"><h3>'+esc(title)+'</h3>'+(sub?'<p class="hint">'+esc(sub)+'</p>':'')+
+   '<div class="tbl"><table class="bdt"><thead><tr><th>Α/Α</th><th>Λεπτομέρειες Δαπάνης (Περιγραφή)</th><th>Τρόπος Υπολογισμού</th>'+
+   years.map(function(y){return '<th class="num">Προϋπολ.<br>ΕΤΟΣ '+y+'<br>€</th>'}).join("")+'</tr></thead><tbody>'+
+   (rows.length?rows.map(function(r,i){
+     return '<tr><td>'+(i+1)+'</td><td>'+esc(r.desc)+'</td><td class="how">'+r.how.map(esc).join("<br>")+'</td>'+years.map(function(y){return '<td class="num">'+(r.by[y]?bdNum(r.by[y]):"")+'</td>'}).join("")+'</tr>';
+   }).join(""):'<tr><td colspan="'+(3+years.length)+'" class="hint">Δεν υπάρχουν γραμμές για αυτό το άρθρο.</td></tr>')+
+   '<tr class="tot"><td colspan="3">Σύνολα</td>'+tot.map(function(v){return '<td class="num">'+bdNum(v)+'</td>'}).join("")+'</tr></tbody></table></div></section>';
+}
+function renderBd(){
+  var arts=articles(),B=bdBuild(arts,S.items,S.contracts),sel=bdSel(),years=B.years.length?B.years:[new Date().getFullYear()];
+  var all=[];Object.keys(B.byArt).forEach(function(c){all=all.concat(B.byArt[c])});
+  var tot=bdTotals(all,years);
+  $("#stats").innerHTML=years.map(function(y,i){return '<div class="stat"><b class="num" style="font-family:var(--f-display)">'+bdNum(tot[i])+'</b><span>Σύνολο προϋπολογισμού '+y+' (€)</span></div>'}).join("");
+  $("#alerts").innerHTML=B.warn.map(function(w){return '<div class="alert bad"><span>'+esc(w)+'</span></div>'}).join("");
+  var opts='<option value="all">Όλα τα άρθρα</option>'+arts.map(function(a){var n=(B.byArt[a.code]||[]).length;return '<option value="'+esc(a.code)+'"'+(sel===a.code?' selected':'')+'>'+esc(a.code+" — "+a.desc)+(n?" ("+n+")":"")+'</option>'}).join("")+
+    (B.byArt[""]?'<option value="none"'+(sel==="none"?' selected':'')+'>Χωρίς άρθρο ('+B.byArt[""].length+')</option>':'');
+  if(sel==="all")opts=opts.replace('<option value="all">','<option value="all" selected>');
+  $("#chips").innerHTML='<label class="bdsel">Άρθρο <select id="bdArt">'+opts+'</select></label>';
+  var h="";
+  function secFor(a){return bdTable(a.code+" — "+a.desc,"Κατηγορία "+a.cat+(a.catDesc?" · "+a.catDesc:"")+" · Ποσό ανάλυσης ανά έτος: "+(a.split?"ΝΑΙ (κατανομή ανά μήνα στα έτη)":"ΌΧΙ (στο έτος έναρξης)"),B.byArt[a.code]||[],years)}
+  if(sel==="all"){
+    arts.forEach(function(a){if((B.byArt[a.code]||[]).length)h+=secFor(a)});
+    if(B.byArt[""])h+=bdTable("Χωρίς άρθρο","Ποσά που δεν έχουν συνδεθεί με άρθρο προϋπολογισμού (ολόκληρο το ποσό στο έτος έναρξης).",B.byArt[""],years);
+    if(!h)h='<div class="empty"><h2>Δεν υπάρχουν ποσά ακόμα</h2><p>Ο πίνακας συμπληρώνεται αυτόματα από τα επιμέρους ποσά (με άρθρο) που καταχωρείς ανά έτος στις Συμβάσεις και στα Online Renewals.</p></div>';
+  }else if(sel==="none")h=bdTable("Χωρίς άρθρο","Ποσά που δεν έχουν συνδεθεί με άρθρο προϋπολογισμού.",B.byArt[""]||[],years);
+  else{var a=artFind(sel,arts);h=a?secFor(a):""}
+  $("#list").innerHTML=h;
+}
+function bdExport(){
+  if(needX())return;
+  var arts=articles(),B=bdBuild(arts,S.items,S.contracts),years=B.years.length?B.years:[new Date().getFullYear()];
+  var wb=XLSX.utils.book_new(),used={},fmt="#,##0.00";
+  function name(s){s=String(s).replace(/[\\\/\?\*\[\]:]/g,"").trim().slice(0,31)||"Φύλλο";var n=s,k=2;while(used[n.toLowerCase()]){n=s.slice(0,28)+" "+k++}used[n.toLowerCase()]=1;return n}
+  function num(v,f,c){var o={t:"n",v:v,z:fmt};if(f)o.f=f;return o}
+  function colL(i){return XLSX.utils.encode_col(i)}
+  var yh=years.map(function(y){return "Προϋπολ.\nΕΤΟΣ "+y+"\n€"});
+  var sum=[["Άρθρο","Περιγραφή άρθρου","Κατηγορία","Ποσό ανάλυσης ανά έτος"].concat(yh)],codes=[];
+  arts.forEach(function(a){if((B.byArt[a.code]||[]).length)codes.push(a.code)});
+  codes.forEach(function(c){
+    var a=artFind(c,arts),t=bdTotals(B.byArt[c],years);
+    sum.push([a.code,a.desc,(a.cat+" "+a.catDesc).trim(),a.split?"ΝΑΙ":"ΌΧΙ"].concat(t.map(function(v){return num(v)})));
+  });
+  if(B.byArt[""]){sum.push(["—","Χωρίς άρθρο","","ΌΧΙ"].concat(bdTotals(B.byArt[""],years).map(function(v){return num(v)})))}
+  var n=sum.length-1,trow=["Σύνολα","","",""];
+  years.forEach(function(y,i){var L=colL(4+i),t=0;for(var r=1;r<=n;r++)t+=sum[r][4+i].v;trow.push(num(r2(t),"SUM("+L+"2:"+L+(n+1)+")"))});
+  sum.push(trow);
+  var ws0=XLSX.utils.aoa_to_sheet(sum);ws0["!cols"]=[{wch:10},{wch:48},{wch:36},{wch:14}].concat(years.map(function(){return {wch:16}}));
+  XLSX.utils.book_append_sheet(wb,ws0,name("Σύνοψη"));
+  function sheet(title,rows){
+    var aoa=[["Α/Α","Λεπτομέρειες Δαπάνης (Περιγραφή)","Τρόπος Υπολογισμού","","",""].concat(yh)],mer=[{s:{r:0,c:2},e:{r:0,c:5}}];
+    rows.forEach(function(r,i){aoa.push([i+1,r.desc,r.how.join(" | "),"","",""].concat(years.map(function(y){return num(r.by[y]||0)})));mer.push({s:{r:i+1,c:2},e:{r:i+1,c:5}})});
+    var k=rows.length,tr=["Σύνολα","","","","",""];
+    years.forEach(function(y,i){var L=colL(6+i);tr.push(num(bdTotals(rows,[y])[0],k?"SUM("+L+"2:"+L+(k+1)+")":null))});
+    aoa.push(tr);mer.push({s:{r:k+1,c:0},e:{r:k+1,c:5}});
+    var ws=XLSX.utils.aoa_to_sheet(aoa);ws["!merges"]=mer;
+    ws["!cols"]=[{wch:8},{wch:44},{wch:30},{wch:14},{wch:14},{wch:14}].concat(years.map(function(){return {wch:16}}));
+    XLSX.utils.book_append_sheet(wb,ws,name(title));
+  }
+  codes.forEach(function(c){var a=artFind(c,arts);sheet(a.code+" "+a.desc,B.byArt[c])});
+  if(B.byArt[""])sheet("Χωρίς άρθρο",B.byArt[""]);
+  if(!codes.length&&!B.byArt[""]){toast("Δεν υπάρχουν ποσά προϋπολογισμού για εξαγωγή");return}
+  offer("budget-"+todayIso()+".xlsx",XLSX.write(wb,{bookType:"xlsx",type:"array"}));
 }
 
 /* =============== CONTRACTS (Συμβάσεις) =============== */
@@ -966,15 +1151,19 @@ function maybeDigest(){
 /* ---------- shared render ---------- */
 function render(){
   var ct=S.cat==="ct";
-  $("#tabSw").setAttribute("aria-selected",String(!ct));$("#tabCt").setAttribute("aria-selected",String(ct));
+  var bd=S.cat==="bd";ct=ct&&!bd;
+  $("#tabSw").setAttribute("aria-selected",String(!ct&&!bd));$("#tabCt").setAttribute("aria-selected",String(ct));
+  var tb=$("#tabBd");if(tb)tb.setAttribute("aria-selected",String(bd));
+  ["#btnAdd","#btnImport"].forEach(function(q){var n=$(q);if(n)n.style.display=bd?"none":""});
+  $("#q").style.display=bd?"none":"";
   $("#cntSw").textContent=S.items.length||"";$("#cntCt").textContent=S.contracts.length||"";
   $("#btnAdd").textContent=ct?"+ Νέα σύμβαση":"+ Add software";
   $("#btnImport").textContent=ct?"Εισαγωγή Excel":"Import Excel";
-  $("#btnExport").textContent=ct?"Εξαγωγή":"Export";
+  $("#btnExport").textContent=bd?"Εξαγωγή Excel":ct?"Εξαγωγή":"Export";
   $("#q").placeholder=ct?"Αναζήτηση σύμβασης, ανάδοχου, αρ. διαγωνισμού…":"Search name, vendor, website…";
-  $("#stats").setAttribute("lang",ct?"el":"en");
-  if(ct)renderCt();else renderSw();
-  $("#note").textContent=S.db?(ct?"Κοινές εγγραφές, αποθηκευμένες στον server. Οι υπενθυμίσεις στέλνονται και με email.":"Shared records, saved on the server. Reminders are also sent by email."):"Storage is not available in this view, so changes last only until you close the page. · Η αποθήκευση δεν είναι διαθέσιμη εδώ.";
+  $("#stats").setAttribute("lang",ct||bd?"el":"en");
+  if(bd)renderBd();else if(ct)renderCt();else renderSw();
+  $("#note").textContent=bd?"Ο πίνακας υπολογίζεται αυτόματα από τα επιμέρους ποσά κάθε έτους των Συμβάσεων και των Online Renewals. Άρθρα με ανάλυση ανά έτος (ΝΑΙ): το ποσό κατανέμεται ανά μήνα στα ημερολογιακά έτη της περιόδου. Τα υπόλοιπα (ΌΧΙ): ολόκληρο στο έτος έναρξης.":S.db?(ct?"Κοινές εγγραφές, αποθηκευμένες στον server. Οι υπενθυμίσεις στέλνονται και με email.":"Shared records, saved on the server. Reminders are also sent by email."):"Storage is not available in this view, so changes last only until you close the page. · Η αποθήκευση δεν είναι διαθέσιμη εδώ.";
   var ov=$("#overlay");
   if(S.open&&!ov.hidden&&ov.dataset.kind==="detail"&&!getItem(S.openCat||"sw",S.open))closePanel();
 }
@@ -1063,7 +1252,7 @@ function exportCsv(){if(S.cat==="ct")return ctExportCsv();
 function templateXlsx(){if(needX())return;if(S.cat==="ct")return ctTemplate();
   offer("renewal-ledger-template.xlsx",wbBuffer([["Example App","Team chat","Example Ltd","https://example.com","admin@example.com","2026-01-01","2026-12-31",120,30,"a@example.com, b@example.com","","","",""]]));
 }
-function showExport(){if(S.cat==="ct")return ctShowExport();
+function showExport(){if(S.cat==="bd")return bdExport();if(S.cat==="ct")return ctShowExport();
   openPanel('<div class="ph"><h2>Export &amp; import</h2><button class="btn small" type="button" data-act="close">Close</button></div>'+
    '<div class="sec"><h3>Export all software</h3><p class="hint">Includes every field, the reminder setting, attachment file names and the current status. Keep the file safe.</p><div class="actions"><button class="btn primary" type="button" data-act="xlsx">Excel (.xlsx)</button><button class="btn" type="button" data-act="csv">CSV</button></div></div>'+
    '<div class="sec"><h3>Import template</h3><p class="hint">Use these column headings: '+HEAD.slice(0,8).join(", ")+'. Optional: Reminder (days before), Notification emails (several separated by commas). Dates can be dd/mm/yyyy or yyyy-mm-dd.</p><div class="actions"><button class="btn" type="button" data-act="tpl">Download template</button><button class="btn" type="button" data-act="pick">Choose Excel file to import…</button></div></div>',"export");
@@ -1140,6 +1329,7 @@ ROOT.addEventListener("keydown",function(ev){
 ROOT.addEventListener("input",function(ev){var t=ev.target;if(t&&t.id&&t.id.indexOf("bp_amt_")===0)bpLive()});
 ROOT.addEventListener("change",async function(ev){
   var t=ev.target;
+  if(t.id==="bdArt"){S.bdArt=t.value;try{localStorage.setItem("rl.bdart",t.value)}catch(e){}render();return}
   if(t.dataset&&t.dataset.col){toggleCol(t.dataset.col,t.checked);return}
   if(t.id&&t.id.indexOf("bp_amt_")===0){bpLive();return}
   if(t.id==="remSel"){var it=byId(S.open);if(it){var rec=norm(it);rec.remindDays=+t.value;rec.attachments=it.attachments;rec.history=it.history;rec.createdAt=it.createdAt;rec.sample=it.sample;if(await save(it.id,rec))toast("Reminder set to "+t.value+" days before expiry")}}
@@ -1166,7 +1356,7 @@ async function loadSample(){
 
 /* ---------- start ---------- */
 async function start(){
-  try{if(localStorage.getItem("rl.cat")==="ct")S.cat="ct"}catch(e){}
+  try{var rc=localStorage.getItem("rl.cat");if(rc==="ct"||rc==="bd")S.cat=rc}catch(e){}
   render();
   var c=window.claude;if(!c||!c.use)return;
   try{S.assets=await c.use("assets")}catch(e){}

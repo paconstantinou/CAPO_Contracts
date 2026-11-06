@@ -156,3 +156,13 @@
 #rl-app .bp select{min-width:200px;flex:1 1 220px;max-width:100%}
 #rl-app tr.bpr td{background:var(--surface2)}
 #rl-app input[readonly]{background:var(--surface2);color:var(--muted)}
+
+/* budget sheet */
+#rl-app .bds{margin:0 0 22px}
+#rl-app .bds h3{margin:0 0 4px;font-size:16px}
+#rl-app .bdsel{display:inline-flex;gap:8px;align-items:center;font-weight:600}
+#rl-app .bdsel select{min-width:260px;max-width:100%}
+#rl-app table.bdt{width:100%}
+#rl-app table.bdt th.num,#rl-app table.bdt td.num{text-align:right;white-space:nowrap}
+#rl-app table.bdt td.how{white-space:normal;font-size:12px;color:var(--muted);min-width:280px}
+#rl-app table.bdt tr.tot td{font-weight:700;background:var(--surface2)}
