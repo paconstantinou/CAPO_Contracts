@@ -38,7 +38,7 @@ function norm(o){
   return {name:String(o.name||"").trim(),description:String(o.description||"").trim(),vendor:String(o.vendor||"").trim(),
     website:String(o.website||"").trim(),username:String(o.username||"").trim(),emails:String(o.emails||"").trim(),
     dateFrom:o.dateFrom||"",dateTo:o.dateTo||"",cost:o.cost===""||o.cost==null?0:Number(o.cost),
-    remindDays:+o.remindDays||30,attachments:o.attachments||[],history:o.history||[],milestones:o.milestones||[],createdAt:o.createdAt||Date.now(),sample:!!o.sample};
+    remindDays:+o.remindDays||30,attachments:o.attachments||[],history:o.history||[],milestones:o.milestones||[],budget:o.budget||[],createdAt:o.createdAt||Date.now(),sample:!!o.sample};
 }
 function uid(){return "s"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 
@@ -89,7 +89,7 @@ function renderSw(){
   if(du.length)al+='<div class="alert"><span>Renewal due: '+names(du)+'</span><button type="button" data-f="due">Show</button></div>';
   $("#alerts").innerHTML=al+msAlertHtml("sw")+crossAlert("sw");
   var chips=[["all","All"],["expired","Expired"],["due","Due soon"],["active","Active"]];
-  $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("")+'<button type="button" class="chip" data-act="cols">⚙ Columns</button>';
+  $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("")+'<button type="button" class="chip" data-act="cols">⚙ Columns</button>'+(window.RL_CFG?'':'<button type="button" class="chip" data-act="arts">Budget articles</button>');
   var rows=filtered(),h="";
   if(!all.length){
     h='<div class="empty"><h2>No software added yet</h2><p>Add your first subscription one field at a time, or import many at once from an Excel file.</p><div class="actions"><button class="btn primary" type="button" id="emAdd">+ Add software</button><button class="btn" type="button" id="emImp">Import Excel</button><button class="btn" type="button" id="emSample">Load 3 sample rows</button></div></div>';
@@ -137,7 +137,7 @@ function showDetail(id){
    '<div class="sec"><h3>Reminder</h3><label class="f">Alert me before expiry<select id="remSel">'+opts+'</select></label><span class="hint">The alert appears at the top of the ledger from this point until the date passes.</span></div>'+
    '<div class="sec"><h3>Attachments</h3>'+(files?'<ul class="files">'+files+'</ul>':'<span class="hint">No invoices or receipts attached yet.</span>')+
    '<div><button class="btn" type="button" data-act="attach"'+(S.assets?'':' disabled')+'>+ Attach files</button> <span class="hint">'+(S.assets?'Invoices, receipts, PDFs, images (up to 20 MB each).':'Uploads are not available in this view.')+'</span></div></div>'+
-   msSection("sw",it)+
+   bpDetail(it,0)+msSection("sw",it)+
    '<div class="sec"><h3>Renewal</h3><div><button class="btn primary" type="button" data-act="renew">Renew…</button></div>'+
    (hist?'<div class="tbl"><table><thead><tr><th>Previous period</th><th>Cost excl. VAT</th></tr></thead><tbody>'+hist+'</tbody></table></div>':'')+'</div>'+
    '<div class="sec"><div class="actions"><button class="btn" type="button" data-act="edit">Edit details</button><button class="btn danger" type="button" data-act="del">Delete</button></div><div id="delbox"></div></div>'
@@ -161,6 +161,8 @@ function collect(){
   var w=S.wiz;
   FIELDS.forEach(function(f){var el=$("#w_"+f.k);if(el)w.data[f.k]=el.value});
   var r=$("#w_remind");if(r)w.data.remindDays=+r.value;
+  bpCollect(w.data);
+  if(bpHas(w.data))w.data.cost=bpSum(w.data.budget);
 }
 function validate(keys){
   var d=S.wiz.data;
@@ -173,14 +175,17 @@ function validate(keys){
     if(f.num&&v!==""&&v!=null&&(!isFinite(Number(v))||Number(v)<0))return "Enter the cost as a number, for example 120.50.";
   }
   if(keys.indexOf("dateTo")>=0&&d.dateFrom&&d.dateTo&&d.dateTo<d.dateFrom)return "Date To must be on or after Date From.";
+  if(keys.indexOf("cost")>=0||keys.length>3){var be=bpErr(d,0);if(be)return be}
   return "";
 }
+function bpSec(d){return '<div class="sec"><h3>Cost breakdown (optional)</h3><p class="hint">Split the cost into partial amounts per year, each with its budget article. When you add partial amounts, the cost is their sum.</p>'+bpBlock(d,null,0,msYears("sw",d))+'</div>'}
 function drawWizard(){
   var w=S.wiz,d=w.data,h;
   var head='<div class="ph"><h2>'+(w.id?"Edit software":"Add software")+'</h2><button class="btn small" type="button" data-act="close">Cancel</button></div>';
   if(w.mode==="full"){
     h=head+'<div style="display:grid;gap:12px">'+FIELDS.map(function(f){
-      return '<label class="f">'+f.l+(f.req?' *':'')+inputHtml(f,d[f.k],"w_")+'</label>';
+      var ih=inputHtml(f,d[f.k],"w_");if(f.k==="cost"&&bpHas(d))ih=ih.replace("<input","<input readonly");
+      return '<label class="f">'+f.l+(f.req?' *':'')+ih+'</label>'+(f.k==="cost"?'</div>'+bpSec(d)+'<div style="display:grid;gap:12px">':'');
     }).join("")+'<label class="f">Reminder<small>Alert me before expiry</small>'+remindSel(d.remindDays||30,"w_remind")+'</label></div>'+
     '<div class="err" id="werr">'+esc(w.err)+'</div>'+
     '<div class="actions"><button class="btn primary" type="button" data-act="wsave">Save</button>'+(w.id?'':'<button class="btn" type="button" data-act="wstep">Guided mode</button>')+'</div>';
@@ -188,7 +193,7 @@ function drawWizard(){
     var total=FIELDS.length+1,i=w.i,last=i===total-1;
     var body;
     if(i<FIELDS.length){var f=FIELDS[i];body='<label class="f"><span class="big-q">'+f.q+(f.req?'':' <small>(optional)</small>')+'</span>'+inputHtml(f,d[f.k],"w_")+'</label>'}
-    else body='<label class="f"><span class="big-q">When should we alert you before it expires?</span>'+remindSel(d.remindDays||30,"w_remind")+'</label>';
+    else body='<label class="f"><span class="big-q">When should we alert you before it expires?</span>'+remindSel(d.remindDays||30,"w_remind")+'</label>'+bpSec(d);
     h=head+'<div class="steps" aria-hidden="true"><i style="width:'+Math.round((i+1)/total*100)+'%"></i></div><div class="hint">Step '+(i+1)+' of '+total+'</div>'+body+
     '<div class="err" id="werr">'+esc(w.err)+'</div>'+
     '<div class="actions">'+(i>0?'<button class="btn" type="button" data-act="wback">Back</button>':'')+
@@ -203,6 +208,7 @@ async function wizSave(){
   if(e){w.err=e;var x=$("#werr");if(x)x.textContent=e;return}
   var base=w.id?byId(w.id):{};
   var rec=norm(Object.assign({},base,w.data));
+  rec.budget=bpClean(w.data);if(rec.budget.length)rec.cost=bpSum(rec.budget);
   var id=w.id||uid();
   if(await save(id,rec)){closePanel();toast(w.id?"Saved":"Added "+rec.name);if(!w.id)showDetail(id)}
 }
@@ -234,7 +240,7 @@ async function doRenew(id){
   if(err){$("#rerr").textContent=err;return}
   var rec=norm(it);
   rec.history=(it.history||[]).concat([{from:it.dateFrom,to:it.dateTo,cost:Number(it.cost)||0,renewedOn:todayIso()}]);
-  rec.dateFrom=f;rec.dateTo=t;rec.cost=Number(c);rec.sample=it.sample;
+  rec.dateFrom=f;rec.dateTo=t;rec.cost=Number(c);rec.budget=[];rec.sample=it.sample;
   if(await save(id,rec)){toast("Renewed until "+fmtDate(t));showDetail(id)}
 }
 
@@ -522,6 +528,69 @@ function toggleCol(k,on){
 function resetCols(){S.cols[S.cat]=COLS[S.cat].filter(function(x){return x.d}).map(function(x){return x.k});S.sort[S.cat]={k:"dateTo",dir:1};savePrefs();render();showCols()}
 var PREFS=loadPrefs();S.cols=PREFS.cols;S.sort=PREFS.sort;
 
+/* ---------- budget breakdown: partial amounts per year, each with a budget article ---------- */
+var DEFAULT_ARTICLES=[];
+function r2(x){return Math.round((Number(x)||0)*100)/100}
+function articles(){
+  if(window.RL_CFG&&Array.isArray(window.RL_CFG.articles))return window.RL_CFG.articles;
+  var a=null;try{a=JSON.parse(localStorage.getItem("rl.articles")||"null")}catch(e){}
+  return Array.isArray(a)?a:DEFAULT_ARTICLES;
+}
+function artOpts(v,el){
+  var l=articles().slice();if(v&&l.indexOf(v)<0)l.push(v);
+  return '<option value="">'+(el?"— Άρθρο προϋπολογισμού —":"— Budget article —")+'</option>'+l.map(function(a){return '<option value="'+esc(a)+'"'+(a===v?' selected':'')+'>'+esc(a)+'</option>'}).join("");
+}
+function bpHas(d,year){return (d.budget||[]).some(function(p){return year==null||+p.year===year})}
+function bpSum(list,year){return r2((list||[]).filter(function(p){return year==null||+p.year===year}).reduce(function(a,p){return a+(Number(p.amount)||0)},0))}
+function bpCollect(d){(d.budget||[]).forEach(function(p,i){var a=$("#bp_amt_"+i),r=$("#bp_art_"+i),y=$("#bp_yr_"+i);if(a)p.amount=a.value;if(r)p.article=r.value;if(y)p.year=+y.value||1})}
+function bpClean(d){return (d.budget||[]).filter(function(p){return p.amount!==""&&p.amount!=null&&isFinite(Number(p.amount))}).map(function(p){return {year:Math.max(1,+p.year||1),amount:r2(p.amount),article:String(p.article||"")}})}
+function bpErr(d,el){
+  for(var i=0;i<(d.budget||[]).length;i++){var p=d.budget[i];
+    if(p.amount===""||p.amount==null){if(p.article)return el?"Συμπλήρωσε το ποσό σε κάθε επιμέρους γραμμή.":"Enter an amount on every partial amount line.";continue}
+    if(!isFinite(Number(p.amount))||Number(p.amount)<0)return el?"Τα επιμέρους ποσά πρέπει να είναι αριθμοί, π.χ. 500.50.":"Partial amounts must be numbers, for example 500.50."}
+  return "";
+}
+/* rows for one year (contracts) or all rows with a year selector (software) */
+function bpBlock(d,year,el,nYears){
+  var rows=(d.budget||[]).map(function(p,i){return {p:p,i:i}}).filter(function(x){return year==null||+x.p.year===year});
+  var h='<div class="bpb">'+rows.map(function(x){
+    var ysel=year==null?'<select id="bp_yr_'+x.i+'" title="'+(el?"Έτος":"Year")+'">'+Array.apply(null,Array(Math.max(nYears,+x.p.year||1))).map(function(_,k){return '<option value="'+(k+1)+'"'+((+x.p.year||1)===k+1?' selected':'')+'>'+(el?"Έτος ":"Year ")+(k+1)+'</option>'}).join("")+'</select>':'';
+    return '<div class="bp">'+ysel+'<input id="bp_amt_'+x.i+'" type="number" step="0.01" min="0" inputmode="decimal" placeholder="'+(el?"Ποσό (€)":"Amount (€)")+'" value="'+esc(x.p.amount)+'"><select id="bp_art_'+x.i+'">'+artOpts(x.p.article,el)+'</select>'+
+      '<button type="button" class="btn small danger" data-act="bpdel" data-i="'+x.i+'" title="'+(el?"Αφαίρεση":"Remove")+'">✕</button></div>'}).join("")+
+    '<div><button type="button" class="btn small" data-act="bpadd"'+(year!=null?' data-year="'+year+'"':'')+'>'+(el?"+ Επιμέρους ποσό":"+ Add partial amount")+'</button></div></div>';
+  return h;
+}
+function bpDetail(it,el){
+  var l=it.budget||[];if(!l.length)return "";
+  var years=[];l.forEach(function(p){if(years.indexOf(+p.year)<0)years.push(+p.year)});years.sort(function(a,b){return a-b});
+  return '<div class="sec"><h3>'+(el?"Επιμέρους ποσά ανά έτος":"Cost breakdown")+'</h3>'+years.map(function(y){
+    var rows=l.filter(function(p){return +p.year===y});
+    return '<div class="msyear"><div class="msyh"><b>'+(el?"Έτος ":"Year ")+y+'</b><span class="num">'+(el?"Σύνολο ":"Total ")+(el?mc(bpSum(l,y)):money(bpSum(l,y)))+'</span></div><ul class="files">'+rows.map(function(p){
+      return '<li><span>'+esc(p.article||(el?"(χωρίς άρθρο)":"(no article)"))+'</span><span class="num">'+(el?mc(p.amount):money(p.amount))+'</span></li>'}).join("")+'</ul></div>'}).join("")+'</div>';
+}
+function bpText(it){
+  return (it.budget||[]).map(function(p){return "Έτος "+p.year+": "+Number(p.amount).toFixed(2)+(p.article?" ["+p.article+"]":"")}).join("; ");
+}
+function showArticles(){
+  var el=S.cat==="ct";
+  openPanel('<div class="ph"><h2>'+(el?"Άρθρα προϋπολογισμού":"Budget articles")+'</h2><button class="btn small" type="button" data-act="close">'+(el?"Κλείσιμο":"Close")+'</button></div>'+
+   '<p class="hint">'+(el?"Ένα άρθρο ανά γραμμή (π.χ. «2310 – Συντήρηση λογισμικού»). Εμφανίζονται στη λίστα επιλογής των επιμέρους ποσών.":"One article per line. They appear in the drop-down of the partial amounts.")+'</p>'+
+   '<textarea id="artText" rows="14" style="width:100%">'+esc(articles().join("\n"))+'</textarea>'+
+   '<div class="actions"><button class="btn primary" type="button" data-act="artsave">'+(el?"Αποθήκευση":"Save")+'</button></div>',"arts");
+}
+function saveArticles(){
+  var seen={},l=[];$("#artText").value.split(/\r?\n/).forEach(function(x){x=x.trim().slice(0,200);if(x&&!seen[x]){seen[x]=1;l.push(x)}});
+  try{localStorage.setItem("rl.articles",JSON.stringify(l.slice(0,500)))}catch(e){}
+  closePanel();toast(S.cat==="ct"?"Τα άρθρα αποθηκεύτηκαν":"Articles saved");
+}
+function bpRedraw(){
+  if(S.cat==="ct"){ctCollect();ctRefresh(true)}else{collect();drawWizard()}
+}
+function bpLive(){
+  if(S.cat==="ct"){ctCollect();(S.cw.d.years||[]).forEach(function(y,i){var c=$("#cy_cost_"+i);if(c&&bpHas(S.cw.d,i+1))c.value=y.cost});var sp=$("#cSum");if(sp)sp.textContent=mc(ctSum(S.cw.d.years))}
+  else{collect();var c=$("#w_cost");if(c&&bpHas(S.wiz.data))c.value=bpSum(S.wiz.data.budget)}
+}
+
 /* =============== CONTRACTS (Συμβάσεις) =============== */
 var REMIND_CT=[14,30,60,90,120,180];
 var CT_BASE=[
@@ -608,7 +677,7 @@ function renderCt(){
   if(lines.length>4)al+='<div class="alert"><span>+'+(lines.length-4)+' ακόμη</span><button type="button" data-f="due">Προβολή</button></div>';
   $("#alerts").innerHTML=al+msAlertHtml("ct")+crossAlert("ct");
   var chips=[["all","Όλες"],["expired","Έληξαν"],["due","Λήγουν σύντομα"],["active","Σε ισχύ"]];
-  $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("")+'<button type="button" class="chip" data-act="cols">⚙ Στήλες</button>';
+  $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("")+'<button type="button" class="chip" data-act="cols">⚙ Στήλες</button>'+(window.RL_CFG?'':'<button type="button" class="chip" data-act="arts">Άρθρα προϋπολογισμού</button>');
   var rows=ctFiltered(),h="";
   if(!all.length){
     h='<div class="empty"><h2>Δεν υπάρχουν συμβάσεις ακόμα</h2><p>Πρόσθεσε την πρώτη σύμβαση πεδίο-πεδίο ή εισήγαγε πολλές μαζί από αρχείο Excel. Τα έτη και οι υπενθυμίσεις δημιουργούνται αυτόματα από τη διάρκεια.</p><div class="actions"><button class="btn primary" type="button" id="emAdd">+ Νέα σύμβαση</button><button class="btn" type="button" id="emImp">Εισαγωγή Excel</button><button class="btn" type="button" id="emSample">Φόρτωση 2 δειγμάτων</button></div></div>';
@@ -649,7 +718,7 @@ function showCtDetail(id){
    '<span class="hint">Η υπενθύμιση κάθε έτους εμφανίζεται στην κορυφή και στο παράθυρο ειδοποιήσεων από την επιλεγμένη ημερομηνία μέχρι τη λήξη του έτους.</span></div>'+
    '<div class="sec"><h3>Συνημμένα</h3>'+(files?'<ul class="files">'+files+'</ul>':'<span class="hint">Δεν υπάρχουν συνημμένα (συμβάσεις, τιμολόγια, αποδείξεις).</span>')+
    '<div><button class="btn" type="button" data-act="attach"'+(S.assets?'':' disabled')+'>+ Προσθήκη αρχείων</button> <span class="hint">'+(S.assets?'PDF, εικόνες, CSV ή κείμενο, έως 20 MB το καθένα.':'Η μεταφόρτωση δεν είναι διαθέσιμη εδώ.')+'</span></div></div>'+
-   msSection("ct",c)+
+   bpDetail(c,1)+msSection("ct",c)+
    '<div class="sec"><div class="actions"><button class="btn" type="button" data-act="edit">Επεξεργασία</button><button class="btn danger" type="button" data-act="ctdel">Διαγραφή</button></div><div id="delbox"></div></div>'
   ,"detail",true);
 }
@@ -674,6 +743,8 @@ function ctCollect(){
     var a=$("#cy_from_"+i),b=$("#cy_to_"+i),c=$("#cy_cost_"+i),r=$("#cy_rem_"+i);
     if(a)y.from=a.value;if(b)y.to=b.value;if(c)y.cost=c.value;if(r)y.remind=+r.value;
   });
+  bpCollect(d);
+  (d.years||[]).forEach(function(y,i){if(bpHas(d,i+1))y.cost=bpSum(d.budget,i+1)});
 }
 function ctRegen(){var d=S.cw.d,g=buildYears(d.dateFrom,d.months,d.years);if(!g.length)return;d.years=g;d.dateTo=g[g.length-1].to}
 function ctApplyEnd(){var d=S.cw.d,ys=d.years;if(ys&&ys.length&&parseIso(d.dateTo)&&d.dateTo>=ys[ys.length-1].from)ys[ys.length-1].to=d.dateTo}
@@ -686,9 +757,11 @@ function ctYearsTable(){
   if(!ys.length)return '<p class="hint">Συμπλήρωσε τη διάρκεια (μήνες) και την ημερομηνία έναρξης για να δημιουργηθούν τα έτη.</p>';
   return '<div class="tbl"><table><thead><tr><th>Έτος</th><th>ΗΜΕΡ. ΕΝΑΡΞΗΣ</th><th>ΗΜΕΡ. ΛΗΞΗΣ</th><th>ΚΟΣΤΟΣ (€)</th><th>Υπενθύμιση</th></tr></thead><tbody>'+
    ys.map(function(y,i){
+     var hp=bpHas(S.cw.d,i+1);
      return '<tr><td>Έτος '+(i+1)+'</td><td><input id="cy_from_'+i+'" type="date" value="'+esc(y.from)+'"></td><td><input id="cy_to_'+i+'" type="date" value="'+esc(y.to)+'"></td>'+
-       '<td><input id="cy_cost_'+i+'" type="number" step="0.01" min="0" inputmode="decimal" value="'+esc(y.cost)+'"></td>'+
-       '<td><select id="cy_rem_'+i+'">'+remOpts(y.remind,REMIND_CT," ημέρες πριν")+'</select></td></tr>';
+       '<td><input id="cy_cost_'+i+'" type="number" step="0.01" min="0" inputmode="decimal" value="'+esc(hp?bpSum(S.cw.d.budget,i+1):y.cost)+'"'+(hp?' readonly title="Άθροισμα επιμέρους ποσών"':'')+'></td>'+
+       '<td><select id="cy_rem_'+i+'">'+remOpts(y.remind,REMIND_CT," ημέρες πριν")+'</select></td></tr>'+
+       '<tr class="bpr"><td></td><td colspan="4"><span class="hint">Επιμέρους ποσά έτους '+(i+1)+(hp?'':' (προαιρετικό)')+'</span>'+bpBlock(S.cw.d,i+1,1,ys.length)+'</td></tr>';
    }).join("")+'</tbody></table></div><p class="hint">Άθροισμα κόστους ετών: <b id="cSum">'+mc(ctSum(ys))+'</b></p>';
 }
 function ctDraw(){
@@ -736,11 +809,12 @@ function ctRecord(d){
   var ys=(d.years||[]).map(function(y){return {from:y.from,to:y.to,cost:(y.cost===""||y.cost==null)?"":Number(y.cost),remind:+y.remind||30}});
   var blank=d.cost==null||String(d.cost).trim()==="";
   return {title:String(d.title||"").trim(),tender:String(d.tender||"").trim(),description:String(d.description||"").trim(),contractor:String(d.contractor||"").trim(),coordinator:String(d.coordinator||"").trim(),
-    months:Number(d.months),dateFrom:d.dateFrom,dateTo:d.dateTo,cost:blank?ctSum(ys):Number(d.cost),years:ys,emails:String(d.emails||"").trim(),attachments:d.attachments||[],milestones:d.milestones||[],createdAt:d.createdAt||Date.now(),sample:!!d.sample};
+    months:Number(d.months),dateFrom:d.dateFrom,dateTo:d.dateTo,cost:blank?ctSum(ys):Number(d.cost),years:ys,budget:bpClean(d),emails:String(d.emails||"").trim(),attachments:d.attachments||[],milestones:d.milestones||[],createdAt:d.createdAt||Date.now(),sample:!!d.sample};
 }
 async function ctSave(){
   ctCollect();var w=S.cw,d=w.d;
   var e=ctValidateBase(CT_BASE.map(function(f){return f.k}));
+  if(!e)e=bpErr(d,1);
   if(!e){
     if(!(d.years||[]).length)d.years=buildYears(d.dateFrom,d.months);
     for(var i=0;i<d.years.length&&!e;i++){
@@ -822,14 +896,14 @@ function showCtImport(rows){
 function ctHead(n){
   var h=["ΣΥΜΒΑΣΗ","ΑΡΙΘΜΟΣ ΔΙΑΓΩΝΙΣΜΟΥ","ΠΕΡΙΓΡΑΦΗ","ΑΝΑΔΟΧΟΣ","ΣΥΝΤΟΝΙΣΤΗΣ ΣΥΜΒΑΣΗΣ","ΔΙΑΡΚΕΙΑ ΣΥΜΒΑΣΗΣ (ΜΗΝΕΣ)","ΗΜΕΡ. ΕΝΑΡΞΗΣ","ΗΜΕΡ. ΛΗΞΗΣ","ΚΟΣΤΟΣ"];
   for(var i=1;i<=n;i++)h.push("ΕΤΟΣ "+i+" - ΗΜΕΡ.ΕΝΑΡΞΗΣ","ΕΤΟΣ "+i+" - ΗΜΕΡ.ΛΗΞΗΣ","ΕΤΟΣ "+i+" - ΚΟΣΤΟΣ","ΕΤΟΣ "+i+" - ΥΠΕΝΘΥΜΙΣΗ (ΗΜΕΡΕΣ ΠΡΙΝ)");
-  h.push("ΣΥΝΗΜΜΕΝΑ","EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ","MILESTONES","ΚΑΤΑΣΤΑΣΗ");return h;
+  h.push("ΣΥΝΗΜΜΕΝΑ","EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ","ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ","MILESTONES","ΚΑΤΑΣΤΑΣΗ");return h;
 }
 function ctMaxYears(){return S.contracts.reduce(function(a,c){return Math.max(a,(c.years||[]).length)},1)}
 function ctRowsOut(n){
   return S.contracts.slice().sort(function(a,b){return (a.dateTo||"").localeCompare(b.dateTo||"")}).map(function(c){
     var r=[c.title,c.tender,c.description,c.contractor,c.coordinator,c.months,c.dateFrom,c.dateTo,c.cost],ys=c.years||[];
     for(var i=0;i<n;i++){var y=ys[i]||{};r.push(y.from||"",y.to||"",y.cost===undefined?"":y.cost,y.remind||"")}
-    r.push((c.attachments||[]).map(function(a){return a.name}).join("; "),c.emails||"",msText(c),ctInfo(c).t);
+    r.push((c.attachments||[]).map(function(a){return a.name}).join("; "),c.emails||"",bpText(c),msText(c),ctInfo(c).t);
     return r;
   });
 }
@@ -846,7 +920,7 @@ function ctExportCsv(){
   offer("contracts-"+todayIso()+".csv","﻿"+[ctHead(n)].concat(ctRowsOut(n)).map(function(r){return r.map(q).join(",")}).join("\r\n"));
 }
 function ctTemplate(){if(needX())return;
-  var ex=["Παράδειγμα σύμβασης","12/2026","Περιγραφή","Εταιρεία Α","Όνομα Επώνυμο",24,"2026-01-01","2027-12-31",24000,"2026-01-01","2026-12-31",12000,30,"2027-01-01","2027-12-31",12000,30,"","a@example.com, b@example.com","",""];
+  var ex=["Παράδειγμα σύμβασης","12/2026","Περιγραφή","Εταιρεία Α","Όνομα Επώνυμο",24,"2026-01-01","2027-12-31",24000,"2026-01-01","2026-12-31",12000,30,"2027-01-01","2027-12-31",12000,30,"","a@example.com, b@example.com","","",""];
   offer("contracts-template.xlsx",ctWb(ctHead(2),[ex]));
 }
 function ctShowExport(){
@@ -963,10 +1037,10 @@ function needX(){
   return true;
 }
 /* ---------- export ---------- */
-var HEAD=["Software Name","Description","Vendor","Website","Username","Date From","Date To","Cost excl. VAT (€)","Reminder (days before)","Notification emails","Attachments","Milestones","Status"];
+var HEAD=["Software Name","Description","Vendor","Website","Username","Date From","Date To","Cost excl. VAT (€)","Reminder (days before)","Notification emails","Cost breakdown","Attachments","Milestones","Status"];
 function rowsOut(){
   return S.items.slice().sort(function(a,b){return (a.dateTo||"").localeCompare(b.dateTo||"")}).map(function(i){
-    return [i.name,i.description,i.vendor,i.website,i.username,i.dateFrom,i.dateTo,Number(i.cost)||0,i.remindDays,i.emails||"",(i.attachments||[]).map(function(a){return a.name}).join("; "),msText(i),status(i).t];
+    return [i.name,i.description,i.vendor,i.website,i.username,i.dateFrom,i.dateTo,Number(i.cost)||0,i.remindDays,i.emails||"",bpText(i),(i.attachments||[]).map(function(a){return a.name}).join("; "),msText(i),status(i).t];
   });
 }
 async function offer(name,data){
@@ -987,7 +1061,7 @@ function exportCsv(){if(S.cat==="ct")return ctExportCsv();
   offer("renewal-ledger-"+todayIso()+".csv","﻿"+[HEAD].concat(rowsOut()).map(function(r){return r.map(q).join(",")}).join("\r\n"));
 }
 function templateXlsx(){if(needX())return;if(S.cat==="ct")return ctTemplate();
-  offer("renewal-ledger-template.xlsx",wbBuffer([["Example App","Team chat","Example Ltd","https://example.com","admin@example.com","2026-01-01","2026-12-31",120,30,"a@example.com, b@example.com","","",""]]));
+  offer("renewal-ledger-template.xlsx",wbBuffer([["Example App","Team chat","Example Ltd","https://example.com","admin@example.com","2026-01-01","2026-12-31",120,30,"a@example.com, b@example.com","","","",""]]));
 }
 function showExport(){if(S.cat==="ct")return ctShowExport();
   openPanel('<div class="ph"><h2>Export &amp; import</h2><button class="btn small" type="button" data-act="close">Close</button></div>'+
@@ -1027,6 +1101,10 @@ ROOT.addEventListener("click",async function(ev){
     case "renewid":S.open=b.dataset.id;S.openCat="sw";showRenew(b.dataset.id);break;
     case "openid":reopen(b.dataset.cat||"sw",b.dataset.id);break;
     case "cols":showCols();break;
+    case "arts":showArticles();break;
+    case "artsave":saveArticles();break;
+    case "bpadd":{var dd=S.cat==="ct"?(ctCollect(),S.cw.d):(collect(),S.wiz.data);dd.budget=dd.budget||[];dd.budget.push({year:+b.dataset.year||1,amount:"",article:""});bpRedraw();break}
+    case "bpdel":{var dd2=S.cat==="ct"?(ctCollect(),S.cw.d):(collect(),S.wiz.data);dd2.budget.splice(+b.dataset.i,1);if(S.cat==="ct")(dd2.years||[]).forEach(function(y,i){if(!bpHas(dd2,i+1)&&false)y.cost=""});bpRedraw();break}
     case "colsreset":resetCols();break;
     case "attach":$("#fileAttach").click();break;
     case "msadd":showMsForm(S.openCat||"sw",S.open,null,+b.dataset.year||1);break;
@@ -1059,9 +1137,11 @@ ROOT.addEventListener("keydown",function(ev){
   if(ev.key==="Enter"&&S.cw&&S.cw.mode==="step"&&ev.target.tagName==="INPUT"){ev.preventDefault();S.cw.i===CT_BASE.length?ctSave():ctNext()}
   if(ev.key==="Enter"&&S.wiz&&S.wiz.mode==="step"&&ev.target.tagName==="INPUT"){ev.preventDefault();var l=S.wiz.i===FIELDS.length;l?wizSave():wizNext()}
 });
+ROOT.addEventListener("input",function(ev){var t=ev.target;if(t&&t.id&&t.id.indexOf("bp_amt_")===0)bpLive()});
 ROOT.addEventListener("change",async function(ev){
   var t=ev.target;
   if(t.dataset&&t.dataset.col){toggleCol(t.dataset.col,t.checked);return}
+  if(t.id&&t.id.indexOf("bp_amt_")===0){bpLive();return}
   if(t.id==="remSel"){var it=byId(S.open);if(it){var rec=norm(it);rec.remindDays=+t.value;rec.attachments=it.attachments;rec.history=it.history;rec.createdAt=it.createdAt;rec.sample=it.sample;if(await save(it.id,rec))toast("Reminder set to "+t.value+" days before expiry")}}
   if(t.id==="fileXlsx"&&t.files[0]){
     var f=t.files[0];t.value="";

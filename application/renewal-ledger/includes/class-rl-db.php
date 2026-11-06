@@ -245,6 +245,35 @@ class RL_DB {
 		return $out;
 	}
 
+	/** Partial amounts per year with their budget article. */
+	private static function v_budget( $list ) {
+		$out = array();
+		if ( ! is_array( $list ) ) {
+			return $out;
+		}
+		foreach ( array_slice( $list, 0, 200 ) as $p ) {
+			if ( ! is_array( $p ) || ! isset( $p['amount'] ) || '' === $p['amount'] || ! is_numeric( $p['amount'] ) || (float) $p['amount'] < 0 || (float) $p['amount'] > 1000000000 ) {
+				continue;
+			}
+			$out[] = array(
+				'year'    => max( 1, min( 60, isset( $p['year'] ) ? (int) $p['year'] : 1 ) ),
+				'amount'  => round( (float) $p['amount'], 2 ),
+				'article' => self::v_str( isset( $p['article'] ) ? $p['article'] : '', 200 ),
+			);
+		}
+		return $out;
+	}
+
+	private static function budget_sum( $parts, $year = null ) {
+		$t = 0.0;
+		foreach ( $parts as $p ) {
+			if ( null === $year || (int) $p['year'] === (int) $year ) {
+				$t += $p['amount'];
+			}
+		}
+		return round( $t, 2 );
+	}
+
 	/** "a@x.gr, b@y.gr" -> normalised string, or WP_Error. */
 	public static function v_emails( $v ) {
 		$list = array();
@@ -326,6 +355,7 @@ class RL_DB {
 				'cost'        => self::v_num( $g( 'cost' ) ),
 				'remindDays'  => max( 1, min( 365, (int) $g( 'remindDays' ) ?: 30 ) ),
 				'emails'      => '',
+				'budget'      => array(),
 				'attachments' => self::v_attachments( $g( 'attachments' ), $collection ),
 				'milestones'  => self::v_milestones( $g( 'milestones' ), $collection ),
 				'history'     => array(),
@@ -333,6 +363,10 @@ class RL_DB {
 				'sample'      => ! empty( $d['sample'] ),
 			);
 			$out['emails'] = $emails;
+			$out['budget'] = self::v_budget( $g( 'budget' ) );
+			if ( $out['budget'] ) {
+				$out['cost'] = self::budget_sum( $out['budget'] ); // the cost is the sum of the partial amounts
+			}
 			if ( '' === $out['name'] ) {
 				return new WP_Error( 'rl_bad_data', 'Software Name is required.', array( 'status' => 400 ) );
 			}
@@ -362,12 +396,14 @@ class RL_DB {
 			'cost'        => self::v_num( $g( 'cost' ) ),
 			'years'       => array(),
 			'emails'      => '',
+			'budget'      => array(),
 			'attachments' => self::v_attachments( $g( 'attachments' ), $collection ),
 			'milestones'  => self::v_milestones( $g( 'milestones' ), $collection ),
 			'createdAt'   => $created,
 			'sample'      => ! empty( $d['sample'] ),
 		);
 		$out['emails'] = $emails;
+		$out['budget'] = self::v_budget( $g( 'budget' ) );
 		if ( '' === $out['title'] ) {
 			return new WP_Error( 'rl_bad_data', 'Contract title is required.', array( 'status' => 400 ) );
 		}
@@ -381,6 +417,11 @@ class RL_DB {
 						'remind' => max( 1, min( 365, (int) ( isset( $y['remind'] ) ? $y['remind'] : 30 ) ?: 30 ) ),
 					);
 				}
+			}
+		}
+		foreach ( $out['years'] as $yi => $yr ) {
+			if ( self::budget_sum( $out['budget'], $yi + 1 ) > 0 || array_filter( $out['budget'], function ( $p ) use ( $yi ) { return (int) $p['year'] === $yi + 1; } ) ) {
+				$out['years'][ $yi ]['cost'] = self::budget_sum( $out['budget'], $yi + 1 ); // a year's cost is the sum of its partial amounts
 			}
 		}
 		return $out;

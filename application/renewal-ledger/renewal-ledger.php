@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Renewal Ledger
  * Description: Μητρώο ανανεώσεων λογισμικού και συμβάσεων με ετήσιες υπενθυμίσεις, συνημμένα, εισαγωγή/εξαγωγή Excel και ειδοποιήσεις email. Τα δεδομένα αποθηκεύονται στη βάση SQL του WordPress.
- * Version: 2.2.1
+ * Version: 2.3.0
  * Requires Plugins: application-management
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RL_VERSION', '2.2.1' );
+define( 'RL_VERSION', '2.3.0' );
 define( 'RL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RL_URL', plugin_dir_url( __FILE__ ) );
 
@@ -103,6 +103,7 @@ add_shortcode( 'renewal_ledger', function () {
 				'userId' => get_current_user_id(),
 				'perms'  => $perms,
 				'serverExport' => true,
+				'articles' => RL_Settings::articles(),
 			)
 		) . ';',
 		'before'

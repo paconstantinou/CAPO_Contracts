@@ -34,6 +34,24 @@ class RL_Settings {
 		);
 		register_setting(
 			'rl_settings',
+			'rl_budget_articles',
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => function ( $v ) {
+					$seen = array();
+					foreach ( preg_split( '/\r?\n/', (string) $v ) as $l ) {
+						$l = trim( sanitize_text_field( $l ) );
+						if ( '' !== $l && mb_strlen( $l ) <= 200 ) {
+							$seen[ $l ] = $l;
+						}
+					}
+					return implode( "\n", array_slice( array_values( $seen ), 0, 500 ) );
+				},
+				'default'           => '',
+			)
+		);
+		register_setting(
+			'rl_settings',
 			'rl_repeat_days',
 			array(
 				'type'              => 'integer',
@@ -43,6 +61,18 @@ class RL_Settings {
 				'default'           => 7,
 			)
 		);
+	}
+
+	/** Budget articles for the drop-down, one per line in the settings. */
+	public static function articles() {
+		$out = array();
+		foreach ( preg_split( '/\r?\n/', (string) get_option( 'rl_budget_articles', '' ) ) as $l ) {
+			$l = trim( $l );
+			if ( '' !== $l ) {
+				$out[] = $l;
+			}
+		}
+		return $out;
 	}
 
 	public static function send_now() {
@@ -104,6 +134,13 @@ class RL_Settings {
 						<td>
 							<input type="number" min="1" max="90" id="rl_repeat_days" name="rl_repeat_days" value="<?php echo esc_attr( $repeat ); ?>" class="small-text">
 							<p class="description">Κάθε εγγραφή στέλνεται όταν μπει στο διάστημα υπενθύμισης και μετά ξανά ανά αυτό το διάστημα. Ένας έλεγχος τρέχει καθημερινά μέσω WP-Cron.</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="rl_budget_articles">Άρθρα προϋπολογισμού</label></th>
+						<td>
+							<textarea id="rl_budget_articles" name="rl_budget_articles" rows="12" class="large-text code"><?php echo esc_textarea( get_option( 'rl_budget_articles', '' ) ); ?></textarea>
+							<p class="description">Ένα άρθρο ανά γραμμή. Εμφανίζονται στη λίστα επιλογής των επιμέρους ποσών ανά έτος, σε Online Renewals και Συμβάσεις. Αν αλλάξεις ένα άρθρο, οι υπάρχουσες εγγραφές κρατούν το παλιό κείμενο.</p>
 						</td>
 					</tr>
 				</table>

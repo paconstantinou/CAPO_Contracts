@@ -12,3 +12,6 @@ The REST test expects users `admin` (Super Admin), `viewer1`, `editor1`, `manage
 See the root README for what is and is not verified.
 
 Note: the REST tests deliberately provoke denied requests; running them repeatedly within 5 minutes can trigger the temporary block (HTTP 429) for the test users. Wait 5 minutes between runs.
+
+
+Budget breakdown: `php tests/integration/budget-test.php <base-url>` (HTTP; needs `RL_TEST_ADMIN_PASS`).

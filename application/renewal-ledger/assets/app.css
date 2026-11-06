@@ -148,3 +148,11 @@
 #rl-app.rl-wide{width:calc(100vw - var(--rl-sbw,0px));position:relative;margin-left:calc(50% - (100vw - var(--rl-sbw,0px))/2);max-width:none}
 @media (max-width:760px){#rl-app .row .cell{white-space:normal;line-height:1.4;border-right:0;min-height:0;padding:1px 10px}
 #rl-app .lw{max-height:none}}
+
+/* budget breakdown */
+#rl-app .bpb{display:grid;gap:6px;margin-top:6px}
+#rl-app .bp{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+#rl-app .bp input{width:130px}
+#rl-app .bp select{min-width:200px;flex:1 1 220px;max-width:100%}
+#rl-app tr.bpr td{background:var(--surface2)}
+#rl-app input[readonly]{background:var(--surface2);color:var(--muted)}

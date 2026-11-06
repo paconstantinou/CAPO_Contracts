@@ -62,6 +62,14 @@ class RL_Export {
 		return implode( '; ', $out );
 	}
 
+	private static function budget( $d ) {
+		$out = array();
+		foreach ( ( isset( $d['budget'] ) && is_array( $d['budget'] ) ) ? $d['budget'] : array() as $p ) {
+			$out[] = 'Έτος ' . (int) $p['year'] . ': ' . number_format( (float) $p['amount'], 2, '.', '' ) . ( ! empty( $p['article'] ) ? ' [' . $p['article'] . ']' : '' );
+		}
+		return implode( '; ', $out );
+	}
+
 	private static function names( $d ) {
 		$n = array();
 		foreach ( ( isset( $d['attachments'] ) && is_array( $d['attachments'] ) ) ? $d['attachments'] : array() as $a ) {
@@ -88,7 +96,7 @@ class RL_Export {
 			if ( $with_credentials ) {
 				$head[] = 'Username';
 			}
-			$head = array_merge( $head, array( 'Date From', 'Date To', 'Cost excl. VAT (€)', 'Reminder (days before)', 'Notification emails', 'Attachments', 'Milestones', 'Status' ) );
+			$head = array_merge( $head, array( 'Date From', 'Date To', 'Cost excl. VAT (€)', 'Reminder (days before)', 'Notification emails', 'Cost breakdown', 'Attachments', 'Milestones', 'Status' ) );
 			$rows = array();
 			foreach ( $items as $it ) {
 				$d   = $it['data'];
@@ -101,6 +109,7 @@ class RL_Export {
 				$row[] = isset( $d['cost'] ) ? (float) $d['cost'] : 0;
 				$row[] = isset( $d['remindDays'] ) ? (int) $d['remindDays'] : 30;
 				$row[] = self::g( $d, 'emails' );
+				$row[] = self::budget( $d );
 				$row[] = self::names( $d );
 				$row[] = self::milestones( $d );
 				$row[] = self::status_software( $d );
@@ -117,7 +126,7 @@ class RL_Export {
 		for ( $i = 1; $i <= $max; $i++ ) {
 			array_push( $head, "ΕΤΟΣ $i - ΗΜΕΡ.ΕΝΑΡΞΗΣ", "ΕΤΟΣ $i - ΗΜΕΡ.ΛΗΞΗΣ", "ΕΤΟΣ $i - ΚΟΣΤΟΣ", "ΕΤΟΣ $i - ΥΠΕΝΘΥΜΙΣΗ (ΗΜΕΡΕΣ ΠΡΙΝ)" );
 		}
-		array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ', 'MILESTONES', 'ΚΑΤΑΣΤΑΣΗ' );
+		array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ', 'ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ', 'MILESTONES', 'ΚΑΤΑΣΤΑΣΗ' );
 		$rows = array();
 		foreach ( $items as $it ) {
 			$d   = $it['data'];
@@ -129,6 +138,7 @@ class RL_Export {
 			}
 			$row[]  = self::names( $d );
 			$row[]  = self::g( $d, 'emails' );
+			$row[]  = self::budget( $d );
 			$row[]  = self::milestones( $d );
 			$row[]  = self::status_contract( $d );
 			$rows[] = $row;
