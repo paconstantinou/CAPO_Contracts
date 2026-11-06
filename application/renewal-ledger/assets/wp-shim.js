@@ -113,6 +113,9 @@
   }
   document.addEventListener("DOMContentLoaded",function(){
     var root=document.getElementById("rl-app");if(!root)return;
+    /* use the full browser width instead of the theme's narrow content column */
+    var sbw=window.innerWidth-document.documentElement.clientWidth;root.style.setProperty("--rl-sbw",Math.max(0,sbw)+"px");root.classList.add("rl-wide");
+    window.addEventListener("resize",function(){root.style.setProperty("--rl-sbw",Math.max(0,window.innerWidth-document.documentElement.clientWidth)+"px")});
     new MutationObserver(function(){gate()}).observe(root,{childList:true,subtree:true,attributes:true,attributeFilter:["aria-selected","hidden"]});
     gate();
   });

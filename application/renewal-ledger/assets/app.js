@@ -484,15 +484,18 @@ function sortList(cat,list){
 }
 function listHtml(cat,rows){
   var cs=colsOf(cat),so=S.sort[cat],el=cat==="ct";
-  var tpl=cs.map(function(c){return "minmax(0,"+c.w+")"}).join(" "),mw=Math.max(0,cs.length-5)*130;
-  var st='grid-template-columns:'+tpl+(mw?';min-width:'+(560+mw)+'px':'');
+  var MIN={name:210,title:230,description:250,website:180,emails:210,status:200,files:80,months:110,remindDays:90,milestones:100,cost:110,tender:130};
+  var mins=cs.map(function(c){return MIN[c.k]||125}),total=mins.reduce(function(x,y){return x+y},0);
+  var tpl=cs.map(function(c,i){return c.k==="files"?mins[i]+"px":"minmax("+mins[i]+"px,"+c.w+")"}).join(" ");
+  var st='grid-template-columns:'+tpl+';min-width:'+total+'px';
   var h='<div class="lw"><div class="head"'+(el?' lang="el"':'')+' style="'+st+'">'+cs.map(function(c){
     var on=so.k===c.k;
     return '<button type="button" class="hc" data-sort="'+c.k+'" aria-sort="'+(on?(so.dir===1?"ascending":"descending"):"none")+'" title="'+(el?"Ταξινόμηση":"Sort")+'">'+esc(c.l)+'<span class="ar">'+(on?(so.dir===1?" ▲":" ▼"):"")+'</span></button>';
   }).join("")+'</div>';
   h+=rows.map(function(it){
     return '<button type="button" class="row" data-id="'+esc(it.id)+'" style="'+st+'">'+cs.map(function(c,i){
-      return '<span class="cell" data-l="'+esc(c.l)+'"'+(i?'':' data-first="1"')+'>'+c.v(it)+'</span>';
+      var sv=c.s(it),tt=sv===""||sv==null||c.k==="status"?"":' title="'+esc(String(sv))+'"';
+      return '<span class="cell" data-l="'+esc(c.l)+'"'+(i?'':' data-first="1"')+tt+'>'+c.v(it)+'</span>';
     }).join("")+'</button>';
   }).join("")+'</div>';
   return h;
