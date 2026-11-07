@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Settings > Renewal Ledger. Who may use the application is NOT decided here:
+ * Settings > PROCURE360. Who may use the application is NOT decided here:
  * users, roles and permissions are managed only in the Application Management plugin.
  */
 class RL_Settings {
@@ -16,7 +16,7 @@ class RL_Settings {
 	}
 
 	public static function menu() {
-		add_options_page( 'Renewal Ledger', 'Renewal Ledger', 'manage_options', 'renewal-ledger', array( __CLASS__, 'page' ) );
+		add_options_page( 'PROCURE360', 'PROCURE360', 'manage_options', 'renewal-ledger', array( __CLASS__, 'page' ) );
 	}
 
 	public static function register() {
@@ -196,7 +196,7 @@ TXT;
 		$am     = class_exists( 'AM' );
 		?>
 		<div class="wrap">
-			<h1>Renewal Ledger</h1>
+			<h1>PROCURE360</h1>
 			<?php if ( isset( $_GET['rl_sent'] ) ) : // phpcs:ignore WordPress.Security.NonceVerification.Recommended ?>
 				<div class="notice notice-success is-dismissible"><p>
 					<?php
@@ -207,7 +207,7 @@ TXT;
 			<?php endif; ?>
 
 			<?php if ( ! $am ) : ?>
-				<div class="notice notice-error"><p><strong>Το πρόσθετο Application Management δεν είναι ενεργό.</strong> Μέχρι να το ενεργοποιήσεις, κανείς δεν έχει πρόσβαση στα δεδομένα του Renewal Ledger.</p></div>
+				<div class="notice notice-error"><p><strong>Το πρόσθετο Application Management δεν είναι ενεργό.</strong> Μέχρι να το ενεργοποιήσεις, κανείς δεν έχει πρόσβαση στα δεδομένα του PROCURE360.</p></div>
 			<?php else : ?>
 				<div class="notice notice-info inline"><p>Ποιος μπορεί να βλέπει, να δημιουργεί, να επεξεργάζεται, να διαγράφει ή να εξάγει ορίζεται <strong>μόνο</strong> από το
 					<a href="<?php echo esc_url( admin_url( 'admin.php?page=am-users' ) ); ?>">Application Management → Users &amp; Access</a>.

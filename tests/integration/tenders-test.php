@@ -1,7 +1,7 @@
 <?php
 /**
- * Trash (soft delete) of the Renewal Ledger records: HTTP integration test against a live WordPress against a live WordPress with
- * Application Management + Renewal Ledger active.
+ * Tenders (Διαγωνισμοί): HTTP integration test against a live WordPress with
+ * Application Management + PROCURE360 active.
  *
  *   php rest-permissions-test.php http://127.0.0.1:8088 /path/to/wp   (wp path only used to prepare users)
  *

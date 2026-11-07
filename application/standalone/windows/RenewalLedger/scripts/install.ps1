@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $dest = Join-Path $env:LOCALAPPDATA 'RenewalLedger'
 Write-Host ''
-Write-Host 'Renewal Ledger - installation'
+Write-Host 'PROCURE360 - installation'
 Write-Host "Install folder: $dest"
 Write-Host ''
 
@@ -46,22 +46,23 @@ $data = Join-Path $dest 'data'
 $launchArgs = "--app=`"$uri`" --user-data-dir=`"$data`" --no-first-run --no-default-browser-check"
 $ws = New-Object -ComObject WScript.Shell
 function New-Link($folder) {
-  $lnk = $ws.CreateShortcut((Join-Path $folder 'Renewal Ledger.lnk'))
+  Remove-Item -LiteralPath (Join-Path $folder 'Renewal Ledger.lnk') -Force -ErrorAction SilentlyContinue # old name (before 3.2.0)
+  $lnk = $ws.CreateShortcut((Join-Path $folder 'PROCURE360.lnk'))
   $lnk.TargetPath = $browser
   $lnk.Arguments = $launchArgs
   $lnk.WorkingDirectory = $dest
   $lnk.IconLocation = (Join-Path $dest 'icon.ico')
-  $lnk.Description = 'Renewal Ledger'
+  $lnk.Description = 'PROCURE360'
   $lnk.Save()
 }
 New-Link ([Environment]::GetFolderPath('Desktop'))
 New-Link ([Environment]::GetFolderPath('Programs'))
 Write-Host 'Shortcuts created on the Desktop and in the Start menu.'
 
-$ans = Read-Host 'Open Renewal Ledger automatically when Windows starts, to show due renewals? (Y/N)'
+$ans = Read-Host 'Open PROCURE360 automatically when Windows starts, to show due renewals? (Y/N)'
 if ($ans -match '^[Yy]') {
   New-Link ([Environment]::GetFolderPath('Startup'))
   Write-Host 'It will open at sign-in.'
 }
 Write-Host ''
-Write-Host 'Done. Open "Renewal Ledger" from the Desktop or the Start menu.'
+Write-Host 'Done. Open "PROCURE360" from the Desktop or the Start menu.'

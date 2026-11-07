@@ -1,21 +1,21 @@
-# CAPO Contracts – Renewal Ledger + Application Management
+# CAPO Contracts – PROCURE360 (Integrated Procurement & Budget Management System) + Application Management
 
 Tracker for online software renewals (English) and contracts (Greek, per-year breakdown and reminders), running inside WordPress with central, server-enforced users, roles and permissions.
 
 ```
 /application
-    renewal-ledger/      WordPress plugin: the app (v3.1.1)
+    renewal-ledger/      WordPress plugin: the app (v3.2.0)
     standalone/          GitHub Pages (index.html), Windows installer sources (windows/), Claude-artifact copy – local, single user, NO roles
 /wordpress-plugin
     application-management/   WordPress plugin: users, roles, permissions, modules, activity logs (v1.1.0)
 /documentation           installation, configuration, integration, permissions, API, troubleshooting, testing
 /tests/integration       automated tests (run against a real WordPress)
-/dist                    plugin ZIPs, RenewalLedger.html (single file) and RenewalLedger-Windows.zip
+/dist                    plugin ZIPs, PROCURE360.html (single file) and PROCURE360-Windows.zip
 index.html               GitHub Pages entry (copy of application/standalone/index.html)
 ```
 
 ## Quick start
-1. Install `dist/application-management-1.1.0.zip`, then `dist/renewal-ledger-3.1.1.zip` (Plugins → Add New → Upload) and activate both. The admin who activates Application Management becomes the first Super Admin.
+1. Install `dist/application-management-1.1.0.zip`, then `dist/renewal-ledger-3.2.0.zip` (Plugins → Add New → Upload) and activate both. The admin who activates Application Management becomes the first Super Admin.
 2. Add `[renewal_ledger]` to a private page.
 3. Application Management → Users & Access: enable users and assign roles.
 Details: `documentation/`.

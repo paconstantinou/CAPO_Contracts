@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: Renewal Ledger
- * Description: Μητρώο ανανεώσεων λογισμικού και συμβάσεων με ετήσιες υπενθυμίσεις, συνημμένα, εισαγωγή/εξαγωγή Excel και ειδοποιήσεις email. Τα δεδομένα αποθηκεύονται στη βάση SQL του WordPress.
- * Version: 3.1.1
+ * Plugin Name: PROCURE360
+ * Description: PROCURE360 – Integrated Procurement & Budget Management System. Συνδέει αγορές λογισμικού, συμβάσεις, μελλοντικούς διαγωνισμούς και προγραμματισμό προϋπολογισμού, με ετήσιες υπενθυμίσεις, συνημμένα, εισαγωγή/εξαγωγή Excel και ειδοποιήσεις email. Τα δεδομένα αποθηκεύονται στη βάση SQL του WordPress.
+ * Version: 3.2.0
  * Requires Plugins: application-management
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RL_VERSION', '3.1.1' );
+define( 'RL_VERSION', '3.2.0' );
 define( 'RL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RL_URL', plugin_dir_url( __FILE__ ) );
 
@@ -51,7 +51,7 @@ add_action( 'plugins_loaded', function () {
 add_action( 'am_register_modules', function ( $registry ) {
 	$registry->register( 'software', array(
 		'name'        => 'Online Renewals',
-		'description' => 'Software renewals (Renewal Ledger).',
+		'description' => 'Software renewals (PROCURE360).',
 		'source'      => 'renewal-ledger',
 		'actions'     => array(
 			'credentials' => 'See and change usernames',
@@ -60,13 +60,13 @@ add_action( 'am_register_modules', function ( $registry ) {
 	) );
 	$registry->register( 'contracts', array(
 		'name'        => 'Contracts (Συμβάσεις)',
-		'description' => 'Contracts with yearly reminders (Renewal Ledger).',
+		'description' => 'Contracts with yearly reminders (PROCURE360).',
 		'source'      => 'renewal-ledger',
 		'actions'     => array( 'purge' => 'Delete permanently from the trash' ),
 	) );
 	$registry->register( 'tenders', array(
 		'name'        => 'Tenders (Διαγωνισμοί)',
-		'description' => 'Planned tenders with estimated budget (Renewal Ledger).',
+		'description' => 'Planned tenders with estimated budget (PROCURE360).',
 		'source'      => 'renewal-ledger',
 		'actions'     => array( 'purge' => 'Delete permanently from the trash' ),
 	) );
@@ -79,7 +79,7 @@ RL_Cron::init();
 /* [renewal_ledger] shortcode: place it on a page. The data itself is only served to allowed, logged-in users. */
 add_shortcode( 'renewal_ledger', function () {
 	if ( ! is_user_logged_in() ) {
-		return '<p>' . esc_html__( 'Συνδέσου για να δεις το Renewal Ledger.', 'renewal-ledger' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'Σύνδεση', 'renewal-ledger' ) . '</a></p>';
+		return '<p>' . esc_html__( 'Συνδέσου για να δεις το PROCURE360.', 'renewal-ledger' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'Σύνδεση', 'renewal-ledger' ) . '</a></p>';
 	}
 	$perms = array();
 	foreach ( array( 'software', 'contracts', 'tenders' ) as $m ) {
@@ -89,7 +89,7 @@ add_shortcode( 'renewal_ledger', function () {
 	}
 	/* The screen needs at least one module to view. The server re-checks every request anyway. */
 	if ( empty( $perms['software']['view'] ) && empty( $perms['contracts']['view'] ) && empty( $perms['tenders']['view'] ) ) {
-		return '<p>' . esc_html__( 'Δεν έχεις δικαίωμα πρόσβασης στο Renewal Ledger.', 'renewal-ledger' ) . '</p>';
+		return '<p>' . esc_html__( 'Δεν έχεις δικαίωμα πρόσβασης στο PROCURE360.', 'renewal-ledger' ) . '</p>';
 	}
 
 	if ( ! defined( 'DONOTCACHEPAGE' ) ) {

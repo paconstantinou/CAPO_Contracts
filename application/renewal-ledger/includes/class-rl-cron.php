@@ -217,8 +217,8 @@ class RL_Cron {
 				$when    = $it['days'] < 0 ? 'πριν από ' . abs( $it['days'] ) . ' ημ.' : ( 0 === $it['days'] ? 'σήμερα' : 'σε ' . $it['days'] . ' ημ.' );
 				$lines[] = '- ' . $it['title'] . ' [' . $it['label'] . ']: ' . self::fmt( $it['date'] ) . ' (' . $when . ')' . ( '' === $it['cost'] ? '' : ', κόστος ' . self::money( $it['cost'] ) );
 			}
-			$body = "Οι παρακάτω εγγραφές χρειάζονται ενέργεια:\n\n" . implode( "\n", $lines ) . "\n" . ( $url ? "\nΑνοίξτε το Renewal Ledger: " . $url . "\n" : '' );
-			if ( wp_mail( $g['to'], '[' . $site . '] Renewal Ledger: ' . count( $g['items'] ) . ' εγγραφές χρειάζονται προσοχή', $body, array( 'Content-Type: text/plain; charset=UTF-8' ) ) ) {
+			$body = "Οι παρακάτω εγγραφές χρειάζονται ενέργεια:\n\n" . implode( "\n", $lines ) . "\n" . ( $url ? "\nΑνοίξτε το PROCURE360: " . $url . "\n" : '' );
+			if ( wp_mail( $g['to'], '[' . $site . '] PROCURE360: ' . count( $g['items'] ) . ' εγγραφές χρειάζονται προσοχή', $body, array( 'Content-Type: text/plain; charset=UTF-8' ) ) ) {
 				$ok   = true;
 				$done = array_merge( $done, $g['items'] );
 			}

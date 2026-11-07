@@ -1,4 +1,4 @@
-/* Renewal Ledger - storage layer for WordPress.
+/* PROCURE360 - storage layer for WordPress.
    Same small API the page expects (db, user, assets, downloads), backed by the plugin's REST routes (MySQL + protected uploads folder). */
 (function(){
   var cfg=window.RL_CFG||{};

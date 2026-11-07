@@ -21,5 +21,5 @@ Default presets for a newly seen module: Administrator = all standard; Manager =
 * The last Super Admin cannot be removed.
 * Everything is managed only in WP Admin → Application Management.
 
-## What each permission means in Renewal Ledger
+## What each permission means in PROCURE360
 View: list records, open attachments · Create: add records/upload · Edit: change, renew, attach, remove attachments · Delete · Export: server-side CSV/XLSX · Credentials (software): see/change the username; without it the username is blanked in responses and the stored value is preserved on edit. Passwords are **not stored at all** (removed in 2.2.0; the upgrade deletes any stored by older versions).

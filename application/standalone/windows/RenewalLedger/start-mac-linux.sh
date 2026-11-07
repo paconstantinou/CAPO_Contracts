@@ -1,5 +1,5 @@
 #!/bin/sh
-# Opens Renewal Ledger in its own app-style window (Chrome, Edge or Chromium required).
+# Opens PROCURE360 in its own app-style window (Chrome, Edge or Chromium required).
 DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA="$HOME/.renewal-ledger/data"
 URL="file://$DIR/app/index.html"
