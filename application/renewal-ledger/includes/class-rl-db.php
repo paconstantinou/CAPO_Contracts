@@ -64,9 +64,12 @@ class RL_DB {
   updated_by bigint(20) unsigned NOT NULL DEFAULT 0,
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
+  deleted_at datetime DEFAULT NULL,
+  deleted_by bigint(20) unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (id),
   UNIQUE KEY coll_doc (collection,doc_id),
-  KEY coll (collection)
+  KEY coll (collection),
+  KEY trashed (collection,deleted_at)
 ) $charset;"
 		);
 
@@ -118,18 +121,86 @@ class RL_DB {
 		return $n;
 	}
 
-	public static function list_records( $collection ) {
+	/**
+	 * Records of a collection. Records in the trash are left out unless $trash is true.
+	 * Trash rows also carry deleted_at (UTC) and deleted_by (display name).
+	 */
+	public static function list_records( $collection, $trash = false ) {
 		global $wpdb;
-		$t    = self::table_records();
-		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT doc_id, data FROM $t WHERE collection = %s ORDER BY id ASC", $collection ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$out  = array();
+		$t     = self::table_records();
+		$where = $trash ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL';
+		$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT doc_id, data, deleted_at, deleted_by FROM $t WHERE collection = %s AND $where ORDER BY id ASC", $collection ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$out   = array();
 		foreach ( (array) $rows as $r ) {
-			$out[] = array(
+			$row = array(
 				'id'   => $r['doc_id'],
 				'data' => self::unpack( $collection, $r['data'] ),
 			);
+			if ( $trash ) {
+				$u                  = $r['deleted_by'] ? get_userdata( (int) $r['deleted_by'] ) : false;
+				$row['deleted_at']  = $r['deleted_at'];
+				$row['deleted_by']  = $u ? $u->display_name : '';
+			}
+			$out[] = $row;
 		}
 		return $out;
+	}
+
+	/** How many records (live and in the trash) use each budget article code. @return array code => count */
+	public static function article_usage() {
+		$out = array();
+		foreach ( array( 'software', 'contracts' ) as $c ) {
+			foreach ( array( false, true ) as $tr ) {
+				foreach ( self::list_records( $c, $tr ) as $r ) {
+					$seen = array();
+					foreach ( ( isset( $r['data']['budget'] ) && is_array( $r['data']['budget'] ) ) ? $r['data']['budget'] : array() as $p ) {
+						$code = is_array( $p ) && isset( $p['article'] ) ? (string) $p['article'] : '';
+						if ( '' !== $code && ! isset( $seen[ $code ] ) ) {
+							$seen[ $code ] = 1;
+							$out[ $code ]  = ( isset( $out[ $code ] ) ? $out[ $code ] : 0 ) + 1;
+						}
+					}
+				}
+			}
+		}
+		return $out;
+	}
+
+	public static function is_trashed( $collection, $id ) {
+		global $wpdb;
+		$t = self::table_records();
+		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $t WHERE collection = %s AND doc_id = %s AND deleted_at IS NOT NULL", $collection, $id ) ) > 0; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/** Move a record to the trash. Nothing is deleted: attachments and history stay. @return bool true if a live record was moved */
+	public static function trash_record( $collection, $id, $user_id ) {
+		global $wpdb;
+		$t = self::table_records();
+		$n = $wpdb->query( $wpdb->prepare( "UPDATE $t SET deleted_at = %s, deleted_by = %d WHERE collection = %s AND doc_id = %s AND deleted_at IS NULL", current_time( 'mysql', true ), $user_id, $collection, $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (int) $n > 0;
+	}
+
+	/** @return bool true if a trashed record was restored */
+	public static function restore_record( $collection, $id ) {
+		global $wpdb;
+		$t = self::table_records();
+		$n = $wpdb->query( $wpdb->prepare( "UPDATE $t SET deleted_at = NULL, deleted_by = 0 WHERE collection = %s AND doc_id = %s AND deleted_at IS NOT NULL", $collection, $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (int) $n > 0;
+	}
+
+	/** Permanently delete records that have been in the trash for more than $days days. @return int number removed */
+	public static function purge_expired( $days ) {
+		global $wpdb;
+		if ( (int) $days < 1 ) {
+			return 0;
+		}
+		$t     = self::table_records();
+		$limit = gmdate( 'Y-m-d H:i:s', time() - (int) $days * DAY_IN_SECONDS );
+		$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT collection, doc_id FROM $t WHERE deleted_at IS NOT NULL AND deleted_at < %s", $limit ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		foreach ( (array) $rows as $r ) {
+			self::delete_record( $r['collection'], $r['doc_id'] );
+		}
+		return count( (array) $rows );
 	}
 
 	/** @return true|WP_Error */
@@ -160,6 +231,7 @@ class RL_DB {
 		return true;
 	}
 
+	/** PERMANENT delete (record row and its attachment files). Normal deleting goes through trash_record(). */
 	public static function delete_record( $collection, $id ) {
 		global $wpdb;
 		$t   = self::table_records();

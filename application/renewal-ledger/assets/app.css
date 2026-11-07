@@ -168,3 +168,5 @@
 #rl-app table.bdt tr.tot td{font-weight:700;background:var(--surface2)}
 #rl-app table.art input,#rl-app table.art select{width:100%;min-width:60px}
 #rl-app table.art td:nth-child(2) input,#rl-app table.art td:nth-child(4) input{min-width:200px}
+#rl-app .toast-undo,.toast-undo{margin-left:10px;background:transparent;border:1px solid currentColor;color:inherit;border-radius:6px;padding:3px 10px;font-weight:700;cursor:pointer}
+#rl-app table.art td.trbtn{white-space:nowrap}

@@ -163,6 +163,10 @@ class AM_Service {
 			return $this->err( 'am_system_role', 'Built-in roles cannot be deleted.' );
 		}
 		$users = $this->store->users_with_role( $slug );
+		if ( count( $users ) > 0 ) {
+			// A role that people still hold is never deleted by accident: take it away from them first.
+			return $this->err( 'am_role_in_use', 'This role is still assigned to ' . count( $users ) . ' user(s). Remove it from them first.', 409 );
+		}
 		$this->store->delete_role( $slug );
 		$this->log( $actor, 'role.delete', '', 0, array( 'role' => $slug, 'users_affected' => count( $users ) ) );
 		return true;

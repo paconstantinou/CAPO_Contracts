@@ -82,11 +82,13 @@ $r = $c->rl( 'PUT', 'records/software/mst2', $rec( array( array( 'id' => 'z1', '
 $d = $get( $c, 'software', 'mst2' ); $zf = $d['milestones'][0]['attachments'][0]['id'] ?? '';
 t( 'milestone attachment downloadable', '' !== $zf && 200 === $c->rl( 'GET', "files/$zf" )['code'] );
 $c->rl( 'DELETE', 'records/software/mst2' );
-t( 'deleting the record deletes milestone attachments', 404 === $c->rl( 'GET', "files/$zf" )['code'] );
+t( 'deleting the record (to the trash) keeps the milestone attachments', 200 === $c->rl( 'GET', "files/$zf" )['code'] );
+$c->rl( 'DELETE', 'records/software/mst2&purge=1' );
+t( 'permanent delete removes the milestone attachments', 404 === $c->rl( 'GET', "files/$zf" )['code'] );
 
 echo "milestones: export\n";
 $r = $c->rl( 'GET', 'export/software&format=csv' ); t( 'csv has Milestones column and content', false !== strpos( $r['body'], 'Milestones' ) && false !== strpos( $r['body'], 'by editor' ) );
 $r = $c->rl( 'GET', 'export/contracts&format=csv' ); t( 'contracts csv has MILESTONES', false !== strpos( $r['body'], 'MILESTONES' ) && false !== strpos( $r['body'], 'Παραδοτέο' ) );
 
-$c->rl( 'DELETE', 'records/software/mst1' ); $c->rl( 'DELETE', 'records/contracts/mct1' );
+foreach ( array( 'software/mst1', 'contracts/mct1' ) as $x ) { $c->rl( 'DELETE', "records/$x" ); $c->rl( 'DELETE', "records/$x&purge=1" ); } // delete = trash, then purge
 echo "\n$pass passed, $fail failed\n"; exit( $fail ? 1 : 0 );

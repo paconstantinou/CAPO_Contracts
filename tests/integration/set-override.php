@@ -1,0 +1,1 @@
+<?php require $argv[1]; $s=AM::service(); $u=get_user_by('login',$argv[2])->ID; $map=array(); foreach(array_slice($argv,3) as $kv){list($k,$v)=explode('=',$kv,2);$map[$k]=$v;} $r=$s->set_user_overrides(1,$u,$map); echo is_wp_error($r)?'ERR '.$r->get_error_message():'ok';

@@ -72,5 +72,5 @@ $r = $vw->rl( 'PUT', 'records/contracts/bct1', array( 'data' => array_merge( $ct
 $r = $c->rl( 'GET', 'export/contracts&format=csv' ); t( 'contracts export has ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ with article', false !== strpos( $r['body'], 'ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ' ) && false !== strpos( $r['body'], '[Άρθρο 2320]' ) );
 $c->rl( 'PUT', 'records/software/bsw1', array( 'data' => array_merge( $sw, array( 'budget' => array( array( 'year' => 1, 'amount' => 5, 'article' => 'EXP-ART' ) ) ) ) ) );
 $r = $c->rl( 'GET', 'export/software&format=csv' ); t( 'software export has Cost breakdown with article', false !== strpos( $r['body'], 'Cost breakdown' ) && false !== strpos( $r['body'], '[EXP-ART]' ) );
-$c->rl( 'DELETE', 'records/software/bsw1' ); $c->rl( 'DELETE', 'records/contracts/bct1' );
+foreach ( array( 'software/bsw1', 'contracts/bct1' ) as $x ) { $c->rl( 'DELETE', "records/$x" ); $c->rl( 'DELETE', "records/$x&purge=1" ); } // delete = trash, then purge
 echo "\n$pass passed, $fail failed\n"; exit( $fail ? 1 : 0 );

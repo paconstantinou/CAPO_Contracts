@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Renewal Ledger
  * Description: Μητρώο ανανεώσεων λογισμικού και συμβάσεων με ετήσιες υπενθυμίσεις, συνημμένα, εισαγωγή/εξαγωγή Excel και ειδοποιήσεις email. Τα δεδομένα αποθηκεύονται στη βάση SQL του WordPress.
- * Version: 2.5.0
+ * Version: 3.0.0
  * Requires Plugins: application-management
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RL_VERSION', '2.5.0' );
+define( 'RL_VERSION', '3.0.0' );
 define( 'RL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RL_URL', plugin_dir_url( __FILE__ ) );
 
@@ -53,12 +53,16 @@ add_action( 'am_register_modules', function ( $registry ) {
 		'name'        => 'Online Renewals',
 		'description' => 'Software renewals (Renewal Ledger).',
 		'source'      => 'renewal-ledger',
-		'actions'     => array( 'credentials' => 'See and change usernames' ),
+		'actions'     => array(
+			'credentials' => 'See and change usernames',
+			'purge'       => 'Delete permanently from the trash',
+		),
 	) );
 	$registry->register( 'contracts', array(
 		'name'        => 'Contracts (Συμβάσεις)',
 		'description' => 'Contracts with yearly reminders (Renewal Ledger).',
 		'source'      => 'renewal-ledger',
+		'actions'     => array( 'purge' => 'Delete permanently from the trash' ),
 	) );
 } );
 
@@ -73,7 +77,7 @@ add_shortcode( 'renewal_ledger', function () {
 	}
 	$perms = array();
 	foreach ( array( 'software', 'contracts' ) as $m ) {
-		foreach ( array( 'view', 'create', 'edit', 'delete', 'export', 'manage', 'credentials' ) as $a ) {
+		foreach ( array( 'view', 'create', 'edit', 'delete', 'export', 'manage', 'credentials', 'purge' ) as $a ) {
 			$perms[ $m ][ $a ] = class_exists( 'AM' ) && AM::can( $m, $a );
 		}
 	}
@@ -104,6 +108,7 @@ add_shortcode( 'renewal_ledger', function () {
 				'perms'  => $perms,
 				'serverExport' => true,
 				'articles' => RL_Settings::articles(),
+				'trashDays' => RL_Settings::trash_days(),
 			)
 		) . ';',
 		'before'

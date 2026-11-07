@@ -539,9 +539,13 @@ class AM_Admin {
 			echo '<a class="button" href="' . esc_url( self::url( 'am-permissions', array( 'role' => $slug ) ) ) . '">Permissions</a> ';
 			if ( ! $r['is_system'] && ! $r['is_super'] ) {
 				echo '<span class="am-inline">';
-				self::form_open( 'delete_role', 'Delete the role "' . $r['name'] . '"? ' . $n . ' user(s) will lose it.' );
+				self::form_open( 'delete_role', 'Delete the role "' . $r['name'] . '"? This cannot be undone.' );
 				echo '<input type="hidden" name="slug" value="' . esc_attr( $slug ) . '">';
-				self::btn( 'Delete', 'button button-link-delete' );
+				if ( $n > 0 ) {
+					echo '<button type="button" class="button button-link-delete" disabled title="Still assigned to ' . (int) $n . ' user(s). Remove it from them first.">Delete</button>';
+				} else {
+					self::btn( 'Delete', 'button button-link-delete' );
+				}
 				echo '</form></span>';
 			}
 			echo '</td></tr>';

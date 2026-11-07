@@ -33,3 +33,16 @@ Records may also carry `budget`: `[{year, amount, article}]` (partial amounts; m
 ## Budget sheet (Προϋπολογισμός)
 
 Third tab, calculated in the browser from the records the user may view (no extra REST route). Articles are `{code, desc, cat, catDesc, split}` from Settings → Renewal Ledger (`rl_budget_articles`, edited as a table in the settings page (code, description, category, category description, split ΝΑΙ/ΌΧΙ; add and delete rows), stored internally one line per article; default = the 17 organisation articles). Records store the article **code**. For each record and article: `split` (ΝΑΙ) spreads the amount by month over the calendar years of the period (a part-month counts by its share of days; rounding remainder goes to the last year); otherwise the whole amount is placed in the year of the period's start date. Amounts without an article appear under «Χωρίς άρθρο». The tab is visible to users who can view software or contracts. The Excel export is generated in the browser, so the Export permission is enforced in the UI only (the data is what the user may already view).
+
+
+## Trash and permanent deletion (3.0.0)
+
+`DELETE /records/{coll}/{id}` no longer destroys: it moves the record to the trash (`deleted_at`, `deleted_by` columns; attachments stay). Trashed records are hidden from `GET /records/{coll}`, exports, reminders and the budget sheet and cannot be edited (`PUT` → 409 `rl_in_trash`).
+
+| Call | Permission | Result |
+|---|---|---|
+| `GET /records/{coll}?trash=1` | `delete` | trashed records with `deleted_at` (UTC) and `deleted_by` (name) |
+| `POST /records/{coll}/{id}/restore` | `delete` | back to the live list (404 if not in the trash) |
+| `DELETE /records/{coll}/{id}?purge=1` | `purge` (new custom action, no role has it by default) | removes a record that is **in the trash** for good, with its attachment files (409 `rl_not_in_trash` otherwise) |
+
+A daily WP-Cron job removes records trashed longer than `rl_trash_days` (Settings → Renewal Ledger, default 30, 0 = never). Activity log actions: `ledger.record_delete` (`to_trash`), `ledger.record_restore`, `ledger.record_purge`, `ledger.trash_auto_purge`. Budget articles used by any record (live or trashed) cannot be removed from the settings; the server keeps them. Application Management 1.1.0 refuses to delete a role that users still hold (409 `am_role_in_use`).

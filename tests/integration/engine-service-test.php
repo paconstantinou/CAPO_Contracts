@@ -66,7 +66,10 @@ if ( $slug ) {
 	$s->set_user_roles( $A, $u2, array( $slug ) ); $s->set_user_access( $A, $u2, true );
 	t( 'custom role works', $allowed( $u2, 'software', 'export' ) && ! $allowed( $u2, 'software', 'delete' ) );
 	t( 'system roles cannot be deleted', is_wp_error( $s->delete_role( $A, 'viewer' ) ) );
-	t( 'delete custom role removes grants from users', $ok( $s->delete_role( $A, $slug ) ) && ! $allowed( $u2, 'software', 'export' ) );
+	$d = $s->delete_role( $A, $slug );
+	t( 'a role that users still hold cannot be deleted (409), and keeps working', is_wp_error( $d ) && 'am_role_in_use' === $d->get_error_code() && $allowed( $u2, 'software', 'export' ) );
+	$s->set_user_roles( $A, $u2, array( 'viewer' ) );
+	t( 'once no user holds it, the custom role can be deleted', $ok( $s->delete_role( $A, $slug ) ) && ! $allowed( $u2, 'software', 'export' ) );
 }
 
 echo "logging\n";

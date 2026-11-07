@@ -45,6 +45,16 @@
       }
     };
   }
+  /* Trash: deleting a record moves it to the trash on the server. These calls list, restore and permanently delete from it. */
+  function url(path,params){return path+(cfg.rest.indexOf("?")>=0?"&":"?")+params}
+  window.RL_TRASH={
+    can:function(c){return P(c,"delete")},
+    canPurge:function(c){return P(c,"purge")},
+    days:cfg.trashDays||0,
+    list:function(c){return api("GET",url("records/"+c,"trash=1")).then(function(r){return (r.items||[]).map(function(it){return {id:it.id,data:it.data,at:Date.parse(String(it.deleted_at).replace(" ","T")+"Z")||0,by:it.deleted_by||""}})})},
+    restore:function(c,id){return api("POST","records/"+c+"/"+id+"/restore").then(function(){return refresh(c,false)})},
+    purge:function(c,id){return api("DELETE",url("records/"+c+"/"+id,"purge=1"))}
+  };
   /* the page asks for db.doc("data/users/<id>/app").collection("software") */
   var db={doc:function(){return {collection:function(n){return colRef(n)}}},collection:colRef};
   /* other users change the same records: refresh every 60 s while the tab is visible */
@@ -116,6 +126,8 @@
       hide("[data-act=xlsx],[data-act=csv]",root,!P(c,"export"));
       hide("[data-act=edit],[data-act=renew],[data-act=renewid],[data-act=attach],[data-act=rsave],[data-act=msadd],[data-act=msedit],[data-act=msdel],[data-act=msdone]",root,!P(c,"edit"));
       hide("[data-act=del],[data-act=ctdel]",root,!P(c,"delete"));
+      hide("[data-f=trash],[data-act=trrestore]",root,!P(c,"delete"));
+      hide("[data-act=trpurge]",root,!P(c,"purge"));
       var sw=document.getElementById("tabSw"),ct=document.getElementById("tabCt");
       if(sw)sw.style.display=P("software","view")?"":"none";
       if(ct)ct.style.display=P("contracts","view")?"":"none";

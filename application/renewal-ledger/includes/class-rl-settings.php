@@ -51,7 +51,24 @@ class RL_Settings {
 						}
 						$v = implode( "\n", $lines );
 					}
-					return self::serialize_articles( self::parse_articles( (string) $v ) );
+					$new = self::parse_articles( (string) $v );
+					/* An article that records still use can not be removed or renamed: it is kept, so no amount loses its article by accident. */
+					$have = array_column( $new, 'code' );
+					$kept = array();
+					foreach ( RL_DB::article_usage() as $code => $n ) {
+						if ( ! in_array( (string) $code, $have, true ) ) {
+							foreach ( self::articles() as $old ) {
+								if ( (string) $old['code'] === (string) $code ) {
+									$new[]  = $old;
+									$kept[] = $code . ' (' . $n . ')';
+								}
+							}
+						}
+					}
+					if ( $kept && function_exists( 'add_settings_error' ) ) {
+						add_settings_error( 'rl_budget_articles', 'rl_art_kept', 'Τα άρθρα ' . implode( ', ', $kept ) . ' χρησιμοποιούνται σε εγγραφές και δεν διαγράφηκαν ούτε άλλαξαν κωδικό. Αν θέλεις να φύγουν, πρώτα άλλαξε το άρθρο στις εγγραφές που το χρησιμοποιούν.', 'warning' );
+					}
+					return self::serialize_articles( $new );
 				},
 				'default'           => self::default_articles_text(),
 			)
@@ -67,6 +84,22 @@ class RL_Settings {
 				'default'           => 7,
 			)
 		);
+		register_setting(
+			'rl_settings',
+			'rl_trash_days',
+			array(
+				'type'              => 'integer',
+				'sanitize_callback' => function ( $v ) {
+					return max( 0, min( 3650, (int) $v ) );
+				},
+				'default'           => 30,
+			)
+		);
+	}
+
+	/** Days a deleted record stays in the trash before it is removed for good. 0 = never remove automatically. */
+	public static function trash_days() {
+		return max( 0, (int) get_option( 'rl_trash_days', 30 ) );
 	}
 
 	/** Default list of the organisation's budget articles: code | description | category | category description | split per year (ΝΑΙ/ΌΧΙ). */
@@ -205,35 +238,43 @@ TXT;
 						</td>
 					</tr>
 					<tr>
+						<th scope="row"><label for="rl_trash_days">Παραμονή στον Κάδο (ημέρες)</label></th>
+						<td>
+							<input type="number" min="0" max="3650" id="rl_trash_days" name="rl_trash_days" value="<?php echo esc_attr( self::trash_days() ); ?>" class="small-text">
+							<p class="description">Όταν διαγράφεις μια εγγραφή, πηγαίνει στον Κάδο και μπορεί να επαναφερθεί. Μετά από αυτές τις ημέρες διαγράφεται οριστικά (μαζί με τα συνημμένα της). 0 = ποτέ αυτόματα· τότε διαγράφεται μόνο με ρητή «Οριστική διαγραφή» από άτομο με το σχετικό δικαίωμα.</p>
+						</td>
+					</tr>
+					<tr>
 						<th scope="row">Άρθρα προϋπολογισμού</th>
 						<td>
 							<table class="widefat striped" id="rl-art-table" style="max-width:1100px">
-								<thead><tr><th>Κωδικός</th><th>Περιγραφή άρθρου</th><th>Κατηγορία</th><th>Περιγραφή κατηγορίας</th><th>Ποσό ανάλυσης ανά έτος</th><th></th></tr></thead>
+								<thead><tr><th>Κωδικός</th><th>Περιγραφή άρθρου</th><th>Κατηγορία</th><th>Περιγραφή κατηγορίας</th><th>Ποσό ανάλυσης ανά έτος</th><th>Σε χρήση</th><th></th></tr></thead>
 								<tbody>
-								<?php foreach ( self::articles() as $i => $a ) : ?>
+								<?php $usage = RL_DB::article_usage(); foreach ( self::articles() as $i => $a ) : $used = isset( $usage[ $a['code'] ] ) ? (int) $usage[ $a['code'] ] : 0; ?>
 									<tr>
 										<td><input type="text" name="rl_budget_articles[<?php echo (int) $i; ?>][code]" value="<?php echo esc_attr( $a['code'] ); ?>" size="8"></td>
 										<td><input type="text" name="rl_budget_articles[<?php echo (int) $i; ?>][desc]" value="<?php echo esc_attr( $a['desc'] ); ?>" class="large-text"></td>
 										<td><input type="text" name="rl_budget_articles[<?php echo (int) $i; ?>][cat]" value="<?php echo esc_attr( $a['cat'] ); ?>" size="8"></td>
 										<td><input type="text" name="rl_budget_articles[<?php echo (int) $i; ?>][catDesc]" value="<?php echo esc_attr( $a['catDesc'] ); ?>" class="large-text"></td>
 										<td><select name="rl_budget_articles[<?php echo (int) $i; ?>][split]"><option value="NAI" <?php selected( $a['split'] ); ?>>ΝΑΙ</option><option value="OXI" <?php selected( ! $a['split'] ); ?>>ΌΧΙ</option></select></td>
-										<td><button type="button" class="button-link-delete rl-art-del">Διαγραφή</button></td>
+										<td><?php echo $used ? esc_html( $used . ' εγγραφές' ) : '—'; ?></td>
+										<td><button type="button" class="button-link-delete rl-art-del" <?php echo $used ? 'disabled title="Χρησιμοποιείται σε εγγραφές — δεν μπορεί να διαγραφεί"' : ''; ?>>Διαγραφή</button></td>
 									</tr>
 								<?php endforeach; ?>
 								</tbody>
 							</table>
 							<p><button type="button" class="button" id="rl-art-add">+ Προσθήκη νέου άρθρου</button></p>
-							<p class="description">Η στήλη «Ποσό ανάλυσης ανά έτος»: ΝΑΙ = το ποσό κατανέμεται ανά μήνα στα ημερολογιακά έτη της περιόδου (καρτέλα Προϋπολογισμός), ΌΧΙ = ολόκληρο στο έτος έναρξης. Οι εγγραφές αποθηκεύουν τον ΚΩΔΙΚΟ του άρθρου, γι' αυτό μην αλλάζεις κωδικό άρθρου που ήδη χρησιμοποιείται. Αν διαγράψεις ένα άρθρο που χρησιμοποιείται, τα ποσά του εμφανίζονται στο «Χωρίς άρθρο». Πάτησε «Αποθήκευση αλλαγών» κάτω.</p>
+							<p class="description">Η στήλη «Ποσό ανάλυσης ανά έτος»: ΝΑΙ = το ποσό κατανέμεται ανά μήνα στα ημερολογιακά έτη της περιόδου (καρτέλα Προϋπολογισμός), ΌΧΙ = ολόκληρο στο έτος έναρξης. Οι εγγραφές αποθηκεύουν τον ΚΩΔΙΚΟ του άρθρου, γι' αυτό ένα άρθρο που χρησιμοποιείται σε εγγραφές (στήλη «Σε χρήση») δεν μπορεί να διαγραφεί ούτε να αλλάξει κωδικό. Πάτησε «Αποθήκευση αλλαγών» κάτω.</p>
 							<script>
 							(function(){
 								var t=document.querySelector('#rl-art-table tbody');
 								function renumber(){[].forEach.call(t.rows,function(r,i){[].forEach.call(r.querySelectorAll('[name]'),function(n){n.name=n.name.replace(/rl_budget_articles\[\d+\]/,'rl_budget_articles['+i+']')})})}
 								document.getElementById('rl-art-add').addEventListener('click',function(){
 									var r=t.insertRow(-1);
-									r.innerHTML='<td><input type="text" name="rl_budget_articles[0][code]" size="8"></td><td><input type="text" name="rl_budget_articles[0][desc]" class="large-text"></td><td><input type="text" name="rl_budget_articles[0][cat]" size="8"></td><td><input type="text" name="rl_budget_articles[0][catDesc]" class="large-text"></td><td><select name="rl_budget_articles[0][split]"><option value="NAI">ΝΑΙ</option><option value="OXI" selected>ΌΧΙ</option></select></td><td><button type="button" class="button-link-delete rl-art-del">Διαγραφή</button></td>';
+									r.innerHTML='<td><input type="text" name="rl_budget_articles[0][code]" size="8"></td><td><input type="text" name="rl_budget_articles[0][desc]" class="large-text"></td><td><input type="text" name="rl_budget_articles[0][cat]" size="8"></td><td><input type="text" name="rl_budget_articles[0][catDesc]" class="large-text"></td><td><select name="rl_budget_articles[0][split]"><option value="NAI">ΝΑΙ</option><option value="OXI" selected>ΌΧΙ</option></select></td><td>—</td><td><button type="button" class="button-link-delete rl-art-del">Διαγραφή</button></td>';
 									renumber();r.querySelector('input').focus();
 								});
-								t.addEventListener('click',function(e){var b=e.target.closest('.rl-art-del');if(b){b.closest('tr').remove();renumber()}});
+								t.addEventListener('click',function(e){var b=e.target.closest('.rl-art-del');if(b&&!b.disabled){b.closest('tr').remove();renumber()}});
 							})();
 							</script>
 						</td>

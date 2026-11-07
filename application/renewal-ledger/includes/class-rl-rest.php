@@ -62,7 +62,8 @@ class RL_REST {
 					'methods'             => 'GET',
 					'callback'            => array( __CLASS__, 'list_records' ),
 					'permission_callback' => function ( $req ) {
-						return self::check( $req['coll'], 'view' );
+						// The trash is for people who may delete (and so restore) records.
+						return self::check( $req['coll'], $req['trash'] ? 'delete' : 'view' );
 					},
 					'args'                => array( 'coll' => $coll ),
 				),
@@ -85,10 +86,22 @@ class RL_REST {
 						'methods'             => 'DELETE',
 						'callback'            => array( __CLASS__, 'delete_record' ),
 						'permission_callback' => function ( $req ) {
-							return self::check( $req['coll'], 'delete' );
+							// ?purge=1 removes a record from the trash for good and needs its own permission.
+							return self::check( $req['coll'], $req['purge'] ? 'purge' : 'delete' );
 						},
 						'args'                => array( 'coll' => $coll, 'id' => $id ),
 					),
+				),
+			),
+			array(
+				'route' => '/records/(?P<coll>[a-z]+)/(?P<id>[A-Za-z0-9_-]+)/restore',
+				'args'  => array(
+					'methods'             => 'POST',
+					'callback'            => array( __CLASS__, 'restore_record' ),
+					'permission_callback' => function ( $req ) {
+						return self::check( $req['coll'], 'delete' );
+					},
+					'args'                => array( 'coll' => $coll, 'id' => $id ),
 				),
 			),
 			array(
@@ -171,7 +184,7 @@ class RL_REST {
 
 	public static function list_records( $req ) {
 		$coll  = $req['coll'];
-		$items = RL_DB::list_records( $coll );
+		$items = RL_DB::list_records( $coll, (bool) $req['trash'] );
 		if ( 'software' === $coll && ! self::can( 'software', 'credentials' ) ) {
 			foreach ( $items as $i => $it ) {
 				$items[ $i ]['data']['username'] = '';
@@ -189,6 +202,9 @@ class RL_REST {
 		if ( is_wp_error( $data ) ) {
 			return $data;
 		}
+		if ( RL_DB::is_trashed( $coll, $id ) ) {
+			return new WP_Error( 'rl_in_trash', 'This record is in the trash. Restore it first.', array( 'status' => 409 ) );
+		}
 		$old = RL_DB::get_record( $coll, $id );
 		if ( 'software' === $coll && ! self::can( 'software', 'credentials' ) ) {
 			// Without the credentials permission the stored values are kept as they are.
@@ -203,13 +219,46 @@ class RL_REST {
 		return rest_ensure_response( array( 'ok' => true ) );
 	}
 
-	public static function delete_record( $req ) {
-		$old = RL_DB::get_record( $req['coll'], $req['id'] );
-		RL_DB::delete_record( $req['coll'], $req['id'] );
-		if ( $old ) {
-			$title = 'software' === $req['coll'] ? ( isset( $old['name'] ) ? $old['name'] : '' ) : ( isset( $old['title'] ) ? $old['title'] : '' );
-			self::log( 'ledger.record_delete', $req['coll'], array( 'id' => $req['id'], 'title' => $title ) );
+	private static function title_of( $coll, $rec ) {
+		if ( ! is_array( $rec ) ) {
+			return '';
 		}
+		$k = 'software' === $coll ? 'name' : 'title';
+		return isset( $rec[ $k ] ) ? (string) $rec[ $k ] : '';
+	}
+
+	/**
+	 * DELETE: moves the record to the trash (nothing is lost, it can be restored).
+	 * DELETE ?purge=1: removes a record that is already in the trash for good, together with its attachments.
+	 */
+	public static function delete_record( $req ) {
+		$coll = $req['coll'];
+		$id   = $req['id'];
+		$old  = RL_DB::get_record( $coll, $id );
+		if ( ! $old ) {
+			return rest_ensure_response( array( 'ok' => true ) );
+		}
+		if ( $req['purge'] ) {
+			if ( ! RL_DB::is_trashed( $coll, $id ) ) {
+				return new WP_Error( 'rl_not_in_trash', 'Only records in the trash can be deleted permanently.', array( 'status' => 409 ) );
+			}
+			RL_DB::delete_record( $coll, $id );
+			self::log( 'ledger.record_purge', $coll, array( 'id' => $id, 'title' => self::title_of( $coll, $old ) ) );
+			return rest_ensure_response( array( 'ok' => true, 'purged' => true ) );
+		}
+		if ( RL_DB::trash_record( $coll, $id, get_current_user_id() ) ) {
+			self::log( 'ledger.record_delete', $coll, array( 'id' => $id, 'title' => self::title_of( $coll, $old ), 'to_trash' => true ) );
+		}
+		return rest_ensure_response( array( 'ok' => true, 'trashed' => true ) );
+	}
+
+	public static function restore_record( $req ) {
+		$coll = $req['coll'];
+		$id   = $req['id'];
+		if ( ! RL_DB::restore_record( $coll, $id ) ) {
+			return new WP_Error( 'rl_not_in_trash', 'Record is not in the trash.', array( 'status' => 404 ) );
+		}
+		self::log( 'ledger.record_restore', $coll, array( 'id' => $id, 'title' => self::title_of( $coll, RL_DB::get_record( $coll, $id ) ) ) );
 		return rest_ensure_response( array( 'ok' => true ) );
 	}
 

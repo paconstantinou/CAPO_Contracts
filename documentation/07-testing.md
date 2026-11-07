@@ -19,3 +19,5 @@ Budget breakdown: `php tests/integration/budget-test.php <base-url>` (HTTP; need
 Unit tests (Node, no WordPress needed): `node tests/unit/budget-calc-test.js` (budget calculation) and `node tests/unit/budget-export-test.js` (structure of the Excel export against a SheetJS stub). `php tests/integration/articles-test.php <wp-load.php>` checks the article list.
 
 WordPress UI in a real browser: `RL_URL=… RL_PAGE=/page-with-shortcode/ RL_USER=… RL_PASS=… node tests/browser/wp-ui-test.js` (needs Playwright). It checks that the page does not freeze and the tabs respond; run it for an admin and for a restricted user (e.g. viewer1).
+
+Trash: `php tests/integration/trash-test.php <base-url> <wp-load.php>` (HTTP, needs `RL_TEST_ADMIN_PASS`), `php tests/integration/trash-cron-test.php <wp-load.php>` (auto-purge, retention, reminders), `node tests/browser/wp-trash-test.js` (real browser; run as admin, as a user with delete but no purge, and as a viewer).

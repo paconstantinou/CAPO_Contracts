@@ -166,6 +166,8 @@ table.bdt td.how{white-space:normal;font-size:12px;color:var(--muted);min-width:
 table.bdt tr.tot td{font-weight:700;background:var(--surface2)}
 table.art input,table.art select{width:100%;min-width:60px}
 table.art td:nth-child(2) input,table.art td:nth-child(4) input{min-width:200px}
+#rl-app .toast-undo,.toast-undo{margin-left:10px;background:transparent;border:1px solid currentColor;color:inherit;border-radius:6px;padding:3px 10px;font-weight:700;cursor:pointer}
+#rl-app table.art td.trbtn{white-space:nowrap}
 </style>
 <div class="wrap">
   <header class="top">
@@ -214,7 +216,7 @@ var FIELDS=[
  {k:"emails",l:"Notification emails",q:"Which e-mail addresses should receive the reminders? Separate several with commas (optional).",ta:1,email:1,ph:"name@example.com, other@example.com"}
 ];
 var REMIND=[7,14,30,60,90];
-var S={items:[],contracts:[],cat:"sw",loaded:{},uid:null,db:null,assets:null,dl:null,filter:"all",q:"",open:null,openCat:null,cw:null,impCat:null,mem:false,unsub:null};
+var S={items:[],contracts:[],trash:{sw:[],ct:[]},cat:"sw",loaded:{},uid:null,db:null,assets:null,dl:null,filter:"all",q:"",open:null,openCat:null,cw:null,impCat:null,mem:false,unsub:null};
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function pad(n){return (n<10?"0":"")+n}
@@ -234,7 +236,19 @@ function status(it){
   return {k:"ok",t:"Active",d:d};
 }
 function dayText(d){if(d==null)return "";if(d<0)return Math.abs(d)+" day"+(Math.abs(d)==1?"":"s")+" ago";if(d==0)return "today";return "in "+d+" day"+(d==1?"":"s")}
-function toast(m){var t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(function(){t.hidden=true},3200)}
+function toast(m){
+  if(toastUndo.pend){var p=toastUndo.pend;toastUndo.pend=null;clearTimeout(toastUndo.h);p.exp&&p.exp()}
+  var t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(function(){t.hidden=true},3200)
+}
+/* A message with an Undo button for 8 s. onExpire runs when the time is up (or when another message replaces it), e.g. to really delete a file. */
+function toastUndo(msg,onUndo,onExpire,el){
+  if(toastUndo.pend){var p=toastUndo.pend;toastUndo.pend=null;p.exp&&p.exp()}
+  clearTimeout(toast.h);clearTimeout(toastUndo.h);
+  var t=$("#toast");t.innerHTML=esc(msg)+' <button type="button" class="toast-undo" data-act="undo">'+(el?"Αναίρεση":"Undo")+'</button>';t.hidden=false;
+  toastUndo.pend={exp:onExpire};toastUndo.fn=onUndo;
+  toastUndo.h=setTimeout(function(){var q=toastUndo.pend;toastUndo.pend=null;t.hidden=true;q&&q.exp&&q.exp()},8000);
+}
+function doUndo(){var f=toastUndo.fn;toastUndo.pend=null;toastUndo.fn=null;clearTimeout(toastUndo.h);$("#toast").hidden=true;if(f)f()}
 function norm(o){
   return {name:String(o.name||"").trim(),description:String(o.description||"").trim(),vendor:String(o.vendor||"").trim(),
     website:String(o.website||"").trim(),username:String(o.username||"").trim(),emails:String(o.emails||"").trim(),
@@ -253,11 +267,46 @@ async function save(id,rec,cat){
   else{var L=listOf(cat),i=L.findIndex(function(x){return x.id===id}),o=Object.assign({id:id},rec);if(i>=0)L[i]=o;else L.push(o);render()}
   return true;
 }
+/* Deleting never destroys: the record goes to the trash (WordPress: on the server; here: kept with a deletedAt mark) and can be restored. */
+var TRASH_DAYS=30;
+function trashDays(){return window.RL_TRASH?(window.RL_TRASH.days||0):TRASH_DAYS}
+function collName(cat){return cat==="ct"?"contracts":"software"}
+function recName(cat,it){return cat==="ct"?(it.title||""):(it.name||"")}
 async function remove(id,cat){
-  cat=cat||"sw";
-  if(S.db&&S.uid){try{await col(cat==="ct"?"contracts":"software").doc(id).delete()}catch(e){toast("Could not delete");return false}}
-  else{var k=cat==="ct"?"contracts":"items";S[k]=S[k].filter(function(x){return x.id!==id});render()}
+  cat=cat||"sw";var it=getItem(cat,id);if(!it)return false;
+  if(window.RL_TRASH){try{await col(collName(cat)).doc(id).delete()}catch(e){toast("Could not delete");return false}loadTrash(cat)}
+  else if(S.db&&S.uid){var rec=strip(it);rec.deletedAt=Date.now();try{await col(collName(cat)).doc(id).set(rec)}catch(e){toast("Could not delete");return false}}
+  else{var k=cat==="ct"?"contracts":"items";S[k]=S[k].filter(function(x){return x.id!==id});S.trash[cat].push(Object.assign({},it,{deletedAt:Date.now()}));render()}
   return true;
+}
+/* trash lists: S.trash.sw / S.trash.ct hold {id,...record,_at (ms),_by} */
+function trashFromDocs(cat,docs){S.trash[cat]=docs.map(function(d){return Object.assign({id:d.id},d.data(),{_at:d.data().deletedAt||0})})}
+async function loadTrash(cat){
+  if(!window.RL_TRASH||!window.RL_TRASH.can(collName(cat)))return;
+  try{var l=await window.RL_TRASH.list(collName(cat));S.trash[cat]=l.map(function(x){return Object.assign({id:x.id},x.data,{_at:x.at,_by:x.by})});render()}catch(e){}
+}
+async function restoreItem(cat,id){
+  var it=(S.trash[cat]||[]).find(function(x){return x.id===id});if(!it)return false;
+  if(window.RL_TRASH){try{await window.RL_TRASH.restore(collName(cat),id)}catch(e){toast("Could not restore");return false}await loadTrash(cat);return true}
+  var rec=strip(it);delete rec.deletedAt;delete rec._at;delete rec._by;
+  if(S.db&&S.uid){try{await col(collName(cat)).doc(id).set(rec)}catch(e){toast("Could not restore");return false}}
+  else{S.trash[cat]=S.trash[cat].filter(function(x){return x.id!==id});listOf(cat).push(Object.assign({id:id},rec));render()}
+  return true;
+}
+async function purgeItem(cat,id){
+  var it=(S.trash[cat]||[]).find(function(x){return x.id===id});if(!it)return false;
+  if(window.RL_TRASH){try{await window.RL_TRASH.purge(collName(cat),id)}catch(e){toast("Could not delete");return false}await loadTrash(cat);return true}
+  var files=(it.attachments||[]).concat((it.milestones||[]).reduce(function(a,m){return a.concat(m.attachments||[])},[]));
+  if(S.db&&S.uid){try{await col(collName(cat)).doc(id).delete()}catch(e){toast("Could not delete");return false}}
+  else{S.trash[cat]=S.trash[cat].filter(function(x){return x.id!==id});render()}
+  if(S.assets)for(var i=0;i<files.length;i++){try{await S.assets.delete(files[i].id)}catch(_){}}
+  return true;
+}
+/* browser versions: remove records that have been in the trash longer than TRASH_DAYS */
+async function autoPurge(){
+  if(window.RL_TRASH||!TRASH_DAYS)return;
+  var lim=Date.now()-TRASH_DAYS*864e5;
+  ["sw","ct"].forEach(function(c){(S.trash[c]||[]).filter(function(x){return x._at&&x._at<lim}).forEach(function(x){purgeItem(c,x.id)})});
 }
 function byId(id){return S.items.find(function(x){return x.id===id})}
 function strip(it){var o=Object.assign({},it);delete o.id;return o}
@@ -289,7 +338,7 @@ function renderSw(){
   if(ex.length)al+='<div class="alert bad"><span>Expired: '+names(ex)+'</span><button type="button" data-f="expired">Show</button></div>';
   if(du.length)al+='<div class="alert"><span>Renewal due: '+names(du)+'</span><button type="button" data-f="due">Show</button></div>';
   $("#alerts").innerHTML=al+msAlertHtml("sw")+crossAlert("sw");
-  var chips=[["all","All"],["expired","Expired"],["due","Due soon"],["active","Active"]];
+  var chips=[["all","All"],["expired","Expired"],["due","Due soon"],["active","Active"],["trash","🗑 Trash"+(S.trash.sw.length?" ("+S.trash.sw.length+")":"")]];
   $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("")+'<button type="button" class="chip" data-act="cols">⚙ Columns</button>'+(window.RL_CFG?'':'<button type="button" class="chip" data-act="arts">Budget articles</button>');
   var rows=filtered(),h="";
   if(!all.length){
@@ -461,7 +510,15 @@ async function attachFiles(files){
 async function removeFile(i){
   var cat=S.openCat||"sw",it=getItem(cat,S.open);if(!it)return;var a=(it.attachments||[])[i];if(!a)return;
   var rec=strip(it);rec.attachments=it.attachments.filter(function(_,j){return j!==i});
-  if(await save(it.id,rec,cat)){try{await S.assets.delete(a.id)}catch(e){}reopen(cat,it.id);toast(cat==="ct"?"Το αρχείο αφαιρέθηκε":"File removed")}
+  var before=(it.attachments||[]).slice(),id=it.id,el=cat==="ct";
+  if(await save(id,rec,cat)){
+    reopen(cat,id);
+    /* the file itself is only deleted when the 8 s to undo are over */
+    toastUndo(el?"Το αρχείο αφαιρέθηκε":"File removed",async function(){
+      var cur=getItem(cat,id);if(!cur)return;var r2=strip(cur);r2.attachments=before;
+      if(await save(id,r2,cat)&&S.open===id)reopen(cat,id);
+    },function(){try{S.assets.delete(a.id)}catch(e){}},el);
+  }
 }
 
 /* =============== MILESTONES (both categories) =============== */
@@ -604,11 +661,14 @@ async function msToggleDone(mid){
 async function msDelete(mid){
   var cat=S.openCat||"sw",it=getItem(cat,S.open);if(!it)return;
   var m=msList(it).find(function(x){return x.id===mid});if(!m)return;
-  if(!window.confirm(cat==="ct"?"Να διαγραφεί το milestone και τα συνημμένα του;":"Delete this milestone and its attachments?"))return;
-  var rec=strip(it);rec.milestones=msList(it).filter(function(x){return x.id!==mid});
-  if(await save(it.id,rec,cat)){
-    var f=(m.attachments||[]);for(var k=0;k<f.length;k++){try{await S.assets.delete(f[k].id)}catch(_){}}
-    reopen(cat,it.id);
+  var before=msList(it).slice(),id=it.id,el=cat==="ct",rec=strip(it);rec.milestones=before.filter(function(x){return x.id!==mid});
+  if(await save(id,rec,cat)){
+    reopen(cat,id);
+    /* the milestone's files are only deleted when the 8 s to undo are over */
+    toastUndo(el?"Το milestone διαγράφηκε":"Milestone deleted",async function(){
+      var cur=getItem(cat,id);if(!cur)return;var r2=strip(cur);r2.milestones=before;
+      if(await save(id,r2,cat)&&S.open===id)reopen(cat,id);
+    },async function(){var f=(m.attachments||[]);for(var k=0;k<f.length;k++){try{await S.assets.delete(f[k].id)}catch(_){}}},el);
   }
 }
 
@@ -803,17 +863,23 @@ function bpDetail(it,el){
 function bpText(it){
   return (it.budget||[]).map(function(p){return "Έτος "+p.year+": "+Number(p.amount).toFixed(2)+(p.article?" ["+artLabel(p.article)+"]":"")}).join("; ");
 }
+/* how many records (live and trashed) use an article code */
+function artUsage(code){
+  var n=0,fn=function(it){if((it.budget||[]).some(function(p){return String(p.article||"")===code}))n++};
+  S.items.forEach(fn);S.contracts.forEach(fn);S.trash.sw.forEach(fn);S.trash.ct.forEach(fn);
+  return n;
+}
 function artRow(a){
   a=a||{code:"",desc:"",cat:"",catDesc:"",split:false};
   return '<tr><td><input data-k="code" value="'+esc(a.code)+'" size="7" aria-label="Κωδικός"></td><td><input data-k="desc" value="'+esc(a.desc)+'" aria-label="Περιγραφή άρθρου"></td><td><input data-k="cat" value="'+esc(a.cat)+'" size="7" aria-label="Κατηγορία"></td><td><input data-k="catDesc" value="'+esc(a.catDesc)+'" aria-label="Περιγραφή κατηγορίας"></td>'+
    '<td><select data-k="split" aria-label="Ποσό ανάλυσης ανά έτος"><option value="1"'+(a.split?' selected':'')+'>ΝΑΙ</option><option value="0"'+(a.split?'':' selected')+'>ΌΧΙ</option></select></td>'+
-   '<td><button class="btn small" type="button" data-act="artdel" title="Διαγραφή άρθρου">✕</button></td></tr>';
+   '<td class="artuse">'+(a.code&&artUsage(a.code)?artUsage(a.code):"—")+'</td><td><button class="btn small" type="button" data-act="artdel" title="Διαγραφή άρθρου">✕</button></td></tr>';
 }
 function showArticles(){
   var el=S.cat!=="sw";
   openPanel('<div class="ph"><h2>'+(el?"Άρθρα προϋπολογισμού":"Budget articles")+'</h2><button class="btn small" type="button" data-act="close">'+(el?"Κλείσιμο":"Close")+'</button></div>'+
-   '<p class="hint">'+(el?"Κάθε γραμμή είναι ένα άρθρο. «Ποσό ανάλυσης ανά έτος»: ΝΑΙ = το ποσό κατανέμεται ανά μήνα στα έτη της περιόδου, ΌΧΙ = στο έτος έναρξης. Οι εγγραφές αποθηκεύουν τον κωδικό, γι' αυτό μην αλλάζεις κωδικό που χρησιμοποιείται.":"Each row is one article. Split per year: ΝΑΙ = spread by month over the years of the period, ΌΧΙ = start year. Records store the code, so do not change a code that is in use.")+'</p>'+
-   '<div class="tbl"><table class="art"><thead><tr><th>Κωδικός</th><th>Περιγραφή άρθρου</th><th>Κατηγορία</th><th>Περιγραφή κατηγορίας</th><th>Ανάλυση ανά έτος</th><th></th></tr></thead><tbody id="artRows">'+articles().map(artRow).join("")+'</tbody></table></div>'+
+   '<p class="hint">'+(el?"Κάθε γραμμή είναι ένα άρθρο. «Ποσό ανάλυσης ανά έτος»: ΝΑΙ = το ποσό κατανέμεται ανά μήνα στα έτη της περιόδου, ΌΧΙ = στο έτος έναρξης. Άρθρο που χρησιμοποιείται σε εγγραφές δεν μπορεί να διαγραφεί ή να αλλάξει κωδικό.":"Each row is one article. Split per year: ΝΑΙ = spread by month over the years of the period, ΌΧΙ = start year. An article used by records cannot be deleted or have its code changed.")+'</p>'+
+   '<div class="tbl"><table class="art"><thead><tr><th>Κωδικός</th><th>Περιγραφή άρθρου</th><th>Κατηγορία</th><th>Περιγραφή κατηγορίας</th><th>Ανάλυση ανά έτος</th><th>Σε χρήση</th><th></th></tr></thead><tbody id="artRows">'+articles().map(artRow).join("")+'</tbody></table></div>'+
    '<div class="actions"><button class="btn" type="button" data-act="artadd">'+(el?"+ Προσθήκη νέου άρθρου":"+ Add article")+'</button><button class="btn primary" type="button" data-act="artsave">'+(el?"Αποθήκευση":"Save")+'</button></div>',"arts");
 }
 function saveArticles(){
@@ -823,8 +889,10 @@ function saveArticles(){
     if(!o.code||seen[o.code])return;seen[o.code]=1;
     list.push({code:o.code.slice(0,40),desc:(o.desc||"").slice(0,200),cat:(o.cat||"").slice(0,40),catDesc:(o.catDesc||"").slice(0,200),split:o.split==="1"});
   });
+  var kept=[];
+  articles().forEach(function(a){if(!seen[a.code]&&artUsage(a.code)){list.push(a);kept.push(a.code)}});
   try{localStorage.setItem("rl.articles",JSON.stringify(list.slice(0,500)))}catch(e){}
-  closePanel();toast(S.cat!=="sw"?"Τα άρθρα αποθηκεύτηκαν":"Articles saved");
+  closePanel();toast(kept.length?(S.cat!=="sw"?"Αποθηκεύτηκαν. Διατηρήθηκαν επειδή χρησιμοποιούνται: ":"Saved. Kept because they are in use: ")+kept.join(", "):S.cat!=="sw"?"Τα άρθρα αποθηκεύτηκαν":"Articles saved");
   if(S.cat==="bd")render();
 }
 function bpRedraw(){
@@ -833,6 +901,26 @@ function bpRedraw(){
 function bpLive(){
   if(S.cat==="ct"){ctCollect();(S.cw.d.years||[]).forEach(function(y,i){var c=$("#cy_cost_"+i);if(c&&bpHas(S.cw.d,i+1))c.value=y.cost});var sp=$("#cSum");if(sp)sp.textContent=mc(ctSum(S.cw.d.years))}
   else{collect();var c=$("#w_cost");if(c&&bpHas(S.wiz.data))c.value=bpSum(S.wiz.data.budget)}
+}
+
+/* =============== TRASH VIEW =============== */
+function fmtDay(ms){if(!ms)return "—";var d=new Date(ms);return ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear()}
+function renderTrash(cat){
+  var el=cat==="ct",L=(S.trash[cat]||[]).slice().sort(function(a,b){return (b._at||0)-(a._at||0)}),days=trashDays(),now=Date.now();
+  var canPurge=window.RL_TRASH?window.RL_TRASH.canPurge(collName(cat)):true;
+  $("#stats").innerHTML='<div class="stat"><b>'+L.length+'</b><span>'+(el?"Στον κάδο":"In the trash")+'</span></div>';
+  $("#alerts").innerHTML='<div class="alert"><span>'+(el?"Οι εγγραφές στον κάδο δεν εμφανίζονται στη λίστα, δεν στέλνουν υπενθυμίσεις και δεν μπαίνουν στον Προϋπολογισμό. ":"Records in the trash are hidden from the list, send no reminders and are left out of the budget. ")+
+    (days?(el?"Διαγράφονται οριστικά "+days+" ημέρες μετά τη διαγραφή.":"They are deleted for good "+days+" days after deletion."):(el?"Δεν διαγράφονται αυτόματα.":"They are not removed automatically."))+'</span></div>';
+  $("#chips").innerHTML='<button type="button" class="chip" data-f="all">← '+(el?"Πίσω στη λίστα":"Back to the list")+'</button>';
+  var h;
+  if(!L.length)h='<div class="empty"><h2>'+(el?"Ο κάδος είναι άδειος":"The trash is empty")+'</h2><p>'+(el?"Οι εγγραφές που διαγράφεις θα εμφανίζονται εδώ και θα μπορείς να τις επαναφέρεις.":"Records you delete show up here and can be restored.")+'</p></div>';
+  else h='<div class="tbl"><table class="art"><thead><tr><th>'+(el?"Σύμβαση":"Software")+'</th><th>'+(el?"Διαγράφηκε":"Deleted")+'</th><th>'+(el?"Οριστική διαγραφή σε":"Deleted for good in")+'</th><th></th></tr></thead><tbody>'+L.map(function(it){
+    var left=days&&it._at?Math.max(0,Math.ceil((it._at+days*864e5-now)/864e5)):null;
+    return '<tr><td>'+esc(recName(cat,it)||"—")+'</td><td>'+fmtDay(it._at)+(it._by?" · "+esc(it._by):"")+'</td><td>'+(left===null?"—":left+(el?" ημ.":" d"))+'</td><td class="trbtn"><button class="btn small" type="button" data-act="trrestore" data-id="'+esc(it.id)+'">'+(el?"Επαναφορά":"Restore")+'</button> '+
+      '<button class="btn small danger" type="button" data-act="trpurge" data-id="'+esc(it.id)+'">'+(el?"Οριστική διαγραφή":"Delete for good")+'</button></td></tr>';
+  }).join("")+'</tbody></table></div>';
+  $("#list").innerHTML=h;
+  if(!canPurge)[].forEach.call(document.querySelectorAll('[data-act=trpurge]'),function(n){n.hidden=true});
 }
 
 /* =============== BUDGET SHEET (Προϋπολογισμός) =============== */
@@ -1073,7 +1161,7 @@ function renderCt(){
   }).join("");
   if(lines.length>4)al+='<div class="alert"><span>+'+(lines.length-4)+' ακόμη</span><button type="button" data-f="due">Προβολή</button></div>';
   $("#alerts").innerHTML=al+msAlertHtml("ct")+crossAlert("ct");
-  var chips=[["all","Όλες"],["expired","Έληξαν"],["due","Λήγουν σύντομα"],["active","Σε ισχύ"]];
+  var chips=[["all","Όλες"],["expired","Έληξαν"],["due","Λήγουν σύντομα"],["active","Σε ισχύ"],["trash","🗑 Κάδος"+(S.trash.ct.length?" ("+S.trash.ct.length+")":"")]];
   $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("")+'<button type="button" class="chip" data-act="cols">⚙ Στήλες</button>'+(window.RL_CFG?'':'<button type="button" class="chip" data-act="arts">Άρθρα προϋπολογισμού</button>');
   var rows=ctFiltered(),h="";
   if(!all.length){
@@ -1374,7 +1462,7 @@ function render(){
   $("#btnExport").textContent=bd?"Εξαγωγή Excel":ct?"Εξαγωγή":"Export";
   $("#q").placeholder=ct?"Αναζήτηση σύμβασης, ανάδοχου, αρ. διαγωνισμού…":"Search name, vendor, website…";
   $("#stats").setAttribute("lang",ct||bd?"el":"en");
-  if(bd)renderBd();else if(ct)renderCt();else renderSw();
+  if(bd)renderBd();else if(S.filter==="trash")renderTrash(ct?"ct":"sw");else if(ct)renderCt();else renderSw();
   $("#note").textContent=bd?"Ο πίνακας υπολογίζεται αυτόματα από τα επιμέρους ποσά κάθε έτους των Συμβάσεων και των Online Renewals. Άρθρα με ανάλυση ανά έτος (ΝΑΙ): το ποσό κατανέμεται ανά μήνα στα ημερολογιακά έτη της περιόδου. Τα υπόλοιπα (ΌΧΙ): ολόκληρο στο έτος έναρξης.":S.db?(ct?"Οι εγγραφές σου είναι ιδιωτικές και αποθηκεύονται αυτόματα. Οι υπενθυμίσεις εμφανίζονται κάθε φορά που ανοίγεις την εφαρμογή.":"Your records are private to you and saved automatically. Reminders appear here whenever you open the ledger."):"Storage is not available in this view, so changes last only until you close the page. · Η αποθήκευση δεν είναι διαθέσιμη εδώ.";
   var ov=$("#overlay");
   if(S.open&&!ov.hidden&&ov.dataset.kind==="detail"&&!getItem(S.openCat||"sw",S.open))closePanel();
@@ -1477,7 +1565,7 @@ document.addEventListener("click",async function(ev){
   if(t.id==="overlay"){closePanel();return}
   var b=t.closest("button,[data-f]");if(!b)return;
   var a=b.dataset.act;
-  if(b.dataset.f&&!a){S.filter=b.dataset.f;render();return}
+  if(b.dataset.f&&!a){S.filter=b.dataset.f;if(S.filter==="trash")loadTrash(S.cat==="ct"?"ct":"sw");render();return}
   if(b.dataset.sort)return setSort(b.dataset.sort);
   if(b.id==="btnAdd"||b.id==="emAdd")return S.cat==="ct"?ctStart():startWizard();
   if(b.id==="btnImport"||b.id==="emImp"){$("#fileXlsx").click();return}
@@ -1486,7 +1574,7 @@ document.addEventListener("click",async function(ev){
   if(b.classList.contains("row"))return reopen(S.cat,b.dataset.id);
   if(b.dataset.copy){var it=byId(S.open);try{await navigator.clipboard.writeText(it[b.dataset.copy]||"");toast("Copied")}catch(e){toast("Copy is blocked here — select the text instead")}return}
   if(b.dataset.delfile!==undefined)return removeFile(+b.dataset.delfile);
-  if(b.id==="delYes"){var id=S.open;var dc=S.openCat||"sw";if(await remove(id,dc)){closePanel();toast(dc==="ct"?"Διαγράφηκε":"Deleted")}return}
+  if(b.id==="delYes"){var id=S.open;var dc=S.openCat||"sw";if(await remove(id,dc)){closePanel();toastUndo(dc==="ct"?"Μεταφέρθηκε στον κάδο":"Moved to the trash",function(){restoreItem(dc,id).then(function(ok){if(ok)toast(dc==="ct"?"Η εγγραφή επαναφέρθηκε":"Record restored")})},null,dc==="ct")}return}
   if(b.id==="delNo"){$("#delbox").innerHTML="";return}
   switch(a){
     case "close":closePanel();break;
@@ -1497,15 +1585,22 @@ document.addEventListener("click",async function(ev){
     case "ctstep":ctCollect();S.cw.mode="step";S.cw.i=0;S.cw.err="";ctDraw();break;
     case "ctsave":ctSave();break;
     case "ctsum":ctCollect();var cs=$("#c_cost");if(cs)cs.value=ctSum(S.cw.d.years);break;
-    case "ctdel":$("#delbox").innerHTML='<p class="err">Να διαγραφεί η σύμβαση; Η ενέργεια δεν αναιρείται.</p><div class="actions"><button class="btn danger" type="button" id="delYes">Ναι, διαγραφή</button><button class="btn" type="button" id="delNo">Άκυρο</button></div>';break;
+    case "ctdel":$("#delbox").innerHTML='<p class="err">Να διαγραφεί η σύμβαση; Θα μεταφερθεί στον Κάδο και μπορείς να την επαναφέρεις.</p><div class="actions"><button class="btn danger" type="button" id="delYes">Ναι, μεταφορά στον κάδο</button><button class="btn" type="button" id="delNo">Άκυρο</button></div>';break;
     case "back":showDetail(b.dataset.id);break;
     case "renewid":S.open=b.dataset.id;S.openCat="sw";showRenew(b.dataset.id);break;
     case "openid":reopen(b.dataset.cat||"sw",b.dataset.id);break;
     case "cols":showCols();break;
     case "arts":showArticles();break;
+    case "undo":doUndo();break;
+    case "trrestore":{var tc=S.cat==="ct"?"ct":"sw";if(await restoreItem(tc,b.dataset.id))toast(tc==="ct"?"Η εγγραφή επαναφέρθηκε":"Record restored");break}
+    case "trpurge":{var pc=S.cat==="ct"?"ct":"sw",pit=(S.trash[pc]||[]).find(function(x){return x.id===b.dataset.id});if(!pit)break;
+      if(!window.confirm((pc==="ct"?"ΟΡΙΣΤΙΚΗ διαγραφή «":"PERMANENTLY delete \"")+recName(pc,pit)+(pc==="ct"?"» και όλων των συνημμένων της; ΔΕΝ μπορεί να αναιρεθεί.":"\" and all its attachments? This CANNOT be undone.")))break;
+      if(await purgeItem(pc,b.dataset.id))toast(pc==="ct"?"Διαγράφηκε οριστικά":"Deleted for good");break}
     case "artsave":saveArticles();break;
     case "artadd":{var rows=$("#artRows");rows.insertAdjacentHTML("beforeend",artRow());var ins=rows.querySelectorAll("tr");ins[ins.length-1].querySelector("input").focus();break}
-    case "artdel":{var tr=b.closest("tr");if(tr)tr.remove();break}
+    case "artdel":{var tr=b.closest("tr"),cd=tr&&tr.querySelector("[data-k=code]"),us=cd&&cd.defaultValue?artUsage(cd.defaultValue):0;
+      if(us){toast(S.cat!=="sw"?"Το άρθρο χρησιμοποιείται σε "+us+" εγγραφές και δεν μπορεί να διαγραφεί":"This article is used by "+us+" record(s) and cannot be deleted");break}
+      if(tr)tr.remove();break}
     case "bpadd":{var dd=S.cat==="ct"?(ctCollect(),S.cw.d):(collect(),S.wiz.data);dd.budget=dd.budget||[];dd.budget.push({year:+b.dataset.year||1,amount:"",article:""});bpRedraw();break}
     case "bpdel":{var dd2=S.cat==="ct"?(ctCollect(),S.cw.d):(collect(),S.wiz.data);dd2.budget.splice(+b.dataset.i,1);if(S.cat==="ct")(dd2.years||[]).forEach(function(y,i){if(!bpHas(dd2,i+1)&&false)y.cost=""});bpRedraw();break}
     case "colsreset":resetCols();break;
@@ -1521,7 +1616,7 @@ document.addEventListener("click",async function(ev){
     case "renew":showRenew(S.open);break;
     case "rsave":doRenew(b.dataset.id);break;
     case "edit":S.openCat==="ct"?ctStart(S.open):startWizard(S.open);break;
-    case "del":$("#delbox").innerHTML='<p class="err">Delete this software and its history? This cannot be undone.</p><div class="actions"><button class="btn danger" type="button" id="delYes">Yes, delete</button><button class="btn" type="button" id="delNo">Keep it</button></div>';break;
+    case "del":$("#delbox").innerHTML='<p class="err">Delete this software? It moves to the Trash, where you can restore it.</p><div class="actions"><button class="btn danger" type="button" id="delYes">Yes, move to the trash</button><button class="btn" type="button" id="delNo">Keep it</button></div>';break;
     case "wnext":wizNext();break;
     case "wback":collect();S.wiz.err="";S.wiz.i--;drawWizard();break;
     case "wfull":collect();S.wiz.mode="full";S.wiz.err="";drawWizard();break;
@@ -1581,7 +1676,7 @@ async function start(){
     if(db&&id){
       S.db=db;S.uid=id;
       S.loaded={};
-      var sub=function(name,cat,key){return col(name).onSnapshot(function(snap){S[key]=snap.docs.map(function(d){return Object.assign({id:d.id},d.data())});S.loaded[cat]=true;if(key==="items")purgePasswords();render();maybeDigest()},function(){toast("Live sync stopped — reload the page")})};
+      var sub=function(name,cat,key){return col(name).onSnapshot(function(snap){var all=snap.docs.map(function(d){return Object.assign({id:d.id},d.data())});S[key]=all.filter(function(x){return !x.deletedAt});if(!window.RL_TRASH)S.trash[cat]=all.filter(function(x){return x.deletedAt}).map(function(x){return Object.assign({},x,{_at:x.deletedAt})});S.loaded[cat]=true;if(key==="items")purgePasswords();if(S.loaded.sw&&S.loaded.ct&&!S.tinit){S.tinit=1;if(window.RL_TRASH){loadTrash("sw");loadTrash("ct")}else autoPurge()}render();maybeDigest()},function(){toast("Live sync stopped — reload the page")})};
       S.unsub=[sub("software","sw","items"),sub("contracts","ct","contracts")];
     }
   }catch(e){}

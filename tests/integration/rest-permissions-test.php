@@ -53,6 +53,7 @@ t( 'logged-in cookie without nonce cannot write', in_array( $r['code'], array( 4
 $c->nonce = $nonce;
 
 echo "super admin\n";
+foreach ( array( 's1', 'new_viewer1', 'new_editor1', 'new_manager1', 'new_nobody', 'new_admin' ) as $leftover ) { $c->rl( 'DELETE', "records/software/$leftover" ); $c->rl( 'DELETE', "records/software/$leftover&purge=1" ); } // leftovers of an earlier run (delete = trash, then purge)
 $r = $c->rl( 'PUT', 'records/software/s1', $sw( 'Alpha' ) ); t( 'create software', 200 === $r['code'], $r['body'] );
 $r = $c->rl( 'PUT', 'records/contracts/c1', array( 'data' => array( 'title' => 'Σύμβαση Α', 'tender' => 'T-1', 'description' => '', 'contractor' => 'X', 'coordinator' => 'Y', 'months' => 14, 'dateFrom' => '2026-01-01', 'dateTo' => '2027-02-28', 'cost' => 1000, 'years' => array(), 'attachments' => array() ) ) ); t( 'create contract', 200 === $r['code'], $r['body'] );
 $r = $c->rl( 'GET', 'records/software' ); t( 'super admin sees username', 'secretuser' === ( $r['json']['items'][0]['data']['username'] ?? '' ) );

@@ -12,6 +12,15 @@ class RL_Cron {
 		add_action( self::HOOK, array( __CLASS__, 'run' ) );
 	}
 
+	/** Remove records that have been in the trash longer than the configured number of days. */
+	public static function purge_trash() {
+		$n = RL_DB::purge_expired( RL_Settings::trash_days() );
+		if ( $n > 0 && function_exists( 'am_log' ) ) {
+			am_log( 'ledger.trash_auto_purge', 'software', array( 'records' => $n, 'days' => RL_Settings::trash_days() ) );
+		}
+		return $n;
+	}
+
 	public static function schedule() {
 		if ( ! wp_next_scheduled( self::HOOK ) ) {
 			wp_schedule_event( time() + 300, 'daily', self::HOOK );
@@ -152,6 +161,9 @@ class RL_Cron {
 	 */
 	public static function run( $force = false ) {
 		$force  = ( true === $force );
+		if ( ! $force ) {
+			self::purge_trash();
+		}
 		$repeat = max( 1, (int) get_option( 'rl_repeat_days', 7 ) );
 		$sent   = get_option( 'rl_notified', array() );
 		if ( ! is_array( $sent ) ) {
