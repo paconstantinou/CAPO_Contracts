@@ -1091,7 +1091,9 @@ function bdAlloc(amount,from,to,split){
   return {by:by,text:"ολόκληρο το ποσό στο έτος έναρξης "+f.y+note};
 }
 /* rows: one per record and article; amounts per calendar year */
-function bdBuild(arts,items,contracts,tenders){
+var BD_VAT=0.19; /* amounts in the records are net of VAT; the budget sheet shows them including 19% VAT */
+function bdBuild(arts,items,contracts,tenders,vat){
+  vat=vat==null?BD_VAT:vat;
   var rows={},order=[],warn=[];
   function rowFor(code,kind,id,desc,head){var k=code+"|"+kind+"|"+id;if(!rows[k]){rows[k]={code:code,kind:kind,id:id,desc:desc,how:head.slice(),by:{}};order.push(k)}return rows[k]}
   function seg(kind,id,desc,head,label,from,to,parts,cost){
@@ -1105,11 +1107,11 @@ function bdBuild(arts,items,contracts,tenders){
       if(!a&&p.article)g.raw=String(p.article);
     });
     gorder.forEach(function(code){
-      var g=groups[code],al=bdAlloc(g.sum,from,to,!!(g.a&&g.a.split));
+      var g=groups[code],gross=r2(g.sum*(1+vat)),al=bdAlloc(gross,from,to,!!(g.a&&g.a.split));
       if(!al){warn.push(desc+" ("+label+"): δεν έχει έγκυρη ημερομηνία έναρξης, το ποσό "+bdEur(g.sum)+" δεν περιλαμβάνεται.");return}
       var r=rowFor(code,kind,id,desc,head);
       Object.keys(al.by).forEach(function(y){r.by[y]=r2((r.by[y]||0)+al.by[y])});
-      r.how.push(label+" ("+bdGr(from)+" – "+bdGr(to)+"): "+bdEur(g.sum)+(g.amts.length>1?" = "+g.amts.map(bdNum).join(" + "):"")+" — "+al.text+(g.raw?" · το άρθρο «"+g.raw+"» δεν υπάρχει στη λίστα άρθρων":(code===""?" · χωρίς άρθρο":"")));
+      r.how.push(label+" ("+bdGr(from)+" – "+bdGr(to)+"): "+bdEur(g.sum)+(g.amts.length>1?" = "+g.amts.map(bdNum).join(" + "):"")+(vat?" + ΦΠΑ "+(Math.round(vat*10000)/100)+"% ("+bdEur(r2(gross-g.sum))+") = "+bdEur(gross):"")+" — "+al.text+(g.raw?" · το άρθρο «"+g.raw+"» δεν υπάρχει στη λίστα άρθρων":(code===""?" · χωρίς άρθρο":"")));
     });
   }
   (items||[]).forEach(function(it){
@@ -1146,7 +1148,7 @@ function bdTable(title,sub,rows,years){
   var tot=bdTotals(rows,years);
   return '<section class="bds"><h3>'+esc(title)+'</h3>'+(sub?'<p class="hint">'+esc(sub)+'</p>':'')+
    '<div class="tbl"><table class="bdt"><thead><tr><th>Α/Α</th><th>Λεπτομέρειες Δαπάνης (Περιγραφή)</th><th>Τρόπος Υπολογισμού</th>'+
-   years.map(function(y){return '<th class="num">Προϋπολ.<br>ΕΤΟΣ '+y+'<br>€</th>'}).join("")+'</tr></thead><tbody>'+
+   years.map(function(y){return '<th class="num">Προϋπολ.<br>ΕΤΟΣ '+y+'<br>€ με ΦΠΑ</th>'}).join("")+'</tr></thead><tbody>'+
    (rows.length?rows.map(function(r,i){
      return '<tr><td>'+(i+1)+'</td><td>'+esc(r.desc)+'</td><td class="how">'+r.how.map(esc).join("<br>")+'</td>'+years.map(function(y){return '<td class="num">'+(r.by[y]?bdNum(r.by[y]):"")+'</td>'}).join("")+'</tr>';
    }).join(""):'<tr><td colspan="'+(3+years.length)+'" class="hint">Δεν υπάρχουν γραμμές για αυτό το άρθρο.</td></tr>')+
@@ -1156,7 +1158,7 @@ function renderBd(){
   var arts=articles(),B=bdBuild(arts,S.items,S.contracts,S.tenders.filter(tnActive)),sel=bdSel(),years=B.years.length?B.years:[new Date().getFullYear()];
   var all=[];Object.keys(B.byArt).forEach(function(c){all=all.concat(B.byArt[c])});
   var tot=bdTotals(all,years);
-  $("#stats").innerHTML=years.map(function(y,i){return '<div class="stat"><b class="num" style="font-family:var(--f-display)">'+bdNum(tot[i])+'</b><span>Σύνολο προϋπολογισμού '+y+' (€)</span></div>'}).join("");
+  $("#stats").innerHTML=years.map(function(y,i){return '<div class="stat"><b class="num" style="font-family:var(--f-display)">'+bdNum(tot[i])+'</b><span>Σύνολο προϋπολογισμού '+y+' (€, με ΦΠΑ '+(BD_VAT*100)+'%)</span></div>'}).join("");
   $("#alerts").innerHTML=B.warn.map(function(w){return '<div class="alert bad"><span>'+esc(w)+'</span></div>'}).join("");
   var opts='<option value="all">Όλα τα άρθρα</option>'+arts.map(function(a){var n=(B.byArt[a.code]||[]).length;return '<option value="'+esc(a.code)+'"'+(sel===a.code?' selected':'')+'>'+esc(a.code+" — "+a.desc)+(n?" ("+n+")":"")+'</option>'}).join("")+
     (B.byArt[""]?'<option value="none"'+(sel==="none"?' selected':'')+'>Χωρίς άρθρο ('+B.byArt[""].length+')</option>':'');
@@ -1179,7 +1181,7 @@ function bdExport(){
   function name(s){s=String(s).replace(/[\\\/\?\*\[\]:]/g,"").trim().slice(0,31)||"Φύλλο";var n=s,k=2;while(used[n.toLowerCase()]){n=s.slice(0,28)+" "+k++}used[n.toLowerCase()]=1;return n}
   function num(v,f,c){var o={t:"n",v:v,z:fmt};if(f)o.f=f;return o}
   function colL(i){return XLSX.utils.encode_col(i)}
-  var yh=years.map(function(y){return "Προϋπολ.\nΕΤΟΣ "+y+"\n€"});
+  var yh=years.map(function(y){return "Προϋπολ.\nΕΤΟΣ "+y+"\n€ με ΦΠΑ"});
   var sum=[["Άρθρο","Περιγραφή άρθρου","Κατηγορία","Ποσό ανάλυσης ανά έτος"].concat(yh)],codes=[];
   arts.forEach(function(a){if((B.byArt[a.code]||[]).length)codes.push(a.code)});
   codes.forEach(function(c){
@@ -1739,7 +1741,7 @@ function render(){
   $("#q").placeholder=tn?"Αναζήτηση διαγωνισμού, αρ. διαγωνισμού…":ct?"Αναζήτηση σύμβασης, ανάδοχου, αρ. διαγωνισμού…":"Search name, vendor, website…";
   $("#stats").setAttribute("lang",el||bd?"el":"en");
   if(bd)renderBd();else if(S.filter==="trash")renderTrash(tn?"tn":ct?"ct":"sw");else if(tn)renderTn();else if(ct)renderCt();else renderSw();
-  $("#note").textContent=bd?"Ο πίνακας υπολογίζεται αυτόματα από τα επιμέρους ποσά κάθε έτους των Συμβάσεων, των ενεργών Διαγωνισμών και των Online Renewals. Άρθρα με ανάλυση ανά έτος (ΝΑΙ): το ποσό κατανέμεται ανά μήνα στα ημερολογιακά έτη της περιόδου. Τα υπόλοιπα (ΌΧΙ): ολόκληρο στο έτος έναρξης.":tn?"Τα ποσά των ενεργών διαγωνισμών περιλαμβάνονται στον Προϋπολογισμό. Με ακύρωση ή προώθηση σε Σύμβαση αφαιρούνται από εκεί· η συμπερίληψη γίνεται πλέον μέσω της σύμβασης.":S.db?(ct?"Αποθηκεύονται μόνο σε αυτόν τον browser και αυτή τη συσκευή. Κάνε τακτικά Εξαγωγή ως αντίγραφο ασφαλείας.":"Saved in this browser on this device only. Use Export regularly as a backup."):"Storage is not available in this view, so changes last only until you close the page. · Η αποθήκευση δεν είναι διαθέσιμη εδώ.";
+  $("#note").textContent=bd?"Ο πίνακας υπολογίζεται αυτόματα από τα επιμέρους ποσά (χωρίς ΦΠΑ στις εγγραφές· εδώ προστίθεται ΦΠΑ 19%) κάθε έτους των Συμβάσεων, των ενεργών Διαγωνισμών και των Online Renewals. Άρθρα με ανάλυση ανά έτος (ΝΑΙ): το ποσό κατανέμεται ανά μήνα στα ημερολογιακά έτη της περιόδου. Τα υπόλοιπα (ΌΧΙ): ολόκληρο στο έτος έναρξης.":tn?"Τα ποσά των ενεργών διαγωνισμών περιλαμβάνονται στον Προϋπολογισμό. Με ακύρωση ή προώθηση σε Σύμβαση αφαιρούνται από εκεί· η συμπερίληψη γίνεται πλέον μέσω της σύμβασης.":S.db?(ct?"Αποθηκεύονται μόνο σε αυτόν τον browser και αυτή τη συσκευή. Κάνε τακτικά Εξαγωγή ως αντίγραφο ασφαλείας.":"Saved in this browser on this device only. Use Export regularly as a backup."):"Storage is not available in this view, so changes last only until you close the page. · Η αποθήκευση δεν είναι διαθέσιμη εδώ.";
   var ov=$("#overlay");
   if(S.open&&!ov.hidden&&ov.dataset.kind==="detail"&&!getItem(S.openCat||"sw",S.open))closePanel();
 }

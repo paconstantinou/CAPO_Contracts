@@ -8,7 +8,7 @@ const book = { sheets: [] };
 const XLSX = { utils: { book_new: () => book, book_append_sheet: (wb, ws, n) => wb.sheets.push({ n, ws }), aoa_to_sheet: aoa => ({ aoa }),
   encode_col: i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; } }, write: () => new Uint8Array(1) };
 let saved = null;
-const run = new Function('XLSX', 'S', 'needX', 'toast', 'offer', 'todayIso', 'articles', code + '\nreturn bdExport;');
+const run = new Function('XLSX', 'S', 'needX', 'toast', 'offer', 'todayIso', 'articles', code + '\nBD_VAT = 0; /* the export tests below are about structure, so they run net of VAT */\nreturn bdExport;');
 const arts = JSON.parse(fs.readFileSync(path.join(__dirname, 'articles.json'), 'utf8'));
 const S = { tenders: [], items: [{ id: 's1', name: 'Software X', dateFrom: '2026-06-01', dateTo: '2027-05-31', cost: 240, budget: [{ year: 1, amount: 240, article: '03583' }] }],
   contracts: [{ id: 'c1', title: 'Συντήρηση', tender: 'Δ1', months: 24, dateFrom: '2026-12-01', dateTo: '2028-11-30',

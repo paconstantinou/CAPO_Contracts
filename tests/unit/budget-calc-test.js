@@ -9,7 +9,8 @@ const code = [
   grab(/\/\*BD-CALC-START\*\//, '/*BD-CALC-END*/'),
   grab(/function tnActive/, 'function tnInfo'),
 ].join('\n');
-const api = new Function(code + '\nreturn {DEFAULT_ARTICLES,parseArtLines,artFind,bdMonths,bdAlloc,bdBuild,bdTotals,bdEur,tnActive};')();
+const api = new Function(code + '\nreturn {DEFAULT_ARTICLES,parseArtLines,artFind,bdMonths,bdAlloc,bdBuild,bdTotals,bdEur,tnActive,BD_VAT};')();
+const gross = api.bdBuild; api.bdBuild = (a, i, c, t, v) => gross(a, i, c, t, v === undefined ? 0 : v); /* older tests are about allocation, so they run net of VAT */
 let ok = 0, bad = 0;
 function t(name, fn) { try { fn(); ok++; console.log('  ok   ' + name); } catch (e) { bad++; console.log('  FAIL ' + name + '\n       ' + e.message); } }
 const arts = api.DEFAULT_ARTICLES;
@@ -108,6 +109,18 @@ t('a tender without partial amounts uses its year cost; with the contract it cre
   const promoted = tn('p', 'promoted'), contract = { id: 'k', title: 'K', tender: 'Δ/p', months: 24, dateFrom: '2027-01-01', dateTo: '2028-12-31', years: promoted.years, budget: promoted.budget };
   const B2 = api.bdBuild(arts, [], [contract], [promoted].filter(api.tnActive)); const tot = api.bdTotals([].concat(...Object.values(B2.byArt)), B2.years).reduce((x, y) => x + y, 0);
   assert.strictEqual(tot, 1700);
+});
+t('budget includes 19% VAT on top of the net amounts (default)', () => {
+  assert.strictEqual(api.BD_VAT, 0.19);
+  const ct = { id: 'v', title: 'V', tender: 'Δ', months: 12, dateFrom: '2027-01-01', dateTo: '2027-12-31', years: [{ from: '2027-01-01', to: '2027-12-31', cost: 1000 }], budget: [{ year: 1, amount: 1000, article: '03461' }] };
+  const B = gross(arts, [], [ct], []); const r = B.byArt['03461'][0];
+  assert.strictEqual(r.by[2027], 1190); assert(r.how.join(' ').includes('ΦΠΑ 19%')); assert(r.how.join(' ').includes('1.190,00'));
+  assert.strictEqual(gross(arts, [], [ct], [], 0).byArt['03461'][0].by[2027], 1000);
+});
+t('VAT is added before the month split (1200 net -> 1428 gross, 1071 / 357)', () => {
+  const spl = { ...arts.find(a => a.code === '03461'), code: 'SPL', split: true };
+  const it = { id: 'w', name: 'W', dateFrom: '2027-04-01', dateTo: '2028-03-31', budget: [{ amount: 1200, article: 'SPL' }] };
+  assert.deepStrictEqual(gross([spl], [it], [], []).byArt['SPL'][0].by, { 2027: 1071, 2028: 357 });
 });
 t('Greek money format', () => { assert.strictEqual(api.bdEur(1100), '1.100,00 €'); assert.strictEqual(api.bdEur(0.5), '0,50 €'); });
 console.log('\n' + ok + ' passed, ' + bad + ' failed'); process.exit(bad ? 1 : 0);

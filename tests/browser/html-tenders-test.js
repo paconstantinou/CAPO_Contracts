@@ -38,6 +38,7 @@ const file = require('path').resolve(process.argv[2] || 'index.html');
   ok('list shows the tender', (await T('#list')).includes(name));
   await p.click('#tabBd'); await W(800);
   ok('budget sheet includes the active tender (same table as contracts)', (await T('#list')).includes(name) && (await T('#list')).includes('Εκτιμώμενος διαγωνισμός: ΔΙΑΓ-1/2027'));
+  const bt = await T('#list'); ok('budget amounts include 19% VAT (1200 net -> 1.428,00)', bt.includes('ΦΠΑ 19%') && bt.includes('1.428,00') && bt.includes('με ΦΠΑ'));
   await p.click('#tabTn'); await W(600); await p.click('text=' + name); await W(300);
   await p.click('[data-act=tncancel]'); await p.click('[data-act=tncancelyes]'); await W(1500);
   d = await T('#overlay'); ok('cancel keeps the tender for reference', d.includes('Ακυρώθηκε') && d.includes('Δεν περιλαμβάνεται στον Προϋπολογισμό'));
