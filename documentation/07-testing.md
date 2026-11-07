@@ -21,3 +21,5 @@ Unit tests (Node, no WordPress needed): `node tests/unit/budget-calc-test.js` (b
 WordPress UI in a real browser: `RL_URL=… RL_PAGE=/page-with-shortcode/ RL_USER=… RL_PASS=… node tests/browser/wp-ui-test.js` (needs Playwright). It checks that the page does not freeze and the tabs respond; run it for an admin and for a restricted user (e.g. viewer1).
 
 Trash: `php tests/integration/trash-test.php <base-url> <wp-load.php>` (HTTP, needs `RL_TEST_ADMIN_PASS`), `php tests/integration/trash-cron-test.php <wp-load.php>` (auto-purge, retention, reminders), `node tests/browser/wp-trash-test.js` (real browser; run as admin, as a user with delete but no purge, and as a viewer).
+
+Tenders: `php tests/integration/tenders-test.php <base-url>` (HTTP; needs `RL_TEST_ADMIN_PASS`). Real browser: `node tests/browser/wp-tenders-test.js` (WordPress, needs `RL_PASS`) and `node tests/browser/html-tenders-test.js path/to/index.html` (standalone HTML and Windows builds). The Claude artifact build needs the Claude host and was only syntax-checked.

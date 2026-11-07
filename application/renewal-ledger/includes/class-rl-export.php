@@ -118,6 +118,35 @@ class RL_Export {
 			return array( $head, $rows );
 		}
 
+		if ( 'tenders' === $collection ) {
+			$max = 1;
+			foreach ( $items as $it ) {
+				$max = max( $max, isset( $it['data']['years'] ) && is_array( $it['data']['years'] ) ? count( $it['data']['years'] ) : 0 );
+			}
+			$head = array( 'ΟΝΟΜΑ ΔΙΑΓΩΝΙΣΜΟΥ', 'ΑΡΙΘΜΟΣ ΔΙΑΓΩΝΙΣΜΟΥ', 'ΠΕΡΙΓΡΑΦΗ', 'ΔΙΑΡΚΕΙΑ (ΜΗΝΕΣ)', 'ΕΚΤΙΜ. ΗΜΕΡ. ΕΝΑΡΞΗΣ', 'ΕΚΤΙΜ. ΗΜΕΡ. ΛΗΞΗΣ', 'ΕΚΤΙΜΩΜΕΝΟ ΚΟΣΤΟΣ' );
+			for ( $i = 1; $i <= $max; $i++ ) {
+				array_push( $head, "ΕΤΟΣ $i - ΗΜΕΡ.ΕΝΑΡΞΗΣ", "ΕΤΟΣ $i - ΗΜΕΡ.ΛΗΞΗΣ", "ΕΤΟΣ $i - ΚΟΣΤΟΣ" );
+			}
+			array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ', 'ΚΑΤΑΣΤΑΣΗ' );
+			$labels = array( 'active' => 'Ενεργός', 'cancelled' => 'Ακυρώθηκε', 'promoted' => 'Προωθήθηκε σε Σύμβαση' );
+			$rows   = array();
+			foreach ( $items as $it ) {
+				$d   = $it['data'];
+				$row = array( self::g( $d, 'title' ), self::g( $d, 'tender' ), self::g( $d, 'description' ), isset( $d['months'] ) ? (int) $d['months'] : 0, self::g( $d, 'dateFrom' ), self::g( $d, 'dateTo' ), isset( $d['cost'] ) ? (float) $d['cost'] : 0 );
+				$ys  = ( isset( $d['years'] ) && is_array( $d['years'] ) ) ? array_values( $d['years'] ) : array();
+				for ( $i = 0; $i < $max; $i++ ) {
+					$y = isset( $ys[ $i ] ) ? $ys[ $i ] : array();
+					array_push( $row, self::g( $y, 'from' ), self::g( $y, 'to' ), ( isset( $y['cost'] ) && is_numeric( $y['cost'] ) ) ? (float) $y['cost'] : '' );
+				}
+				$st     = isset( $d['status'] ) ? $d['status'] : 'active';
+				$row[]  = self::names( $d );
+				$row[]  = self::budget( $d );
+				$row[]  = isset( $labels[ $st ] ) ? $labels[ $st ] : $st;
+				$rows[] = $row;
+			}
+			return array( $head, $rows );
+		}
+
 		$max = 1;
 		foreach ( $items as $it ) {
 			$max = max( $max, isset( $it['data']['years'] ) && is_array( $it['data']['years'] ) ? count( $it['data']['years'] ) : 0 );

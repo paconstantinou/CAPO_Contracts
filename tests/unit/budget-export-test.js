@@ -3,14 +3,14 @@
 const fs = require('fs'), path = require('path'), assert = require('assert');
 const src = fs.readFileSync(path.join(__dirname, '../../application/renewal-ledger/assets/app.js'), 'utf8');
 const g = (a, b) => { const i = src.search(a); return src.slice(i, src.indexOf(b, i)); };
-const code = [g(/var DEFAULT_ARTICLES=/, 'function articles()'), g(/function artFind/, 'function artLabel'), g(/\/\*BD-CALC-START\*\//, '/*BD-CALC-END*/'), g(/function bdExport\(\)/, '/* =============== CONTRACTS')].join('\n');
+const code = [g(/var DEFAULT_ARTICLES=/, 'function articles()'), g(/function artFind/, 'function artLabel'), g(/\/\*BD-CALC-START\*\//, '/*BD-CALC-END*/'), g(/function bdExport\(\)/, '/* =============== CONTRACTS'), g(/function tnActive/, 'function tnInfo')].join('\n');
 const book = { sheets: [] };
 const XLSX = { utils: { book_new: () => book, book_append_sheet: (wb, ws, n) => wb.sheets.push({ n, ws }), aoa_to_sheet: aoa => ({ aoa }),
   encode_col: i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; } }, write: () => new Uint8Array(1) };
 let saved = null;
 const run = new Function('XLSX', 'S', 'needX', 'toast', 'offer', 'todayIso', 'articles', code + '\nreturn bdExport;');
 const arts = JSON.parse(fs.readFileSync(path.join(__dirname, 'articles.json'), 'utf8'));
-const S = { items: [{ id: 's1', name: 'Software X', dateFrom: '2026-06-01', dateTo: '2027-05-31', cost: 240, budget: [{ year: 1, amount: 240, article: '03583' }] }],
+const S = { tenders: [], items: [{ id: 's1', name: 'Software X', dateFrom: '2026-06-01', dateTo: '2027-05-31', cost: 240, budget: [{ year: 1, amount: 240, article: '03583' }] }],
   contracts: [{ id: 'c1', title: 'Συντήρηση', tender: 'Δ1', months: 24, dateFrom: '2026-12-01', dateTo: '2028-11-30',
     years: [{ from: '2026-12-01', to: '2027-11-30', cost: 1700 }, { from: '2027-12-01', to: '2028-11-30', cost: 600 }],
     budget: [{ year: 1, amount: 1200, article: '03461' }, { year: 1, amount: 500, article: '07651' }, { year: 2, amount: 600, article: '03461' }] }] };

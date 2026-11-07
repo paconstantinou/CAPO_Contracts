@@ -62,6 +62,7 @@
 #rl-app .pill.ok{background:var(--ok-bg);color:var(--ok)}
 #rl-app .pill.warn{background:var(--warn-bg);color:var(--warn)}
 #rl-app .pill.bad{background:var(--bad-bg);color:var(--bad)}
+#rl-app .pill.mute{background:rgba(127,127,127,.18);color:inherit}
 #rl-app .empty{padding:40px 20px;text-align:center;color:var(--muted)}
 #rl-app .empty h2{color:var(--ink);font-size:20px;margin-bottom:6px}
 #rl-app .empty .actions{justify-content:center;margin-top:14px}
@@ -197,6 +198,7 @@
   <nav class="tabs" role="tablist" aria-label="Category">
     <button class="tab" role="tab" id="tabSw" type="button" data-act="gocat" data-cat="sw">Online Renewals<span class="cnt" id="cntSw"></span></button>
     <button class="tab" role="tab" id="tabCt" type="button" data-act="gocat" data-cat="ct">Συμβάσεις<span class="cnt" id="cntCt"></span></button>
+<button class="tab" role="tab" id="tabTn" type="button" data-act="gocat" data-cat="tn">Διαγωνισμοί<span class="cnt" id="cntTn"></span></button>
     <button class="tab" role="tab" id="tabBd" type="button" data-act="gocat" data-cat="bd">Προϋπολογισμός</button>
   </nav>
   <div class="alerts" id="alerts" aria-live="polite"></div>
@@ -321,7 +323,7 @@ var FIELDS=[
  {k:"emails",l:"Notification emails",q:"Which e-mail addresses should receive the reminders? Separate several with commas (optional).",ta:1,email:1,ph:"name@example.com, other@example.com"}
 ];
 var REMIND=[7,14,30,60,90];
-var S={items:[],contracts:[],trash:{sw:[],ct:[]},cat:"sw",loaded:{},uid:null,db:null,assets:null,dl:null,filter:"all",q:"",open:null,openCat:null,cw:null,impCat:null,mem:false,unsub:null};
+var S={items:[],contracts:[],tenders:[],trash:{sw:[],ct:[],tn:[]},cat:"sw",loaded:{},uid:null,db:null,assets:null,dl:null,filter:"all",q:"",open:null,openCat:null,cw:null,impCat:null,mem:false,unsub:null};
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function pad(n){return (n<10?"0":"")+n}
@@ -364,24 +366,26 @@ function uid(){return "s"+Date.now().toString(36)+Math.random().toString(36).sli
 
 /* ---------- storage ---------- */
 function col(n){return S.db.doc("data/users/"+S.uid+"/app").collection(n||"software")}
-function listOf(cat){return cat==="ct"?S.contracts:S.items}
+var CATS={sw:{c:"software",k:"items"},ct:{c:"contracts",k:"contracts"},tn:{c:"tenders",k:"tenders"}};
+function ctLike(c){return c==="ct"||c==="tn"}
+function listOf(cat){return S[(CATS[cat]||CATS.sw).k]}
 function getItem(cat,id){return listOf(cat).find(function(x){return x.id===id})}
 async function save(id,rec,cat){
   cat=cat||"sw";
-  if(S.db&&S.uid){try{await col(cat==="ct"?"contracts":"software").doc(id).set(rec)}catch(e){toast("Could not save ("+(e&&e.code||"error")+")");return false}}
+  if(S.db&&S.uid){try{await col(collName(cat)).doc(id).set(rec)}catch(e){toast("Could not save ("+(e&&e.code||"error")+")");return false}}
   else{var L=listOf(cat),i=L.findIndex(function(x){return x.id===id}),o=Object.assign({id:id},rec);if(i>=0)L[i]=o;else L.push(o);render()}
   return true;
 }
 /* Deleting never destroys: the record goes to the trash (WordPress: on the server; here: kept with a deletedAt mark) and can be restored. */
 var TRASH_DAYS=30;
 function trashDays(){return window.RL_TRASH?(window.RL_TRASH.days||0):TRASH_DAYS}
-function collName(cat){return cat==="ct"?"contracts":"software"}
-function recName(cat,it){return cat==="ct"?(it.title||""):(it.name||"")}
+function collName(cat){return (CATS[cat]||CATS.sw).c}
+function recName(cat,it){return cat==="sw"?(it.name||""):(it.title||"")}
 async function remove(id,cat){
   cat=cat||"sw";var it=getItem(cat,id);if(!it)return false;
   if(window.RL_TRASH){try{await col(collName(cat)).doc(id).delete()}catch(e){toast("Could not delete");return false}loadTrash(cat)}
   else if(S.db&&S.uid){var rec=strip(it);rec.deletedAt=Date.now();try{await col(collName(cat)).doc(id).set(rec)}catch(e){toast("Could not delete");return false}}
-  else{var k=cat==="ct"?"contracts":"items";S[k]=S[k].filter(function(x){return x.id!==id});S.trash[cat].push(Object.assign({},it,{deletedAt:Date.now()}));render()}
+  else{var k=CATS[cat].k;S[k]=S[k].filter(function(x){return x.id!==id});S.trash[cat].push(Object.assign({},it,{deletedAt:Date.now()}));render()}
   return true;
 }
 /* trash lists: S.trash.sw / S.trash.ct hold {id,...record,_at (ms),_by} */
@@ -404,14 +408,21 @@ async function purgeItem(cat,id){
   var files=(it.attachments||[]).concat((it.milestones||[]).reduce(function(a,m){return a.concat(m.attachments||[])},[]));
   if(S.db&&S.uid){try{await col(collName(cat)).doc(id).delete()}catch(e){toast("Could not delete");return false}}
   else{S.trash[cat]=S.trash[cat].filter(function(x){return x.id!==id});render()}
-  if(S.assets)for(var i=0;i<files.length;i++){try{await S.assets.delete(files[i].id)}catch(_){}}
+  if(S.assets)for(var i=0;i<files.length;i++){if(fileInUse(files[i].id,cat,id))continue;try{await S.assets.delete(files[i].id)}catch(_){}}
   return true;
 }
 /* browser versions: remove records that have been in the trash longer than TRASH_DAYS */
 async function autoPurge(){
   if(window.RL_TRASH||!TRASH_DAYS)return;
   var lim=Date.now()-TRASH_DAYS*864e5;
-  ["sw","ct"].forEach(function(c){(S.trash[c]||[]).filter(function(x){return x._at&&x._at<lim}).forEach(function(x){purgeItem(c,x.id)})});
+  ["sw","ct","tn"].forEach(function(c){(S.trash[c]||[]).filter(function(x){return x._at&&x._at<lim}).forEach(function(x){purgeItem(c,x.id)})});
+}
+/* a file may be referenced by two records (a promoted tender and its contract in the browser builds): only delete it when nothing else uses it */
+function fileInUse(fid,xcat,xid){
+  var hit=false;
+  function chk(cat,l){(l||[]).forEach(function(r){if(hit||(cat===xcat&&r.id===xid))return;var a=(r.attachments||[]).concat((r.milestones||[]).reduce(function(q,m){return q.concat(m.attachments||[])},[]));if(a.some(function(f){return f.id===fid}))hit=true})}
+  chk("sw",S.items);chk("ct",S.contracts);chk("tn",S.tenders);["sw","ct","tn"].forEach(function(c){chk(c,S.trash[c])});
+  return hit;
 }
 function byId(id){return S.items.find(function(x){return x.id===id})}
 function strip(it){var o=Object.assign({},it);delete o.id;return o}
@@ -601,10 +612,10 @@ async function doRenew(id){
 
 /* ---------- attachments ---------- */
 var MIME={pdf:"application/pdf",png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",gif:"image/gif",webp:"image/webp",csv:"text/csv",txt:"text/plain",md:"text/markdown",json:"application/json",mp4:"video/mp4",webm:"video/webm"};
-function reopen(cat,id){cat==="ct"?showCtDetail(id):showDetail(id)}
+function reopen(cat,id){cat==="tn"?showTnDetail(id):cat==="ct"?showCtDetail(id):showDetail(id)}
 async function attachFiles(files){
   var cat=S.openCat||"sw",id=S.open,it=getItem(cat,id);if(!it||!S.assets)return;
-  var list=(it.attachments||[]).slice(),n=0,el=cat==="ct";
+  var list=(it.attachments||[]).slice(),n=0,el=cat!=="sw";
   for(var i=0;i<files.length;i++){
     var f=files[i],ext=(f.name.split(".").pop()||"").toLowerCase(),type=f.type&&MIME[ext]===f.type?f.type:MIME[ext]||f.type;
     try{var r=await S.assets.upload(f,type?{type:type}:undefined);list.push({id:r.id,name:f.name,size:r.sizeBytes});n++}
@@ -615,14 +626,14 @@ async function attachFiles(files){
 async function removeFile(i){
   var cat=S.openCat||"sw",it=getItem(cat,S.open);if(!it)return;var a=(it.attachments||[])[i];if(!a)return;
   var rec=strip(it);rec.attachments=it.attachments.filter(function(_,j){return j!==i});
-  var before=(it.attachments||[]).slice(),id=it.id,el=cat==="ct";
+  var before=(it.attachments||[]).slice(),id=it.id,el=cat!=="sw";
   if(await save(id,rec,cat)){
     reopen(cat,id);
     /* the file itself is only deleted when the 8 s to undo are over */
     toastUndo(el?"Το αρχείο αφαιρέθηκε":"File removed",async function(){
       var cur=getItem(cat,id);if(!cur)return;var r2=strip(cur);r2.attachments=before;
       if(await save(id,r2,cat)&&S.open===id)reopen(cat,id);
-    },function(){try{S.assets.delete(a.id)}catch(e){}},el);
+    },function(){if(fileInUse(a.id))return;try{S.assets.delete(a.id)}catch(e){}},el);
   }
 }
 
@@ -831,12 +842,23 @@ var COLS={
   cdef("milestones","Milestones",0,"1fr",cMs()),
   cdef("emails","Email ειδοποιήσεων",0,"1.6fr",cEm()),
   cdef("files","Αρχεία",1,"90px",cFiles())
+ ],
+ tn:[
+  cdef("title","Διαγωνισμός",1,"2fr",{v:function(c){return '<span class="n">'+esc(c.title)+(c.sample?' <span class="hint">(δείγμα)</span>':'')+'</span>'},s:function(c){return c.title||""}}),
+  cdef("tender","Αρ. διαγωνισμού",1,"1fr",cTxt("tender")),
+  cdef("description","Περιγραφή",0,"2fr",cTxt("description")),
+  cdef("months","Διάρκεια (μήνες)",1,"1fr",{v:function(c){return '<span class="num">'+esc(c.months||"—")+'</span>'},s:function(c){return Number(c.months)||""}}),
+  cdef("dateFrom","Εκτιμ. έναρξη",1,"1fr",cDate("dateFrom")),
+  cdef("dateTo","Εκτιμ. λήξη",1,"1fr",cDate("dateTo")),
+  cdef("status","Κατάσταση",1,"1.4fr",{v:function(c){var s=tnInfo(c);return '<span class="pill '+s.k+'">'+s.t+'</span> <span class="sub">'+esc(s.sub)+'</span>'},s:function(c){return tnInfo(c).t}}),
+  cdef("cost","Εκτιμώμενο κόστος",1,"1fr",cNum("cost")),
+  cdef("files","Αρχεία",1,"90px",cFiles())
  ]
 };
 function loadPrefs(){
-  var d={cols:{sw:[],ct:[]},sort:{sw:{k:"dateTo",dir:1},ct:{k:"dateTo",dir:1}}},p=null;
+  var d={cols:{sw:[],ct:[],tn:[]},sort:{sw:{k:"dateTo",dir:1},ct:{k:"dateTo",dir:1},tn:{k:"dateFrom",dir:1}}},p=null;
   try{p=JSON.parse(localStorage.getItem("rl.listprefs")||"null")}catch(e){}
-  ["sw","ct"].forEach(function(c){
+  ["sw","ct","tn"].forEach(function(c){
     var keys=COLS[c].map(function(x){return x.k}),sel=p&&p.cols&&Array.isArray(p.cols[c])?p.cols[c].filter(function(k){return keys.indexOf(k)>=0}):null;
     d.cols[c]=sel&&sel.length?sel:COLS[c].filter(function(x){return x.d}).map(function(x){return x.k});
     var so=p&&p.sort&&p.sort[c];if(so&&keys.indexOf(so.k)>=0)d.sort[c]={k:so.k,dir:so.dir===-1?-1:1};
@@ -855,7 +877,7 @@ function sortList(cat,list){
   });
 }
 function listHtml(cat,rows){
-  var cs=colsOf(cat),so=S.sort[cat],el=cat==="ct";
+  var cs=colsOf(cat),so=S.sort[cat],el=cat!=="sw";
   var MIN={name:210,title:230,description:250,website:180,emails:210,status:200,files:80,months:110,remindDays:90,milestones:100,cost:110,tender:130};
   var mins=cs.map(function(c){return MIN[c.k]||125}),total=mins.reduce(function(x,y){return x+y},0);
   var tpl=cs.map(function(c,i){return c.k==="files"?mins[i]+"px":"minmax("+mins[i]+"px,"+c.w+")"}).join(" ");
@@ -878,7 +900,7 @@ function setSort(k){
   savePrefs();render();
 }
 function showCols(){
-  var cat=S.cat,el=cat==="ct",sel=S.cols[cat];
+  var cat=S.cat,el=cat!=="sw",sel=S.cols[cat];
   var h='<div class="ph"><h2>'+(el?"Στήλες λίστας":"List columns")+'</h2><button class="btn small" type="button" data-act="close">'+(el?"Κλείσιμο":"Close")+'</button></div>'+
    '<p class="hint">'+(el?"Επίλεξε ποιες στήλες θα εμφανίζονται στην αρχική σελίδα. Μπορείς να ταξινομήσεις οποιαδήποτε στήλη πατώντας στην επικεφαλίδα της.":"Choose which columns are shown on the main page. Click any column heading to sort it ascending or descending.")+'</p>'+
    '<div class="colpick">'+COLS[cat].map(function(c){return '<label><input type="checkbox" data-col="'+c.k+'"'+(sel.indexOf(c.k)>=0?' checked':'')+'> '+esc(c.l)+'</label>'}).join("")+'</div>'+
@@ -891,7 +913,7 @@ function toggleCol(k,on){
   if(!sel.length){showCols();return}
   S.cols[cat]=sel;savePrefs();render();
 }
-function resetCols(){S.cols[S.cat]=COLS[S.cat].filter(function(x){return x.d}).map(function(x){return x.k});S.sort[S.cat]={k:"dateTo",dir:1};savePrefs();render();showCols()}
+function resetCols(){S.cols[S.cat]=COLS[S.cat].filter(function(x){return x.d}).map(function(x){return x.k});S.sort[S.cat]={k:S.cat==="tn"?"dateFrom":"dateTo",dir:1};savePrefs();render();showCols()}
 var PREFS=loadPrefs();S.cols=PREFS.cols;S.sort=PREFS.sort;
 
 /* ---------- budget breakdown: partial amounts per year, each with a budget article ---------- */
@@ -971,7 +993,7 @@ function bpText(it){
 /* how many records (live and trashed) use an article code */
 function artUsage(code){
   var n=0,fn=function(it){if((it.budget||[]).some(function(p){return String(p.article||"")===code}))n++};
-  S.items.forEach(fn);S.contracts.forEach(fn);S.trash.sw.forEach(fn);S.trash.ct.forEach(fn);
+  S.items.forEach(fn);S.contracts.forEach(fn);S.tenders.forEach(fn);S.trash.sw.forEach(fn);S.trash.ct.forEach(fn);S.trash.tn.forEach(fn);
   return n;
 }
 function artRow(a){
@@ -1001,17 +1023,17 @@ function saveArticles(){
   if(S.cat==="bd")render();
 }
 function bpRedraw(){
-  if(S.cat==="ct"){ctCollect();ctRefresh(true)}else{collect();drawWizard()}
+  if(ctLike(S.cat)){ctCollect();ctRefresh(true)}else{collect();drawWizard()}
 }
 function bpLive(){
-  if(S.cat==="ct"){ctCollect();(S.cw.d.years||[]).forEach(function(y,i){var c=$("#cy_cost_"+i);if(c&&bpHas(S.cw.d,i+1))c.value=y.cost});var sp=$("#cSum");if(sp)sp.textContent=mc(ctSum(S.cw.d.years))}
+  if(ctLike(S.cat)){ctCollect();(S.cw.d.years||[]).forEach(function(y,i){var c=$("#cy_cost_"+i);if(c&&bpHas(S.cw.d,i+1))c.value=y.cost});var sp=$("#cSum");if(sp)sp.textContent=mc(ctSum(S.cw.d.years))}
   else{collect();var c=$("#w_cost");if(c&&bpHas(S.wiz.data))c.value=bpSum(S.wiz.data.budget)}
 }
 
 /* =============== TRASH VIEW =============== */
 function fmtDay(ms){if(!ms)return "—";var d=new Date(ms);return ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear()}
 function renderTrash(cat){
-  var el=cat==="ct",L=(S.trash[cat]||[]).slice().sort(function(a,b){return (b._at||0)-(a._at||0)}),days=trashDays(),now=Date.now();
+  var el=cat!=="sw",L=(S.trash[cat]||[]).slice().sort(function(a,b){return (b._at||0)-(a._at||0)}),days=trashDays(),now=Date.now();
   var canPurge=window.RL_TRASH?window.RL_TRASH.canPurge(collName(cat)):true;
   $("#stats").innerHTML='<div class="stat"><b>'+L.length+'</b><span>'+(el?"Στον κάδο":"In the trash")+'</span></div>';
   $("#alerts").innerHTML='<div class="alert"><span>'+(el?"Οι εγγραφές στον κάδο δεν εμφανίζονται στη λίστα, δεν στέλνουν υπενθυμίσεις και δεν μπαίνουν στον Προϋπολογισμό. ":"Records in the trash are hidden from the list, send no reminders and are left out of the budget. ")+
@@ -1019,7 +1041,7 @@ function renderTrash(cat){
   $("#chips").innerHTML='<button type="button" class="chip" data-f="all">← '+(el?"Πίσω στη λίστα":"Back to the list")+'</button>';
   var h;
   if(!L.length)h='<div class="empty"><h2>'+(el?"Ο κάδος είναι άδειος":"The trash is empty")+'</h2><p>'+(el?"Οι εγγραφές που διαγράφεις θα εμφανίζονται εδώ και θα μπορείς να τις επαναφέρεις.":"Records you delete show up here and can be restored.")+'</p></div>';
-  else h='<div class="tbl"><table class="art"><thead><tr><th>'+(el?"Σύμβαση":"Software")+'</th><th>'+(el?"Διαγράφηκε":"Deleted")+'</th><th>'+(el?"Οριστική διαγραφή σε":"Deleted for good in")+'</th><th></th></tr></thead><tbody>'+L.map(function(it){
+  else h='<div class="tbl"><table class="art"><thead><tr><th>'+(cat==="tn"?"Διαγωνισμός":el?"Σύμβαση":"Software")+'</th><th>'+(el?"Διαγράφηκε":"Deleted")+'</th><th>'+(el?"Οριστική διαγραφή σε":"Deleted for good in")+'</th><th></th></tr></thead><tbody>'+L.map(function(it){
     var left=days&&it._at?Math.max(0,Math.ceil((it._at+days*864e5-now)/864e5)):null;
     return '<tr><td>'+esc(recName(cat,it)||"—")+'</td><td>'+fmtDay(it._at)+(it._by?" · "+esc(it._by):"")+'</td><td>'+(left===null?"—":left+(el?" ημ.":" d"))+'</td><td class="trbtn"><button class="btn small" type="button" data-act="trrestore" data-id="'+esc(it.id)+'">'+(el?"Επαναφορά":"Restore")+'</button> '+
       '<button class="btn small danger" type="button" data-act="trpurge" data-id="'+esc(it.id)+'">'+(el?"Οριστική διαγραφή":"Delete for good")+'</button></td></tr>';
@@ -1070,7 +1092,7 @@ function bdAlloc(amount,from,to,split){
   return {by:by,text:"ολόκληρο το ποσό στο έτος έναρξης "+f.y+note};
 }
 /* rows: one per record and article; amounts per calendar year */
-function bdBuild(arts,items,contracts){
+function bdBuild(arts,items,contracts,tenders){
   var rows={},order=[],warn=[];
   function rowFor(code,kind,id,desc,head){var k=code+"|"+kind+"|"+id;if(!rows[k]){rows[k]={code:code,kind:kind,id:id,desc:desc,how:head.slice(),by:{}};order.push(k)}return rows[k]}
   function seg(kind,id,desc,head,label,from,to,parts,cost){
@@ -1100,6 +1122,12 @@ function bdBuild(arts,items,contracts){
       seg("ct",c.id,c.title||"",head,"Έτος "+(i+1),y.from,y.to,(c.budget||[]).filter(function(p){return +p.year===i+1}),y.cost);
     });
   });
+  (tenders||[]).forEach(function(c){
+    var head=["Εκτιμώμενος διαγωνισμός: "+(c.tender||"—")+" · Διάρκεια: "+(c.months!==""&&c.months!=null?c.months:"—")+" μήνες","Εκτιμώμενη περίοδος: "+bdGr(c.dateFrom)+" – "+bdGr(c.dateTo)];
+    (c.years||[]).forEach(function(y,i){
+      seg("tn",c.id,c.title||"",head,"Έτος "+(i+1),y.from,y.to,(c.budget||[]).filter(function(p){return +p.year===i+1}),y.cost);
+    });
+  });
   var byArt={},min=null,max=null;
   order.forEach(function(k){
     var r=rows[k];(byArt[r.code]=byArt[r.code]||[]).push(r);
@@ -1126,7 +1154,7 @@ function bdTable(title,sub,rows,years){
    '<tr class="tot"><td colspan="3">Σύνολα</td>'+tot.map(function(v){return '<td class="num">'+bdNum(v)+'</td>'}).join("")+'</tr></tbody></table></div></section>';
 }
 function renderBd(){
-  var arts=articles(),B=bdBuild(arts,S.items,S.contracts),sel=bdSel(),years=B.years.length?B.years:[new Date().getFullYear()];
+  var arts=articles(),B=bdBuild(arts,S.items,S.contracts,S.tenders.filter(tnActive)),sel=bdSel(),years=B.years.length?B.years:[new Date().getFullYear()];
   var all=[];Object.keys(B.byArt).forEach(function(c){all=all.concat(B.byArt[c])});
   var tot=bdTotals(all,years);
   $("#stats").innerHTML=years.map(function(y,i){return '<div class="stat"><b class="num" style="font-family:var(--f-display)">'+bdNum(tot[i])+'</b><span>Σύνολο προϋπολογισμού '+y+' (€)</span></div>'}).join("");
@@ -1140,14 +1168,14 @@ function renderBd(){
   if(sel==="all"){
     arts.forEach(function(a){if((B.byArt[a.code]||[]).length)h+=secFor(a)});
     if(B.byArt[""])h+=bdTable("Χωρίς άρθρο","Ποσά που δεν έχουν συνδεθεί με άρθρο προϋπολογισμού (ολόκληρο το ποσό στο έτος έναρξης).",B.byArt[""],years);
-    if(!h)h='<div class="empty"><h2>Δεν υπάρχουν ποσά ακόμα</h2><p>Ο πίνακας συμπληρώνεται αυτόματα από τα επιμέρους ποσά (με άρθρο) που καταχωρείς ανά έτος στις Συμβάσεις και στα Online Renewals.</p></div>';
+    if(!h)h='<div class="empty"><h2>Δεν υπάρχουν ποσά ακόμα</h2><p>Ο πίνακας συμπληρώνεται αυτόματα από τα επιμέρους ποσά (με άρθρο) που καταχωρείς ανά έτος στις Συμβάσεις, στους ενεργούς Διαγωνισμούς και στα Online Renewals.</p></div>';
   }else if(sel==="none")h=bdTable("Χωρίς άρθρο","Ποσά που δεν έχουν συνδεθεί με άρθρο προϋπολογισμού.",B.byArt[""]||[],years);
   else{var a=artFind(sel,arts);h=a?secFor(a):""}
   $("#list").innerHTML=h;
 }
 function bdExport(){
   if(needX())return;
-  var arts=articles(),B=bdBuild(arts,S.items,S.contracts),years=B.years.length?B.years:[new Date().getFullYear()];
+  var arts=articles(),B=bdBuild(arts,S.items,S.contracts,S.tenders.filter(tnActive)),years=B.years.length?B.years:[new Date().getFullYear()];
   var wb=XLSX.utils.book_new(),used={},fmt="#,##0.00";
   function name(s){s=String(s).replace(/[\\\/\?\*\[\]:]/g,"").trim().slice(0,31)||"Φύλλο";var n=s,k=2;while(used[n.toLowerCase()]){n=s.slice(0,28)+" "+k++}used[n.toLowerCase()]=1;return n}
   function num(v,f,c){var o={t:"n",v:v,z:fmt};if(f)o.f=f;return o}
@@ -1195,6 +1223,16 @@ var CT_BASE=[
  {k:"cost",l:"ΚΟΣΤΟΣ (€)",q:"Ποιο είναι το συνολικό κόστος (€);",num:1},
  {k:"emails",l:"EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ",q:"Σε ποια email να στέλνονται οι ειδοποιήσεις; Χώρισε πολλά με κόμμα (προαιρετικό).",ta:1,email:1}
 ];
+var TN_BASE=[
+ {k:"title",l:"ΟΝΟΜΑ ΔΙΑΓΩΝΙΣΜΟΥ",q:"Ποιο είναι το όνομα του διαγωνισμού;",req:1,ph:"π.χ. Προμήθεια εξοπλισμού δικτύου"},
+ {k:"tender",l:"ΑΡΙΘΜΟΣ ΔΙΑΓΩΝΙΣΜΟΥ",q:"Ποιος είναι ο αριθμός του διαγωνισμού;",ph:"π.χ. 12/2027"},
+ {k:"description",l:"ΠΕΡΙΓΡΑΦΗ",q:"Γράψε μια σύντομη περιγραφή του διαγωνισμού.",ta:1},
+ {k:"months",l:"ΔΙΑΡΚΕΙΑ (ΜΗΝΕΣ)",q:"Ποια είναι η διάρκεια σε μήνες;",num:1,req:1,ph:"π.χ. 36"},
+ {k:"dateFrom",l:"ΕΚΤΙΜΩΜΕΝΗ ΗΜΕΡ. ΕΝΑΡΞΗΣ",q:"Ποια είναι η εκτιμώμενη ημερομηνία έναρξης;",date:1,req:1},
+ {k:"dateTo",l:"ΕΚΤΙΜΩΜΕΝΗ ΗΜΕΡ. ΛΗΞΗΣ",q:"Ποια είναι η εκτιμώμενη ημερομηνία λήξης; Υπολογίζεται από τη διάρκεια, μπορείς να την αλλάξεις.",date:1,req:1},
+ {k:"cost",l:"ΕΚΤΙΜΩΜΕΝΟ ΚΟΣΤΟΣ (€)",q:"Ποιο είναι το εκτιμώμενο συνολικό κόστος (€);",num:1}
+];
+function cwBase(){return S.cw&&S.cw.kind==="tn"?TN_BASE:CT_BASE}
 function mc(v){return v===""||v==null?"—":money(v)}
 function dayTextEl(d){if(d==null)return "";if(d<0){var n=-d;return "πριν από "+n+(n==1?" ημέρα":" ημέρες")}if(d==0)return "σήμερα";return "σε "+d+(d==1?" ημέρα":" ημέρες")}
 function addMonths(s,k){var d=parseIso(s);if(!d)return "";var day=d.getDate();d=new Date(d.getFullYear(),d.getMonth()+k,1);var dim=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();d.setDate(Math.min(day,dim));return iso(d)}
@@ -1328,7 +1366,7 @@ function ctStart(id){
 }
 function ctCollect(){
   var d=S.cw.d;
-  CT_BASE.forEach(function(f){var el=$("#c_"+f.k);if(el)d[f.k]=el.value});
+  cwBase().forEach(function(f){var el=$("#c_"+f.k);if(el)d[f.k]=el.value});
   (d.years||[]).forEach(function(y,i){
     var a=$("#cy_from_"+i),b=$("#cy_to_"+i),c=$("#cy_cost_"+i),r=$("#cy_rem_"+i);
     if(a)y.from=a.value;if(b)y.to=b.value;if(c)y.cost=c.value;if(r)y.remind=+r.value;
@@ -1343,40 +1381,43 @@ function ctRefresh(skipTo){
   var dt=$("#c_dateTo");if(dt&&!skipTo)dt.value=S.cw.d.dateTo||"";
 }
 function ctYearsTable(){
-  var ys=S.cw.d.years||[];
+  var tn=S.cw.kind==="tn",ys=S.cw.d.years||[];
   if(!ys.length)return '<p class="hint">Συμπλήρωσε τη διάρκεια (μήνες) και την ημερομηνία έναρξης για να δημιουργηθούν τα έτη.</p>';
-  return '<div class="tbl"><table><thead><tr><th>Έτος</th><th>ΗΜΕΡ. ΕΝΑΡΞΗΣ</th><th>ΗΜΕΡ. ΛΗΞΗΣ</th><th>ΚΟΣΤΟΣ (€)</th><th>Υπενθύμιση</th></tr></thead><tbody>'+
+  return '<div class="tbl"><table><thead><tr><th>Έτος</th><th>ΗΜΕΡ. ΕΝΑΡΞΗΣ</th><th>ΗΜΕΡ. ΛΗΞΗΣ</th><th>ΚΟΣΤΟΣ (€)</th>'+(tn?'':'<th>Υπενθύμιση</th>')+'</tr></thead><tbody>'+
    ys.map(function(y,i){
      var hp=bpHas(S.cw.d,i+1);
      return '<tr><td>Έτος '+(i+1)+'</td><td><input id="cy_from_'+i+'" type="date" value="'+esc(y.from)+'"></td><td><input id="cy_to_'+i+'" type="date" value="'+esc(y.to)+'"></td>'+
        '<td><input id="cy_cost_'+i+'" type="number" step="0.01" min="0" inputmode="decimal" value="'+esc(hp?bpSum(S.cw.d.budget,i+1):y.cost)+'"'+(hp?' readonly title="Άθροισμα επιμέρους ποσών"':'')+'></td>'+
-       '<td><select id="cy_rem_'+i+'">'+remOpts(y.remind,REMIND_CT," ημέρες πριν")+'</select></td></tr>'+
-       '<tr class="bpr"><td></td><td colspan="4"><span class="hint">Επιμέρους ποσά έτους '+(i+1)+(hp?'':' (προαιρετικό)')+'</span>'+bpBlock(S.cw.d,i+1,1,ys.length)+'</td></tr>';
+       (tn?'':'<td><select id="cy_rem_'+i+'">'+remOpts(y.remind,REMIND_CT," ημέρες πριν")+'</select></td>')+'</tr>'+
+       '<tr class="bpr"><td></td><td colspan="'+(tn?3:4)+'"><span class="hint">Επιμέρους ποσά έτους '+(i+1)+(hp?'':' (προαιρετικό)')+'</span>'+bpBlock(S.cw.d,i+1,1,ys.length)+'</td></tr>';
    }).join("")+'</tbody></table></div><p class="hint">Άθροισμα κόστους ετών: <b id="cSum">'+mc(ctSum(ys))+'</b></p>';
 }
 function ctDraw(){
-  var w=S.cw,d=w.d,h;
-  var head='<div class="ph"><h2>'+(w.id?"Επεξεργασία σύμβασης":"Νέα σύμβαση")+'</h2><button class="btn small" type="button" data-act="close">Άκυρο</button></div>';
+  var w=S.cw,d=w.d,tn=w.kind==="tn",B=cwBase(),h;
+  var ttl=w.promoteFrom?"Promote στις Συμβάσεις":tn?(w.id?"Επεξεργασία διαγωνισμού":"Νέος διαγωνισμός"):(w.id?"Επεξεργασία σύμβασης":"Νέα σύμβαση");
+  var head='<div class="ph"><h2>'+ttl+'</h2><button class="btn small" type="button" data-act="close">Άκυρο</button></div>'+
+    (w.promoteFrom?'<p class="hint">Τα πεδία μεταφέρθηκαν από τον διαγωνισμό «'+esc(w.promoteTitle||"")+'». Έλεγξε και διόρθωσέ τα (π.χ. συμπλήρωσε ανάδοχο και συντονιστή, υπενθυμίσεις, email) πριν την αποθήκευση. Τα συνημμένα του διαγωνισμού αντιγράφονται στη σύμβαση. Η συμπερίληψη του διαγωνισμού στον Προϋπολογισμό θα αφαιρεθεί, γιατί θα γίνεται πλέον μέσω της νέας σύμβασης.</p>':'');
+  var saveL=w.promoteFrom?"Αποθήκευση σύμβασης και προώθηση":"Αποθήκευση";
   if(w.mode==="full"){
-    h=head+'<div style="display:grid;gap:12px">'+CT_BASE.map(function(f){return '<label class="f">'+f.l+(f.req?' *':'')+ctInput(f,d[f.k],"c_"+f.k)+'</label>'}).join("")+'</div>'+
-      '<div class="sec"><h3>Έτη σύμβασης</h3><p class="hint">Δημιουργούνται αυτόματα από τη διάρκεια. Οι επιπλέον μήνες πέρα από τα πλήρη έτη προστίθενται στο 1ο έτος.</p><div id="cYears">'+ctYearsTable()+'</div>'+
+    h=head+'<div style="display:grid;gap:12px">'+B.map(function(f){return '<label class="f">'+f.l+(f.req?' *':'')+ctInput(f,d[f.k],"c_"+f.k)+'</label>'}).join("")+'</div>'+
+      '<div class="sec"><h3>'+(tn?"Έτη διαγωνισμού":"Έτη σύμβασης")+'</h3><p class="hint">Δημιουργούνται αυτόματα από τη διάρκεια. Οι επιπλέον μήνες πέρα από τα πλήρη έτη προστίθενται στο 1ο έτος.'+(tn?' Συμπλήρωσε για κάθε έτος τα επιμέρους ποσά με το σχετικό άρθρο προϋπολογισμού· περνούν στον Προϋπολογισμό όσο ο διαγωνισμός είναι ενεργός.':'')+'</p><div id="cYears">'+ctYearsTable()+'</div>'+
       '<div><button class="btn small" type="button" data-act="ctsum">Συμπλήρωση ΚΟΣΤΟΥΣ από το άθροισμα ετών</button></div></div>'+
-      '<div class="err" id="werr">'+esc(w.err)+'</div><div class="actions"><button class="btn primary" type="button" data-act="ctsave">Αποθήκευση</button>'+(w.id?'':'<button class="btn" type="button" data-act="ctstep">Βήμα-βήμα</button>')+'</div>';
+      '<div class="err" id="werr">'+esc(w.err)+'</div><div class="actions"><button class="btn primary" type="button" data-act="ctsave">'+saveL+'</button>'+(w.id||w.promoteFrom?'':'<button class="btn" type="button" data-act="ctstep">Βήμα-βήμα</button>')+'</div>';
     openPanel(h,"wiz",true);return;
   }
-  var total=CT_BASE.length+1,i=w.i,last=i===total-1,body;
-  if(i<CT_BASE.length){var f=CT_BASE[i];body='<label class="f"><span class="big-q">'+f.q+(f.req?'':' <small>(προαιρετικό)</small>')+'</span>'+ctInput(f,d[f.k],"c_"+f.k)+'</label>'}
-  else body='<div><span class="big-q">Έτη, κόστη και υπενθυμίσεις</span><p class="hint">Συμπλήρωσε το κόστος κάθε έτους και διάλεξε πότε θέλεις υπενθύμιση πριν τη λήξη του.</p></div><div id="cYears">'+ctYearsTable()+'</div>';
+  var total=B.length+1,i=w.i,last=i===total-1,body;
+  if(i<B.length){var f=B[i];body='<label class="f"><span class="big-q">'+f.q+(f.req?'':' <small>(προαιρετικό)</small>')+'</span>'+ctInput(f,d[f.k],"c_"+f.k)+'</label>'}
+  else body='<div><span class="big-q">'+(tn?"Έτη και κόστη":"Έτη, κόστη και υπενθυμίσεις")+'</span><p class="hint">'+(tn?"Συμπλήρωσε το κόστος κάθε έτους ή τα επιμέρους ποσά του με το σχετικό άρθρο.":"Συμπλήρωσε το κόστος κάθε έτους και διάλεξε πότε θέλεις υπενθύμιση πριν τη λήξη του.")+'</p></div><div id="cYears">'+ctYearsTable()+'</div>';
   h=head+'<div class="steps" aria-hidden="true"><i style="width:'+Math.round((i+1)/total*100)+'%"></i></div><div class="hint">Βήμα '+(i+1)+' από '+total+'</div>'+body+
     '<div class="err" id="werr">'+esc(w.err)+'</div>'+
-    '<div class="actions">'+(i>0?'<button class="btn" type="button" data-act="ctback">Πίσω</button>':'')+'<button class="btn primary" type="button" data-act="'+(last?'ctsave':'ctnext')+'">'+(last?'Αποθήκευση':'Επόμενο')+'</button></div>'+
+    '<div class="actions">'+(i>0?'<button class="btn" type="button" data-act="ctback">Πίσω</button>':'')+'<button class="btn primary" type="button" data-act="'+(last?'ctsave':'ctnext')+'">'+(last?saveL:'Επόμενο')+'</button></div>'+
     '<div><button class="btn small" type="button" data-act="ctfull">Πλήρης φόρμα</button></div>';
   openPanel(h,"wiz",last);
 }
 function ctValidateBase(keys){
   var d=S.cw.d;
   for(var i=0;i<keys.length;i++){
-    var f=CT_BASE.filter(function(x){return x.k===keys[i]})[0];if(!f)continue;
+    var f=cwBase().filter(function(x){return x.k===keys[i]})[0];if(!f)continue;
     var v=d[f.k],blank=v==null||String(v).trim()==="";
     if(f.req&&blank)return f.l+": υποχρεωτικό πεδίο.";
     if(f.k==="months"&&!blank){var m=Number(v);if(!isFinite(m)||m<1||Math.floor(m)!==m)return "Η διάρκεια πρέπει να είναι ακέραιος αριθμός μηνών, π.χ. 62."}
@@ -1388,22 +1429,25 @@ function ctValidateBase(keys){
   return "";
 }
 function ctNext(){
-  ctCollect();var w=S.cw,f=CT_BASE[w.i];
+  ctCollect();var w=S.cw,f=cwBase()[w.i];
   var e=ctValidateBase([f.k]);
   if(e){w.err=e;var x=$("#werr");if(x)x.textContent=e;return}
   if(f.k==="months"||f.k==="dateFrom")ctRegen();
   if(f.k==="dateTo")ctApplyEnd();
   w.err="";w.i++;ctDraw();
 }
-function ctRecord(d){
-  var ys=(d.years||[]).map(function(y){return {from:y.from,to:y.to,cost:(y.cost===""||y.cost==null)?"":Number(y.cost),remind:+y.remind||30}});
+function ctRecord(d,kind){
+  var tn=kind==="tn";
+  var ys=(d.years||[]).map(function(y){var o={from:y.from,to:y.to,cost:(y.cost===""||y.cost==null)?"":Number(y.cost)};if(!tn)o.remind=+y.remind||30;return o});
   var blank=d.cost==null||String(d.cost).trim()==="";
-  return {title:String(d.title||"").trim(),tender:String(d.tender||"").trim(),description:String(d.description||"").trim(),contractor:String(d.contractor||"").trim(),coordinator:String(d.coordinator||"").trim(),
-    months:Number(d.months),dateFrom:d.dateFrom,dateTo:d.dateTo,cost:blank?ctSum(ys):Number(d.cost),years:ys,budget:bpClean(d),emails:String(d.emails||"").trim(),attachments:d.attachments||[],milestones:d.milestones||[],createdAt:d.createdAt||Date.now(),sample:!!d.sample};
+  var base={title:String(d.title||"").trim(),tender:String(d.tender||"").trim(),description:String(d.description||"").trim(),months:Number(d.months),dateFrom:d.dateFrom,dateTo:d.dateTo,cost:blank?ctSum(ys):Number(d.cost),years:ys,budget:bpClean(d),attachments:d.attachments||[],createdAt:d.createdAt||Date.now(),sample:!!d.sample};
+  if(tn){base.status=d.status||"active";base.statusAt=d.statusAt||"";base.promotedTo=d.promotedTo||"";return base}
+  base.contractor=String(d.contractor||"").trim();base.coordinator=String(d.coordinator||"").trim();base.emails=String(d.emails||"").trim();base.milestones=d.milestones||[];
+  return base;
 }
 async function ctSave(){
   ctCollect();var w=S.cw,d=w.d;
-  var e=ctValidateBase(CT_BASE.map(function(f){return f.k}));
+  var e=ctValidateBase(cwBase().map(function(f){return f.k}));
   if(!e)e=bpErr(d,1);
   if(!e){
     if(!(d.years||[]).length)d.years=buildYears(d.dateFrom,d.months);
@@ -1415,8 +1459,110 @@ async function ctSave(){
     }
   }
   if(e){w.err=e;var x=$("#werr");if(x)x.textContent=e;return}
-  var rec=ctRecord(d),id=w.id||uid();
-  if(await save(id,rec,"ct")){closePanel();toast(w.id?"Αποθηκεύτηκε":"Προστέθηκε: "+rec.title);if(!w.id)showCtDetail(id)}
+  var tn=w.kind==="tn",rec=ctRecord(d,w.kind),id=w.id||uid();
+  if(w.promoteFrom){
+    if(await tnPromoteDo(w.promoteFrom,id,rec)){closePanel();toast("Ο διαγωνισμός προωθήθηκε στις Συμβάσεις");S.cat="ct";S.filter="all";S.q="";$("#q").value="";try{localStorage.setItem("rl.cat","ct")}catch(e){}render();showCtDetail(id)}
+    return;
+  }
+  if(await save(id,rec,tn?"tn":"ct")){closePanel();toast(w.id?"Αποθηκεύτηκε":"Προστέθηκε: "+rec.title);if(!w.id)(tn?showTnDetail:showCtDetail)(id)}
+}
+/* ---------- tenders (Διαγωνισμοί): same form as the contracts, without reminders ---------- */
+function tnActive(t){return (t.status||"active")==="active"}
+function tnInfo(t){
+  var s=t.status||"active";
+  if(s==="cancelled")return {k:"bad",t:"Ακυρώθηκε",sub:t.statusAt?fmtDate(t.statusAt):""};
+  if(s==="promoted")return {k:"mute",t:"Προωθήθηκε σε Σύμβαση",sub:t.statusAt?fmtDate(t.statusAt):""};
+  return {k:"ok",t:"Ενεργός",sub:""};
+}
+function tnStart(id){
+  var t=id?getItem("tn",id):null;
+  S.cw={id:id||null,kind:"tn",mode:t?"full":"step",i:0,err:"",d:t?JSON.parse(JSON.stringify(t)):{months:"",dateFrom:todayIso(),years:[],status:"active"}};
+  ctDraw();
+}
+/* Promote: open the contract form pre-filled from the tender; nothing changes until the contract is saved. */
+function tnPromoteStart(id){
+  var t=getItem("tn",id);if(!t||!tnActive(t))return;
+  var d=JSON.parse(JSON.stringify(t));
+  d.years=(d.years||[]).map(function(y){return Object.assign({},y,{remind:30})});
+  ["status","statusAt","promotedTo"].forEach(function(k){delete d[k]});
+  d.contractor="";d.coordinator="";d.emails="";d.milestones=[];d.createdAt=Date.now();d.sample=false;
+  S.cw={id:null,kind:"ct",promoteFrom:id,promoteTitle:t.title,mode:"full",i:0,err:"",d:d};
+  ctDraw();
+}
+async function tnPromoteDo(tid,cid,rec){
+  var t=getItem("tn",tid);if(!t)return false;
+  if(window.RL_PROMOTE){try{await window.RL_PROMOTE(tid,cid,rec)}catch(e){toast(e&&e.status===409?"Ο διαγωνισμός δεν είναι πλέον ενεργός ή η σύμβαση υπάρχει ήδη":"Η προώθηση απέτυχε");return false}return true}
+  if(!(await save(cid,rec,"ct")))return false;
+  var tr=strip(t);tr.status="promoted";tr.promotedTo=cid;tr.statusAt=todayIso();
+  if(!(await save(tid,tr,"tn"))){
+    if(S.db&&S.uid){try{await col("contracts").doc(cid).delete()}catch(e){}}else{S.contracts=S.contracts.filter(function(x){return x.id!==cid});render()}
+    return false;
+  }
+  return true;
+}
+async function tnSetStatus(id,st){
+  var t=getItem("tn",id);if(!t)return;
+  var rec=strip(t);rec.status=st;rec.statusAt=st==="cancelled"?todayIso():"";rec.promotedTo="";
+  if(await save(id,rec,"tn")){toast(st==="cancelled"?"Ο διαγωνισμός ακυρώθηκε και αποθηκεύτηκε για αναφορά. Αφαιρέθηκε από τον Προϋπολογισμό.":"Ο διαγωνισμός είναι πάλι ενεργός");showTnDetail(id)}
+}
+function tnFiltered(){
+  var q=S.q.toLowerCase();
+  return sortList("tn",S.tenders.filter(function(c){
+    var s=c.status||"active";
+    if(S.filter==="active"&&s!=="active")return false;
+    if(S.filter==="cancelled"&&s!=="cancelled")return false;
+    if(S.filter==="promoted"&&s!=="promoted")return false;
+    if(!q)return true;
+    return [c.title,c.tender,c.description].join(" ").toLowerCase().indexOf(q)>=0;
+  }));
+}
+function renderTn(){
+  var all=S.tenders,n={active:0,cancelled:0,promoted:0},est=0;
+  all.forEach(function(t){var s=t.status||"active";n[s]=(n[s]||0)+1;if(s==="active")est+=Number(t.cost)||0});
+  $("#stats").innerHTML=
+    '<div class="stat"><b>'+all.length+'</b><span>Διαγωνισμοί</span></div>'+
+    '<div class="stat"><b>'+n.active+'</b><span>Ενεργοί</span></div>'+
+    '<div class="stat"><b>'+n.promoted+'</b><span>Προωθήθηκαν σε Σύμβαση</span></div>'+
+    '<div class="stat bad"><b>'+n.cancelled+'</b><span>Ακυρώθηκαν</span></div>'+
+    '<div class="stat"><b class="num" style="font-family:var(--f-display)">'+money(est).replace(/\.00$/,"")+'</b><span>Εκτιμώμενο κόστος ενεργών</span></div>';
+  $("#alerts").innerHTML="";
+  var chips=[["all","Όλοι"],["active","Ενεργοί"],["promoted","Προωθήθηκαν"],["cancelled","Ακυρώθηκαν"],["trash","🗑 Κάδος"+(S.trash.tn.length?" ("+S.trash.tn.length+")":"")]];
+  $("#chips").innerHTML=chips.map(function(c){return '<button type="button" class="chip" data-f="'+c[0]+'" aria-pressed="'+(S.filter===c[0])+'">'+c[1]+'</button>'}).join("")+'<button type="button" class="chip" data-act="cols">⚙ Στήλες</button>'+(window.RL_CFG?'':'<button type="button" class="chip" data-act="arts">Άρθρα προϋπολογισμού</button>');
+  var rows=tnFiltered(),h="";
+  if(!all.length)h='<div class="empty"><h2>Δεν υπάρχουν διαγωνισμοί ακόμα</h2><p>Κατέγραψε τους νέους διαγωνισμούς που σκοπεύει να διενεργήσει ο Οργανισμός, με εκτιμώμενες ημερομηνίες, κόστος και επιμέρους ποσά ανά άρθρο προϋπολογισμού. Όταν ο διαγωνισμός προχωρήσει, προωθείται σε Σύμβαση.</p><div class="actions"><button class="btn primary" type="button" id="emAdd">+ Νέος διαγωνισμός</button></div></div>';
+  else if(!rows.length)h='<div class="empty"><h2>Κανένα αποτέλεσμα</h2><p>Δοκίμασε άλλη αναζήτηση ή φίλτρο.</p></div>';
+  else h=listHtml("tn",rows);
+  $("#list").innerHTML=h;
+}
+function showTnDetail(id){
+  var c=getItem("tn",id);if(!c)return;S.open=id;S.openCat="tn";
+  var s=tnInfo(c),st=c.status||"active",ys=c.years||[],t=todayIso();
+  var files=(c.attachments||[]).map(function(a,i){
+    return '<li><a href="#" data-blob="'+esc(a.id)+'">'+esc(a.name)+'</a><button type="button" class="btn small danger" data-delfile="'+i+'">Αφαίρεση</button></li>';
+  }).join("");
+  var yr=ys.map(function(y,i){return '<tr><td>Έτος '+(i+1)+'</td><td class="mono">'+fmtDate(y.from)+'</td><td class="mono">'+fmtDate(y.to)+'</td><td class="num">'+mc(y.cost)+'</td></tr>'}).join("");
+  var note="";
+  if(st==="active")note='<p class="hint">Ο διαγωνισμός είναι ενεργός: τα ποσά του περιλαμβάνονται στον Προϋπολογισμό.</p>';
+  else if(st==="cancelled")note='<p class="hint">Ακυρώθηκε'+(c.statusAt?" στις "+fmtDate(c.statusAt):"")+' και διατηρείται για αναφορά. Δεν περιλαμβάνεται στον Προϋπολογισμό.</p>';
+  else{var pc=c.promotedTo?getItem("ct",c.promotedTo):null;note='<p class="hint">Προωθήθηκε σε Σύμβαση'+(c.statusAt?" στις "+fmtDate(c.statusAt):"")+' και διατηρείται για αναφορά. Η συμπερίληψη στον Προϋπολογισμό γίνεται πλέον μέσω της σύμβασης. '+(pc?'<button class="btn small" type="button" data-act="gocontract" data-id="'+esc(pc.id)+'">Άνοιγμα σύμβασης «'+esc(pc.title)+'»</button>':'(Η σύμβαση δεν βρέθηκε· ίσως έχει διαγραφεί.)')+'</p>'}
+  var act='';
+  if(st==="active")act='<button class="btn primary" type="button" data-act="tnpromote">Promote στις Συμβάσεις και αποθήκευση για αναφορά</button><button class="btn" type="button" data-act="tncancel">Ακύρωση και αποθήκευση για αναφορά</button>';
+  else if(st==="cancelled")act='<button class="btn" type="button" data-act="tnreopen">Επανενεργοποίηση</button>';
+  openPanel(
+   '<div class="ph"><div><h2>'+esc(c.title)+'</h2><span class="pill '+s.k+'">'+s.t+'</span> <span class="hint">'+esc(s.sub)+'</span></div><button class="btn small" type="button" data-act="close">Κλείσιμο</button></div>'+note+
+   '<dl class="kv wl">'+
+   '<dt>ΑΡΙΘΜΟΣ ΔΙΑΓΩΝΙΣΜΟΥ</dt><dd>'+esc(c.tender||"—")+'</dd>'+
+   '<dt>ΠΕΡΙΓΡΑΦΗ</dt><dd>'+esc(c.description||"—")+'</dd>'+
+   '<dt>ΔΙΑΡΚΕΙΑ (ΜΗΝΕΣ)</dt><dd class="num">'+esc(c.months||"—")+'</dd>'+
+   '<dt>ΕΚΤΙΜΩΜΕΝΗ ΗΜΕΡ. ΕΝΑΡΞΗΣ</dt><dd class="mono">'+fmtDate(c.dateFrom)+'</dd>'+
+   '<dt>ΕΚΤΙΜΩΜΕΝΗ ΗΜΕΡ. ΛΗΞΗΣ</dt><dd class="mono">'+fmtDate(c.dateTo)+'</dd>'+
+   '<dt>ΕΚΤΙΜΩΜΕΝΟ ΚΟΣΤΟΣ</dt><dd class="num">'+mc(c.cost)+'</dd></dl>'+
+   '<div class="sec"><h3>Έτη</h3><div class="tbl"><table><thead><tr><th>Έτος</th><th>ΗΜΕΡ. ΕΝΑΡΞΗΣ</th><th>ΗΜΕΡ. ΛΗΞΗΣ</th><th>ΚΟΣΤΟΣ</th></tr></thead><tbody>'+yr+'</tbody></table></div></div>'+
+   '<div class="sec"><h3>Συνημμένα</h3>'+(files?'<ul class="files">'+files+'</ul>':'<span class="hint">Δεν υπάρχουν συνημμένα (προδιαγραφές, μελέτες, προσφορές).</span>')+
+   '<div><button class="btn" type="button" data-act="attach"'+(S.assets?'':' disabled')+'>+ Προσθήκη αρχείων</button> <span class="hint">'+(S.assets?'PDF, εικόνες, CSV ή κείμενο, έως 20 MB το καθένα.':'Η μεταφόρτωση δεν είναι διαθέσιμη εδώ.')+'</span></div></div>'+
+   bpDetail(c,1)+
+   '<div class="sec"><div class="actions">'+act+'<button class="btn" type="button" data-act="edit">Επεξεργασία</button><button class="btn danger" type="button" data-act="tndel">Διαγραφή</button></div><div id="delbox"></div></div>'
+  ,"detail",true);
 }
 
 /* ---------- Excel import ---------- */
@@ -1497,10 +1643,10 @@ function ctRowsOut(n){
     return r;
   });
 }
-function ctWb(head,rows){
+function ctWb(head,rows,sheet){
   var ws=XLSX.utils.aoa_to_sheet([head].concat(rows));
   ws["!cols"]=head.map(function(h){return {wch:Math.max(14,Math.min(36,h.length+2))}});
-  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Συμβάσεις");
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,sheet||"Συμβάσεις");
   return XLSX.write(wb,{bookType:"xlsx",type:"array"});
 }
 function ctExportXlsx(){if(needX())return;if(!S.contracts.length){toast("Δεν υπάρχουν συμβάσεις για εξαγωγή");return}var n=ctMaxYears();offer("contracts-"+todayIso()+".xlsx",ctWb(ctHead(n),ctRowsOut(n)))}
@@ -1508,6 +1654,30 @@ function ctExportCsv(){
   if(!S.contracts.length){toast("Δεν υπάρχουν συμβάσεις για εξαγωγή");return}
   var n=ctMaxYears(),q=function(v){v=String(v==null?"":v);return /[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
   offer("contracts-"+todayIso()+".csv","﻿"+[ctHead(n)].concat(ctRowsOut(n)).map(function(r){return r.map(q).join(",")}).join("\r\n"));
+}
+function tnMaxYears(){return S.tenders.reduce(function(a,c){return Math.max(a,(c.years||[]).length)},1)}
+function tnHead(n){
+  var h=["ΟΝΟΜΑ ΔΙΑΓΩΝΙΣΜΟΥ","ΑΡΙΘΜΟΣ ΔΙΑΓΩΝΙΣΜΟΥ","ΠΕΡΙΓΡΑΦΗ","ΔΙΑΡΚΕΙΑ (ΜΗΝΕΣ)","ΕΚΤΙΜ. ΗΜΕΡ. ΕΝΑΡΞΗΣ","ΕΚΤΙΜ. ΗΜΕΡ. ΛΗΞΗΣ","ΕΚΤΙΜΩΜΕΝΟ ΚΟΣΤΟΣ"];
+  for(var i=1;i<=n;i++)h.push("ΕΤΟΣ "+i+" - ΗΜΕΡ.ΕΝΑΡΞΗΣ","ΕΤΟΣ "+i+" - ΗΜΕΡ.ΛΗΞΗΣ","ΕΤΟΣ "+i+" - ΚΟΣΤΟΣ");
+  h.push("ΣΥΝΗΜΜΕΝΑ","ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ","ΚΑΤΑΣΤΑΣΗ");return h;
+}
+function tnRowsOut(n){
+  return S.tenders.slice().sort(function(a,b){return (a.dateFrom||"").localeCompare(b.dateFrom||"")}).map(function(c){
+    var r=[c.title,c.tender,c.description,c.months,c.dateFrom,c.dateTo,c.cost],ys=c.years||[];
+    for(var i=0;i<n;i++){var y=ys[i]||{};r.push(y.from||"",y.to||"",y.cost===undefined?"":y.cost)}
+    r.push((c.attachments||[]).map(function(a){return a.name}).join("; "),bpText(c),tnInfo(c).t);
+    return r;
+  });
+}
+function tnExportXlsx(){if(needX())return;if(!S.tenders.length){toast("Δεν υπάρχουν διαγωνισμοί για εξαγωγή");return}var n=tnMaxYears();offer("tenders-"+todayIso()+".xlsx",ctWb(tnHead(n),tnRowsOut(n),"Διαγωνισμοί"))}
+function tnExportCsv(){
+  if(!S.tenders.length){toast("Δεν υπάρχουν διαγωνισμοί για εξαγωγή");return}
+  var n=tnMaxYears(),q=function(v){v=String(v==null?"":v);return /[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  offer("tenders-"+todayIso()+".csv","\ufeff"+[tnHead(n)].concat(tnRowsOut(n)).map(function(r){return r.map(q).join(",")}).join("\r\n"));
+}
+function tnShowExport(){
+  openPanel('<div class="ph"><h2>Εξαγωγή διαγωνισμών</h2><button class="btn small" type="button" data-act="close">Κλείσιμο</button></div>'+
+   '<div class="sec"><h3>Εξαγωγή όλων των διαγωνισμών</h3><p class="hint">Περιλαμβάνει όλα τα πεδία, τα στοιχεία κάθε έτους, τα επιμέρους ποσά, τα ονόματα των συνημμένων και την κατάσταση (ενεργός, ακυρώθηκε, προωθήθηκε).</p><div class="actions"><button class="btn primary" type="button" data-act="xlsx">Excel (.xlsx)</button><button class="btn" type="button" data-act="csv">CSV</button></div></div>',"export");
 }
 function ctTemplate(){if(needX())return;
   var ex=["Παράδειγμα σύμβασης","12/2026","Περιγραφή","Εταιρεία Α","Όνομα Επώνυμο",24,"2026-01-01","2027-12-31",24000,"2026-01-01","2026-12-31",12000,30,"2027-01-01","2027-12-31",12000,30,"","a@example.com, b@example.com","","",""];
@@ -1555,20 +1725,22 @@ function maybeDigest(){
 
 /* ---------- shared render ---------- */
 function render(){
-  var ct=S.cat==="ct";
-  var bd=S.cat==="bd";ct=ct&&!bd;
-  $("#tabSw").setAttribute("aria-selected",String(!ct&&!bd));$("#tabCt").setAttribute("aria-selected",String(ct));
+  var bd=S.cat==="bd",tn=S.cat==="tn",ct=S.cat==="ct";
+  $("#tabSw").setAttribute("aria-selected",String(!ct&&!bd&&!tn));$("#tabCt").setAttribute("aria-selected",String(ct));
+  var tt=$("#tabTn");if(tt)tt.setAttribute("aria-selected",String(tn));
   var tb=$("#tabBd");if(tb)tb.setAttribute("aria-selected",String(bd));
-  ["#btnAdd","#btnImport"].forEach(function(q){var n=$(q);if(n)n.style.display=bd?"none":""});
+  var el=ct||tn;
+  $("#btnAdd").style.display=bd?"none":"";$("#btnImport").style.display=bd||tn?"none":"";
   $("#q").style.display=bd?"none":"";
   $("#cntSw").textContent=S.items.length||"";$("#cntCt").textContent=S.contracts.length||"";
-  $("#btnAdd").textContent=ct?"+ Νέα σύμβαση":"+ Add software";
+  var cn=$("#cntTn");if(cn)cn.textContent=S.tenders.length||"";
+  $("#btnAdd").textContent=tn?"+ Νέος διαγωνισμός":ct?"+ Νέα σύμβαση":"+ Add software";
   $("#btnImport").textContent=ct?"Εισαγωγή Excel":"Import Excel";
-  $("#btnExport").textContent=bd?"Εξαγωγή Excel":ct?"Εξαγωγή":"Export";
-  $("#q").placeholder=ct?"Αναζήτηση σύμβασης, ανάδοχου, αρ. διαγωνισμού…":"Search name, vendor, website…";
-  $("#stats").setAttribute("lang",ct||bd?"el":"en");
-  if(bd)renderBd();else if(S.filter==="trash")renderTrash(ct?"ct":"sw");else if(ct)renderCt();else renderSw();
-  $("#note").textContent=bd?"Ο πίνακας υπολογίζεται αυτόματα από τα επιμέρους ποσά κάθε έτους των Συμβάσεων και των Online Renewals. Άρθρα με ανάλυση ανά έτος (ΝΑΙ): το ποσό κατανέμεται ανά μήνα στα ημερολογιακά έτη της περιόδου. Τα υπόλοιπα (ΌΧΙ): ολόκληρο στο έτος έναρξης.":S.db?(ct?"Αποθηκεύονται μόνο σε αυτόν τον browser και αυτή τη συσκευή. Κάνε τακτικά Εξαγωγή ως αντίγραφο ασφαλείας.":"Saved in this browser on this device only. Use Export regularly as a backup."):"Storage is not available in this view, so changes last only until you close the page. · Η αποθήκευση δεν είναι διαθέσιμη εδώ.";
+  $("#btnExport").textContent=bd?"Εξαγωγή Excel":el?"Εξαγωγή":"Export";
+  $("#q").placeholder=tn?"Αναζήτηση διαγωνισμού, αρ. διαγωνισμού…":ct?"Αναζήτηση σύμβασης, ανάδοχου, αρ. διαγωνισμού…":"Search name, vendor, website…";
+  $("#stats").setAttribute("lang",el||bd?"el":"en");
+  if(bd)renderBd();else if(S.filter==="trash")renderTrash(tn?"tn":ct?"ct":"sw");else if(tn)renderTn();else if(ct)renderCt();else renderSw();
+  $("#note").textContent=bd?"Ο πίνακας υπολογίζεται αυτόματα από τα επιμέρους ποσά κάθε έτους των Συμβάσεων, των ενεργών Διαγωνισμών και των Online Renewals. Άρθρα με ανάλυση ανά έτος (ΝΑΙ): το ποσό κατανέμεται ανά μήνα στα ημερολογιακά έτη της περιόδου. Τα υπόλοιπα (ΌΧΙ): ολόκληρο στο έτος έναρξης.":tn?"Τα ποσά των ενεργών διαγωνισμών περιλαμβάνονται στον Προϋπολογισμό. Με ακύρωση ή προώθηση σε Σύμβαση αφαιρούνται από εκεί· η συμπερίληψη γίνεται πλέον μέσω της σύμβασης.":S.db?(ct?"Αποθηκεύονται μόνο σε αυτόν τον browser και αυτή τη συσκευή. Κάνε τακτικά Εξαγωγή ως αντίγραφο ασφαλείας.":"Saved in this browser on this device only. Use Export regularly as a backup."):"Storage is not available in this view, so changes last only until you close the page. · Η αποθήκευση δεν είναι διαθέσιμη εδώ.";
   var ov=$("#overlay");
   if(S.open&&!ov.hidden&&ov.dataset.kind==="detail"&&!getItem(S.openCat||"sw",S.open))closePanel();
 }
@@ -1648,8 +1820,8 @@ function wbBuffer(rows,cols){
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Software");
   return XLSX.write(wb,{bookType:"xlsx",type:"array"});
 }
-function exportXlsx(){if(needX())return;if(S.cat==="ct")return ctExportXlsx();if(!S.items.length){toast("Nothing to export yet");return}offer("renewal-ledger-"+todayIso()+".xlsx",wbBuffer(rowsOut()))}
-function exportCsv(){if(S.cat==="ct")return ctExportCsv();
+function exportXlsx(){if(needX())return;if(S.cat==="tn")return tnExportXlsx();if(S.cat==="ct")return ctExportXlsx();if(!S.items.length){toast("Nothing to export yet");return}offer("renewal-ledger-"+todayIso()+".xlsx",wbBuffer(rowsOut()))}
+function exportCsv(){if(S.cat==="tn")return tnExportCsv();if(S.cat==="ct")return ctExportCsv();
   if(!S.items.length){toast("Nothing to export yet");return}
   var q=function(v){v=String(v==null?"":v);return /[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
   offer("renewal-ledger-"+todayIso()+".csv","﻿"+[HEAD].concat(rowsOut()).map(function(r){return r.map(q).join(",")}).join("\r\n"));
@@ -1657,7 +1829,7 @@ function exportCsv(){if(S.cat==="ct")return ctExportCsv();
 function templateXlsx(){if(needX())return;if(S.cat==="ct")return ctTemplate();
   offer("renewal-ledger-template.xlsx",wbBuffer([["Example App","Team chat","Example Ltd","https://example.com","admin@example.com","2026-01-01","2026-12-31",120,30,"a@example.com, b@example.com","","","",""]]));
 }
-function showExport(){if(S.cat==="bd")return bdExport();if(S.cat==="ct")return ctShowExport();
+function showExport(){if(S.cat==="bd")return bdExport();if(S.cat==="tn")return tnShowExport();if(S.cat==="ct")return ctShowExport();
   openPanel('<div class="ph"><h2>Export &amp; import</h2><button class="btn small" type="button" data-act="close">Close</button></div>'+
    '<div class="sec"><h3>Export all software</h3><p class="hint">Includes every field, the reminder setting, attachment file names and the current status. Keep the file safe.</p><div class="actions"><button class="btn primary" type="button" data-act="xlsx">Excel (.xlsx)</button><button class="btn" type="button" data-act="csv">CSV</button></div></div>'+
    '<div class="sec"><h3>Import template</h3><p class="hint">Use these column headings: '+HEAD.slice(0,8).join(", ")+'. Optional: Reminder (days before), Notification emails (several separated by commas). Dates can be dd/mm/yyyy or yyyy-mm-dd.</p><div class="actions"><button class="btn" type="button" data-act="tpl">Download template</button><button class="btn" type="button" data-act="pick">Choose Excel file to import…</button></div></div>',"export");
@@ -1670,16 +1842,16 @@ ROOT.addEventListener("click",async function(ev){
   if(t.id==="overlay"){closePanel();return}
   var b=t.closest("button,[data-f]");if(!b)return;
   var a=b.dataset.act;
-  if(b.dataset.f&&!a){S.filter=b.dataset.f;if(S.filter==="trash")loadTrash(S.cat==="ct"?"ct":"sw");render();return}
+  if(b.dataset.f&&!a){S.filter=b.dataset.f;if(S.filter==="trash")loadTrash(S.cat);render();return}
   if(b.dataset.sort)return setSort(b.dataset.sort);
-  if(b.id==="btnAdd"||b.id==="emAdd")return S.cat==="ct"?ctStart():startWizard();
+  if(b.id==="btnAdd"||b.id==="emAdd")return S.cat==="tn"?tnStart():S.cat==="ct"?ctStart():startWizard();
   if(b.id==="btnImport"||b.id==="emImp"){$("#fileXlsx").click();return}
   if(b.id==="btnExport")return showExport();
   if(b.id==="emSample")return S.cat==="ct"?ctSample():loadSample();
   if(b.classList.contains("row"))return reopen(S.cat,b.dataset.id);
   if(b.dataset.copy){var it=byId(S.open);try{await navigator.clipboard.writeText(it[b.dataset.copy]||"");toast("Copied")}catch(e){toast("Copy is blocked here — select the text instead")}return}
   if(b.dataset.delfile!==undefined)return removeFile(+b.dataset.delfile);
-  if(b.id==="delYes"){var id=S.open;var dc=S.openCat||"sw";if(await remove(id,dc)){closePanel();toastUndo(dc==="ct"?"Μεταφέρθηκε στον κάδο":"Moved to the trash",function(){restoreItem(dc,id).then(function(ok){if(ok)toast(dc==="ct"?"Η εγγραφή επαναφέρθηκε":"Record restored")})},null,dc==="ct")}return}
+  if(b.id==="delYes"){var id=S.open;var dc=S.openCat||"sw";if(await remove(id,dc)){closePanel();toastUndo(dc!=="sw"?"Μεταφέρθηκε στον κάδο":"Moved to the trash",function(){restoreItem(dc,id).then(function(ok){if(ok)toast(dc!=="sw"?"Η εγγραφή επαναφέρθηκε":"Record restored")})},null,dc!=="sw")}return}
   if(b.id==="delNo"){$("#delbox").innerHTML="";return}
   switch(a){
     case "close":closePanel();break;
@@ -1690,6 +1862,12 @@ ROOT.addEventListener("click",async function(ev){
     case "ctstep":ctCollect();S.cw.mode="step";S.cw.i=0;S.cw.err="";ctDraw();break;
     case "ctsave":ctSave();break;
     case "ctsum":ctCollect();var cs=$("#c_cost");if(cs)cs.value=ctSum(S.cw.d.years);break;
+    case "tndel":$("#delbox").innerHTML='<p class="err">Να διαγραφεί ο διαγωνισμός; Θα μεταφερθεί στον Κάδο και μπορείς να τον επαναφέρεις.</p><div class="actions"><button class="btn danger" type="button" id="delYes">Ναι, μεταφορά στον κάδο</button><button class="btn" type="button" id="delNo">Άκυρο</button></div>';break;
+    case "tncancel":$("#delbox").innerHTML='<p class="err">Να ακυρωθεί ο διαγωνισμός; Θα αποθηκευτεί για αναφορά και τα ποσά του θα αφαιρεθούν από τον Προϋπολογισμό.</p><div class="actions"><button class="btn danger" type="button" data-act="tncancelyes">Ναι, ακύρωση και αποθήκευση για αναφορά</button><button class="btn" type="button" id="delNo">Όχι</button></div>';break;
+    case "tncancelyes":tnSetStatus(S.open,"cancelled");break;
+    case "tnreopen":tnSetStatus(S.open,"active");break;
+    case "tnpromote":tnPromoteStart(S.open);break;
+    case "gocontract":{var gid=b.dataset.id;S.cat="ct";S.filter="all";S.q="";$("#q").value="";try{localStorage.setItem("rl.cat","ct")}catch(e){}render();showCtDetail(gid);break}
     case "ctdel":$("#delbox").innerHTML='<p class="err">Να διαγραφεί η σύμβαση; Θα μεταφερθεί στον Κάδο και μπορείς να την επαναφέρεις.</p><div class="actions"><button class="btn danger" type="button" id="delYes">Ναι, μεταφορά στον κάδο</button><button class="btn" type="button" id="delNo">Άκυρο</button></div>';break;
     case "back":showDetail(b.dataset.id);break;
     case "renewid":S.open=b.dataset.id;S.openCat="sw";showRenew(b.dataset.id);break;
@@ -1697,17 +1875,17 @@ ROOT.addEventListener("click",async function(ev){
     case "cols":showCols();break;
     case "arts":showArticles();break;
     case "undo":doUndo();break;
-    case "trrestore":{var tc=S.cat==="ct"?"ct":"sw";if(await restoreItem(tc,b.dataset.id))toast(tc==="ct"?"Η εγγραφή επαναφέρθηκε":"Record restored");break}
-    case "trpurge":{var pc=S.cat==="ct"?"ct":"sw",pit=(S.trash[pc]||[]).find(function(x){return x.id===b.dataset.id});if(!pit)break;
-      if(!window.confirm((pc==="ct"?"ΟΡΙΣΤΙΚΗ διαγραφή «":"PERMANENTLY delete \"")+recName(pc,pit)+(pc==="ct"?"» και όλων των συνημμένων της; ΔΕΝ μπορεί να αναιρεθεί.":"\" and all its attachments? This CANNOT be undone.")))break;
-      if(await purgeItem(pc,b.dataset.id))toast(pc==="ct"?"Διαγράφηκε οριστικά":"Deleted for good");break}
+    case "trrestore":{var tc=S.cat;if(await restoreItem(tc,b.dataset.id))toast(tc!=="sw"?"Η εγγραφή επαναφέρθηκε":"Record restored");break}
+    case "trpurge":{var pc=S.cat,pit=(S.trash[pc]||[]).find(function(x){return x.id===b.dataset.id});if(!pit)break;
+      if(!window.confirm((pc!=="sw"?"ΟΡΙΣΤΙΚΗ διαγραφή «":"PERMANENTLY delete \"")+recName(pc,pit)+(pc!=="sw"?"» και όλων των συνημμένων της; ΔΕΝ μπορεί να αναιρεθεί.":"\" and all its attachments? This CANNOT be undone.")))break;
+      if(await purgeItem(pc,b.dataset.id))toast(pc!=="sw"?"Διαγράφηκε οριστικά":"Deleted for good");break}
     case "artsave":saveArticles();break;
     case "artadd":{var rows=$("#artRows");rows.insertAdjacentHTML("beforeend",artRow());var ins=rows.querySelectorAll("tr");ins[ins.length-1].querySelector("input").focus();break}
     case "artdel":{var tr=b.closest("tr"),cd=tr&&tr.querySelector("[data-k=code]"),us=cd&&cd.defaultValue?artUsage(cd.defaultValue):0;
       if(us){toast(S.cat!=="sw"?"Το άρθρο χρησιμοποιείται σε "+us+" εγγραφές και δεν μπορεί να διαγραφεί":"This article is used by "+us+" record(s) and cannot be deleted");break}
       if(tr)tr.remove();break}
-    case "bpadd":{var dd=S.cat==="ct"?(ctCollect(),S.cw.d):(collect(),S.wiz.data);dd.budget=dd.budget||[];dd.budget.push({year:+b.dataset.year||1,amount:"",article:""});bpRedraw();break}
-    case "bpdel":{var dd2=S.cat==="ct"?(ctCollect(),S.cw.d):(collect(),S.wiz.data);dd2.budget.splice(+b.dataset.i,1);if(S.cat==="ct")(dd2.years||[]).forEach(function(y,i){if(!bpHas(dd2,i+1)&&false)y.cost=""});bpRedraw();break}
+    case "bpadd":{var dd=ctLike(S.cat)?(ctCollect(),S.cw.d):(collect(),S.wiz.data);dd.budget=dd.budget||[];dd.budget.push({year:+b.dataset.year||1,amount:"",article:""});bpRedraw();break}
+    case "bpdel":{var dd2=ctLike(S.cat)?(ctCollect(),S.cw.d):(collect(),S.wiz.data);dd2.budget.splice(+b.dataset.i,1);if(ctLike(S.cat))(dd2.years||[]).forEach(function(y,i){if(!bpHas(dd2,i+1)&&false)y.cost=""});bpRedraw();break}
     case "colsreset":resetCols();break;
     case "attach":$("#fileAttach").click();break;
     case "msadd":showMsForm(S.openCat||"sw",S.open,null,+b.dataset.year||1);break;
@@ -1720,7 +1898,7 @@ ROOT.addEventListener("click",async function(ev){
     case "msrmfile":msCollect();var rm=S.ms.d.attachments.splice(+b.dataset.i,1)[0];if(rm){var ai=S.ms.added.indexOf(rm.id);if(ai>=0){S.ms.added.splice(ai,1);try{S.assets.delete(rm.id)}catch(_){}}else S.ms.removed.push(rm.id)}msDraw();break;
     case "renew":showRenew(S.open);break;
     case "rsave":doRenew(b.dataset.id);break;
-    case "edit":S.openCat==="ct"?ctStart(S.open):startWizard(S.open);break;
+    case "edit":S.openCat==="tn"?tnStart(S.open):S.openCat==="ct"?ctStart(S.open):startWizard(S.open);break;
     case "del":$("#delbox").innerHTML='<p class="err">Delete this software? It moves to the Trash, where you can restore it.</p><div class="actions"><button class="btn danger" type="button" id="delYes">Yes, move to the trash</button><button class="btn" type="button" id="delNo">Keep it</button></div>';break;
     case "wnext":wizNext();break;
     case "wback":collect();S.wiz.err="";S.wiz.i--;drawWizard();break;
@@ -1737,7 +1915,7 @@ ROOT.addEventListener("click",async function(ev){
 });
 ROOT.addEventListener("keydown",function(ev){
   if(ev.key==="Escape"&&!$("#overlay").hidden)closePanel();
-  if(ev.key==="Enter"&&S.cw&&S.cw.mode==="step"&&ev.target.tagName==="INPUT"){ev.preventDefault();S.cw.i===CT_BASE.length?ctSave():ctNext()}
+  if(ev.key==="Enter"&&S.cw&&S.cw.mode==="step"&&ev.target.tagName==="INPUT"){ev.preventDefault();S.cw.i===cwBase().length?ctSave():ctNext()}
   if(ev.key==="Enter"&&S.wiz&&S.wiz.mode==="step"&&ev.target.tagName==="INPUT"){ev.preventDefault();var l=S.wiz.i===FIELDS.length;l?wizSave():wizNext()}
 });
 ROOT.addEventListener("input",function(ev){var t=ev.target;if(t&&t.id&&t.id.indexOf("bp_amt_")===0)bpLive()});
@@ -1770,7 +1948,7 @@ async function loadSample(){
 
 /* ---------- start ---------- */
 async function start(){
-  try{var rc=localStorage.getItem("rl.cat");if(rc==="ct"||rc==="bd")S.cat=rc}catch(e){}
+  try{var rc=localStorage.getItem("rl.cat");if(rc==="ct"||rc==="bd"||rc==="tn")S.cat=rc}catch(e){}
   render();
   var c=window.claude;if(!c||!c.use)return;
   try{S.assets=await c.use("assets")}catch(e){}
@@ -1781,8 +1959,8 @@ async function start(){
     if(db&&id){
       S.db=db;S.uid=id;
       S.loaded={};
-      var sub=function(name,cat,key){return col(name).onSnapshot(function(snap){var all=snap.docs.map(function(d){return Object.assign({id:d.id},d.data())});S[key]=all.filter(function(x){return !x.deletedAt});if(!window.RL_TRASH)S.trash[cat]=all.filter(function(x){return x.deletedAt}).map(function(x){return Object.assign({},x,{_at:x.deletedAt})});S.loaded[cat]=true;if(key==="items")purgePasswords();if(S.loaded.sw&&S.loaded.ct&&!S.tinit){S.tinit=1;if(window.RL_TRASH){loadTrash("sw");loadTrash("ct")}else autoPurge()}render();maybeDigest()},function(){toast("Live sync stopped — reload the page")})};
-      S.unsub=[sub("software","sw","items"),sub("contracts","ct","contracts")];
+      var sub=function(name,cat,key){return col(name).onSnapshot(function(snap){var all=snap.docs.map(function(d){return Object.assign({id:d.id},d.data())});S[key]=all.filter(function(x){return !x.deletedAt});if(!window.RL_TRASH)S.trash[cat]=all.filter(function(x){return x.deletedAt}).map(function(x){return Object.assign({},x,{_at:x.deletedAt})});S.loaded[cat]=true;if(key==="items")purgePasswords();if(S.loaded.sw&&S.loaded.ct&&S.loaded.tn&&!S.tinit){S.tinit=1;if(window.RL_TRASH){loadTrash("sw");loadTrash("ct");loadTrash("tn")}else autoPurge()}render();maybeDigest()},function(){toast("Live sync stopped — reload the page")})};
+      S.unsub=[sub("software","sw","items"),sub("contracts","ct","contracts"),sub("tenders","tn","tenders")];
     }
   }catch(e){}
   render();

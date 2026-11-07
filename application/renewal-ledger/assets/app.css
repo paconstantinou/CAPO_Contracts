@@ -53,6 +53,7 @@
 #rl-app .pill.ok{background:var(--ok-bg);color:var(--ok)}
 #rl-app .pill.warn{background:var(--warn-bg);color:var(--warn)}
 #rl-app .pill.bad{background:var(--bad-bg);color:var(--bad)}
+#rl-app .pill.mute{background:rgba(127,127,127,.18);color:inherit}
 #rl-app .empty{padding:40px 20px;text-align:center;color:var(--muted)}
 #rl-app .empty h2{color:var(--ink);font-size:20px;margin-bottom:6px}
 #rl-app .empty .actions{justify-content:center;margin-top:14px}

@@ -14,7 +14,10 @@
     });
   }
   var perms=cfg.perms||{};
-  function curColl(){var t=document.getElementById("tabCt");return t&&t.getAttribute("aria-selected")==="true"?"contracts":"software"}
+  function curColl(){
+    var t=document.getElementById("tabCt"),n=document.getElementById("tabTn");
+    return n&&n.getAttribute("aria-selected")==="true"?"tenders":t&&t.getAttribute("aria-selected")==="true"?"contracts":"software";
+  }
   function onBd(){var t=document.getElementById("tabBd");return !!t&&t.getAttribute("aria-selected")==="true"}
   function P(c,a){return !!(perms[c]&&perms[c][a])}
   var cache={},subs=[],loaded={};
@@ -39,6 +42,8 @@
         delete:function(){return api("DELETE","records/"+name+"/"+id).then(function(){if(cache[name])delete cache[name][id];notify(name)})}
       }},
       onSnapshot:function(cb,errcb){
+        /* a module the user may not view is simply empty (the server would answer 403) */
+        if(!P(name,"view")){cache[name]={};setTimeout(function(){cb(snapFor(name))},0);return function(){}}
         var l={name:name,cb:cb};subs.push(l);
         refresh(name,true,errcb);
         return function(){subs=subs.filter(function(x){return x!==l})};
@@ -54,6 +59,10 @@
     list:function(c){return api("GET",url("records/"+c,"trash=1")).then(function(r){return (r.items||[]).map(function(it){return {id:it.id,data:it.data,at:Date.parse(String(it.deleted_at).replace(" ","T")+"Z")||0,by:it.deleted_by||""}})})},
     restore:function(c,id){return api("POST","records/"+c+"/"+id+"/restore").then(function(){return refresh(c,false)})},
     purge:function(c,id){return api("DELETE",url("records/"+c+"/"+id,"purge=1"))}
+  };
+  /* Promote a tender to a contract in one server step (the server copies the attachments and marks the tender as promoted). */
+  window.RL_PROMOTE=function(tid,cid,rec){
+    return api("POST","records/tenders/"+tid+"/promote",{contractId:cid,data:JSON.parse(JSON.stringify(rec))}).then(function(){return Promise.all([refresh("contracts",false),refresh("tenders",false)])});
   };
   /* the page asks for db.doc("data/users/<id>/app").collection("software") */
   var db={doc:function(){return {collection:function(n){return colRef(n)}}},collection:colRef};
@@ -113,25 +122,30 @@
       var root=document.getElementById("rl-app");if(!root)return;
       var c=curColl();
       var bdt=document.getElementById("tabBd");
-      if(bdt)bdt.style.display=(P("software","view")||P("contracts","view"))?"":"none";
+      var anyView=P("software","view")||P("contracts","view")||P("tenders","view");
+      if(bdt)bdt.style.display=anyView?"":"none";
       if(onBd()){
         /* budget sheet is calculated from the records the user may view; nothing to add or import here */
         hide("#btnAdd,#emAdd,#btnImport,#emImp",root,true);
-        hide("#btnExport",root,!(P("software","export")||P("contracts","export")));
-        if(!(P("software","view")||P("contracts","view")))setTimeout(function(){var x=document.getElementById("tabSw");x&&x.click()},0);
+        hide("#btnExport",root,!(P("software","export")||P("contracts","export")||P("tenders","export")));
+        if(!anyView)setTimeout(function(){var x=document.getElementById("tabSw");x&&x.click()},0);
         return;
       }
-      hide("#btnAdd,#emAdd,#btnImport,#emImp,[data-act=pick],[data-act=tpl],[data-act=ctsample],#emSample",root,!P(c,"create"));
+      hide("#btnAdd,#emAdd,[data-act=pick],[data-act=tpl],[data-act=ctsample],#emSample",root,!P(c,"create"));
+      hide("#btnImport,#emImp",root,!P(c,"create")||c==="tenders"); /* tenders have no Excel import */
       hide("#btnExport",root,!P(c,"export"));
       hide("[data-act=xlsx],[data-act=csv]",root,!P(c,"export"));
       hide("[data-act=edit],[data-act=renew],[data-act=renewid],[data-act=attach],[data-act=rsave],[data-act=msadd],[data-act=msedit],[data-act=msdel],[data-act=msdone]",root,!P(c,"edit"));
-      hide("[data-act=del],[data-act=ctdel]",root,!P(c,"delete"));
+      hide("[data-act=del],[data-act=ctdel],[data-act=tndel]",root,!P(c,"delete"));
+      hide("[data-act=tncancel],[data-act=tncancelyes],[data-act=tnreopen]",root,!P("tenders","edit"));
+      hide("[data-act=tnpromote]",root,!(P("tenders","edit")&&P("contracts","create")));
       hide("[data-f=trash],[data-act=trrestore]",root,!P(c,"delete"));
       hide("[data-act=trpurge]",root,!P(c,"purge"));
-      var sw=document.getElementById("tabSw"),ct=document.getElementById("tabCt");
+      var sw=document.getElementById("tabSw"),ct=document.getElementById("tabCt"),tn=document.getElementById("tabTn");
       if(sw)sw.style.display=P("software","view")?"":"none";
       if(ct)ct.style.display=P("contracts","view")?"":"none";
-      if(!P(c,"view")){var other=c==="software"?ct:sw;if(other&&other.style.display!=="none")setTimeout(function(){other.click()},0)}
+      if(tn)tn.style.display=P("tenders","view")?"":"none";
+      if(!P(c,"view")){var vis=[sw,ct,tn].filter(function(x){return x&&x.style.display!=="none"});if(vis[0])setTimeout(function(){vis[0].click()},0)}
     }finally{gating=false}
   }
   document.addEventListener("DOMContentLoaded",function(){

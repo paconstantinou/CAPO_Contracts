@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Renewal Ledger
  * Description: Μητρώο ανανεώσεων λογισμικού και συμβάσεων με ετήσιες υπενθυμίσεις, συνημμένα, εισαγωγή/εξαγωγή Excel και ειδοποιήσεις email. Τα δεδομένα αποθηκεύονται στη βάση SQL του WordPress.
- * Version: 3.0.0
+ * Version: 3.1.0
  * Requires Plugins: application-management
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RL_VERSION', '3.0.0' );
+define( 'RL_VERSION', '3.1.0' );
 define( 'RL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RL_URL', plugin_dir_url( __FILE__ ) );
 
@@ -64,6 +64,12 @@ add_action( 'am_register_modules', function ( $registry ) {
 		'source'      => 'renewal-ledger',
 		'actions'     => array( 'purge' => 'Delete permanently from the trash' ),
 	) );
+	$registry->register( 'tenders', array(
+		'name'        => 'Tenders (Διαγωνισμοί)',
+		'description' => 'Planned tenders with estimated budget (Renewal Ledger).',
+		'source'      => 'renewal-ledger',
+		'actions'     => array( 'purge' => 'Delete permanently from the trash' ),
+	) );
 } );
 
 RL_Settings::init();
@@ -76,13 +82,13 @@ add_shortcode( 'renewal_ledger', function () {
 		return '<p>' . esc_html__( 'Συνδέσου για να δεις το Renewal Ledger.', 'renewal-ledger' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'Σύνδεση', 'renewal-ledger' ) . '</a></p>';
 	}
 	$perms = array();
-	foreach ( array( 'software', 'contracts' ) as $m ) {
+	foreach ( array( 'software', 'contracts', 'tenders' ) as $m ) {
 		foreach ( array( 'view', 'create', 'edit', 'delete', 'export', 'manage', 'credentials', 'purge' ) as $a ) {
 			$perms[ $m ][ $a ] = class_exists( 'AM' ) && AM::can( $m, $a );
 		}
 	}
 	/* The screen needs at least one module to view. The server re-checks every request anyway. */
-	if ( empty( $perms['software']['view'] ) && empty( $perms['contracts']['view'] ) ) {
+	if ( empty( $perms['software']['view'] ) && empty( $perms['contracts']['view'] ) && empty( $perms['tenders']['view'] ) ) {
 		return '<p>' . esc_html__( 'Δεν έχεις δικαίωμα πρόσβασης στο Renewal Ledger.', 'renewal-ledger' ) . '</p>';
 	}
 

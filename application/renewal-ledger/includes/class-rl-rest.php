@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class RL_REST {
 
-	const COLLECTIONS = array( 'software', 'contracts' );
+	const COLLECTIONS = array( 'software', 'contracts', 'tenders' );
 
 	public static function init() {
 		add_action( 'rest_api_init', array( __CLASS__, 'routes' ) );
@@ -102,6 +102,19 @@ class RL_REST {
 						return self::check( $req['coll'], 'delete' );
 					},
 					'args'                => array( 'coll' => $coll, 'id' => $id ),
+				),
+			),
+			array(
+				'route' => '/records/tenders/(?P<id>[A-Za-z0-9_-]+)/promote',
+				'args'  => array(
+					'methods'             => 'POST',
+					'callback'            => array( __CLASS__, 'promote_tender' ),
+					'permission_callback' => function () {
+						// A promote edits the tender and creates a contract: both permissions are needed.
+						$a = self::check( 'tenders', 'edit' );
+						return true === $a ? self::check( 'contracts', 'create' ) : $a;
+					},
+					'args'                => array( 'id' => $id ),
 				),
 			),
 			array(
@@ -193,6 +206,69 @@ class RL_REST {
 		return rest_ensure_response( array( 'items' => $items ) );
 	}
 
+	/**
+	 * Promote a tender to a contract in one step. Body: { contractId, data } where data is the (corrected) contract.
+	 * The tender is kept for reference (status "promoted") and stops being counted in the budget.
+	 */
+	public static function promote_tender( $req ) {
+		$id     = $req['id'];
+		$body   = $req->get_json_params();
+		$cid    = is_array( $body ) && isset( $body['contractId'] ) ? (string) $body['contractId'] : '';
+		$data   = is_array( $body ) && isset( $body['data'] ) && is_array( $body['data'] ) ? $body['data'] : null;
+		$tender = RL_DB::get_record( 'tenders', $id );
+		if ( ! $tender || RL_DB::is_trashed( 'tenders', $id ) ) {
+			return new WP_Error( 'rl_not_found', 'Tender not found.', array( 'status' => 404 ) );
+		}
+		if ( isset( $tender['status'] ) && 'active' !== $tender['status'] ) {
+			return new WP_Error( 'rl_tender_closed', 'Only an active tender can be promoted.', array( 'status' => 409 ) );
+		}
+		if ( ! preg_match( '/^[A-Za-z0-9_-]{1,64}$/', $cid ) || null === $data ) {
+			return new WP_Error( 'rl_bad_data', 'Invalid data', array( 'status' => 400 ) );
+		}
+		if ( RL_DB::record_exists( 'contracts', $cid ) ) {
+			return new WP_Error( 'rl_exists', 'A contract with this id already exists.', array( 'status' => 409 ) );
+		}
+		// Attachments of the tender are copied, so the contract owns its own files.
+		$own = array();
+		foreach ( ( isset( $tender['attachments'] ) && is_array( $tender['attachments'] ) ) ? $tender['attachments'] : array() as $a ) {
+			if ( is_array( $a ) && ! empty( $a['id'] ) ) {
+				$own[ $a['id'] ] = true;
+			}
+		}
+		$atts = array();
+		foreach ( ( isset( $data['attachments'] ) && is_array( $data['attachments'] ) ) ? $data['attachments'] : array() as $a ) {
+			if ( is_array( $a ) && ! empty( $a['id'] ) && isset( $own[ $a['id'] ] ) ) {
+				$c = RL_DB::copy_file( (string) $a['id'], 'contracts', get_current_user_id() );
+				if ( $c ) {
+					$atts[] = $c;
+				}
+			}
+		}
+		$data['attachments'] = $atts;
+		$data['milestones']  = array();
+		$clean               = RL_DB::sanitize_record( 'contracts', $data );
+		if ( is_wp_error( $clean ) ) {
+			foreach ( $atts as $a ) {
+				RL_DB::delete_file( $a['id'] );
+			}
+			return $clean;
+		}
+		$res = RL_DB::save_record( 'contracts', $cid, $clean, get_current_user_id() );
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+		$tender['status']     = 'promoted';
+		$tender['promotedTo'] = $cid;
+		$tender['statusAt']   = gmdate( 'Y-m-d' );
+		$res                  = RL_DB::save_record( 'tenders', $id, $tender, get_current_user_id() );
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+		self::log( 'ledger.tender_promoted', 'tenders', array( 'id' => $id, 'title' => self::title_of( 'tenders', $tender ), 'contract' => $cid ) );
+		self::log( 'ledger.record_create', 'contracts', array( 'id' => $cid, 'title' => $clean['title'], 'from_tender' => $id ) );
+		return rest_ensure_response( array( 'ok' => true, 'contractId' => $cid ) );
+	}
+
 	public static function put_record( $req ) {
 		$coll = $req['coll'];
 		$id   = $req['id'];
@@ -210,9 +286,29 @@ class RL_REST {
 			// Without the credentials permission the stored values are kept as they are.
 			$data['username'] = $old && isset( $old['username'] ) ? $old['username'] : '';
 		}
+		if ( 'tenders' === $coll ) {
+			// "promoted" can only be set by the promote endpoint, and a promoted tender stays promoted.
+			if ( $old && isset( $old['status'] ) && 'promoted' === $old['status'] ) {
+				$data['status']     = 'promoted';
+				$data['promotedTo'] = isset( $old['promotedTo'] ) ? $old['promotedTo'] : '';
+				$data['statusAt']   = isset( $old['statusAt'] ) ? $old['statusAt'] : '';
+			} elseif ( 'promoted' === $data['status'] ) {
+				$data['status']     = 'active';
+				$data['promotedTo'] = '';
+			}
+			if ( 'promoted' !== $data['status'] ) {
+				$data['promotedTo'] = '';
+			}
+			if ( ( ! $old || ( isset( $old['status'] ) ? $old['status'] : 'active' ) !== $data['status'] ) && 'cancelled' === $data['status'] ) {
+				$data['statusAt'] = gmdate( 'Y-m-d' );
+			}
+		}
 		$res = RL_DB::save_record( $coll, $id, $data, get_current_user_id() );
 		if ( is_wp_error( $res ) ) {
 			return $res;
+		}
+		if ( 'tenders' === $coll && $old && isset( $old['status'] ) && $old['status'] !== $data['status'] ) {
+			self::log( 'ledger.tender_' . $data['status'], $coll, array( 'id' => $id, 'title' => $data['title'] ) );
 		}
 		$title = 'software' === $coll ? $data['name'] : $data['title'];
 		self::log( $old ? 'ledger.record_edit' : 'ledger.record_create', $coll, array( 'id' => $id, 'title' => $title ) );
@@ -278,7 +374,7 @@ class RL_REST {
 			ob_end_clean();
 		}
 		if ( 'xlsx' === $format ) {
-			$path = RL_Export::xlsx( 'software' === $coll ? 'Software' : 'Contracts', $head, $rows );
+			$path = RL_Export::xlsx( 'software' === $coll ? 'Software' : ( 'tenders' === $coll ? 'Tenders' : 'Contracts' ), $head, $rows );
 			if ( $path ) {
 				header( 'Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' );
 				header( 'Content-Disposition: attachment; filename="' . $name . '.xlsx"' );

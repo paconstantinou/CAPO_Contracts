@@ -7,8 +7,9 @@ const code = [
   grab(/var DEFAULT_ARTICLES=/, 'function articles()'),
   grab(/function artFind/, 'function artLabel'),
   grab(/\/\*BD-CALC-START\*\//, '/*BD-CALC-END*/'),
+  grab(/function tnActive/, 'function tnInfo'),
 ].join('\n');
-const api = new Function(code + '\nreturn {DEFAULT_ARTICLES,parseArtLines,artFind,bdMonths,bdAlloc,bdBuild,bdTotals,bdEur};')();
+const api = new Function(code + '\nreturn {DEFAULT_ARTICLES,parseArtLines,artFind,bdMonths,bdAlloc,bdBuild,bdTotals,bdEur,tnActive};')();
 let ok = 0, bad = 0;
 function t(name, fn) { try { fn(); ok++; console.log('  ok   ' + name); } catch (e) { bad++; console.log('  FAIL ' + name + '\n       ' + e.message); } }
 const arts = api.DEFAULT_ARTICLES;
@@ -80,6 +81,33 @@ t('unknown article is reported, amount kept (no article group)', () => {
 });
 t('record without a start date is reported, not silently dropped', () => {
   const x = api.bdBuild(arts, [{ id: 'z', name: 'Z', dateFrom: '', dateTo: '', cost: 50, budget: [] }], []); assert.strictEqual(x.warn.length, 1);
+});
+const tn = (id, status, extra) => Object.assign({ id, title: 'Διαγωνισμός ' + id, tender: 'Δ/' + id, months: 24, dateFrom: '2027-01-01', dateTo: '2028-12-31', status,
+  years: [{ from: '2027-01-01', to: '2027-12-31', cost: 1000 }, { from: '2028-01-01', to: '2028-12-31', cost: 700 }],
+  budget: [{ year: 1, amount: 1000, article: '03461' }, { year: 2, amount: 700, article: '03461' }] }, extra || {});
+t('only ACTIVE tenders are budgeted (cancelled and promoted are left out)', () => {
+  const all = [tn('a', 'active'), tn('b', 'cancelled'), tn('c', 'promoted'), tn('d', undefined)];
+  const list = all.filter(api.tnActive); assert.deepStrictEqual(list.map(x => x.id), ['a', 'd']);
+  const B = api.bdBuild(arts, [], [], list); const rows = B.byArt['03461'];
+  assert.strictEqual(rows.length, 2); assert(rows.every(r => r.kind === 'tn'));
+  const tot = api.bdTotals(rows, B.years).reduce((x, y) => x + y, 0); assert.strictEqual(tot, 2 * 1700);
+});
+t('tender row describes the estimated tender and period', () => {
+  const B = api.bdBuild(arts, [], [], [tn('a', 'active')]); const r = B.byArt['03461'][0];
+  assert.strictEqual(r.desc, 'Διαγωνισμός a'); assert(r.how[0].includes('Εκτιμώμενος διαγωνισμός: Δ/a')); assert(r.how[1].includes('01/01/2027 – 31/12/2028'));
+});
+t('tender amounts follow the same split rule as contracts (ΝΑΙ spread by month, ΌΧΙ start year)', () => {
+  const spl = { ...arts.find(a => a.code === '03461'), code: 'SPL', split: true }, one = { ...spl, code: 'ONE', split: false };
+  const mk = c => tn('m', 'active', { months: 12, dateFrom: '2027-04-01', dateTo: '2028-03-31', years: [{ from: '2027-04-01', to: '2028-03-31', cost: 1200 }], budget: [{ year: 1, amount: 1200, article: c }] });
+  const a = api.bdBuild([spl, one], [], [], [mk('SPL')]).byArt['SPL'][0].by, b = api.bdBuild([spl, one], [], [], [mk('ONE')]).byArt['ONE'][0].by;
+  assert.deepStrictEqual(a, { 2027: 900, 2028: 300 }); assert.deepStrictEqual(b, { 2027: 1200 });
+});
+t('a tender without partial amounts uses its year cost; with the contract it created there is no double count', () => {
+  const noParts = tn('n', 'active', { budget: [] });
+  const B1 = api.bdBuild(arts, [], [], [noParts]); const r1 = [].concat(...Object.values(B1.byArt)); assert.strictEqual(r1.length, 1); assert.strictEqual(api.bdTotals(r1, B1.years).reduce((x, y) => x + y, 0), 1700);
+  const promoted = tn('p', 'promoted'), contract = { id: 'k', title: 'K', tender: 'Δ/p', months: 24, dateFrom: '2027-01-01', dateTo: '2028-12-31', years: promoted.years, budget: promoted.budget };
+  const B2 = api.bdBuild(arts, [], [contract], [promoted].filter(api.tnActive)); const tot = api.bdTotals([].concat(...Object.values(B2.byArt)), B2.years).reduce((x, y) => x + y, 0);
+  assert.strictEqual(tot, 1700);
 });
 t('Greek money format', () => { assert.strictEqual(api.bdEur(1100), '1.100,00 €'); assert.strictEqual(api.bdEur(0.5), '0,50 €'); });
 console.log('\n' + ok + ' passed, ' + bad + ' failed'); process.exit(bad ? 1 : 0);

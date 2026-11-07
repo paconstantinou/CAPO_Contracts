@@ -4,7 +4,7 @@ Tracker for online software renewals (English) and contracts (Greek, per-year br
 
 ```
 /application
-    renewal-ledger/      WordPress plugin: the app (v3.0.0)
+    renewal-ledger/      WordPress plugin: the app (v3.1.0)
     standalone/          GitHub Pages (index.html), Windows installer sources (windows/), Claude-artifact copy – local, single user, NO roles
 /wordpress-plugin
     application-management/   WordPress plugin: users, roles, permissions, modules, activity logs (v1.1.0)
@@ -15,7 +15,7 @@ index.html               GitHub Pages entry (copy of application/standalone/inde
 ```
 
 ## Quick start
-1. Install `dist/application-management-1.1.0.zip`, then `dist/renewal-ledger-3.0.0.zip` (Plugins → Add New → Upload) and activate both. The admin who activates Application Management becomes the first Super Admin.
+1. Install `dist/application-management-1.1.0.zip`, then `dist/renewal-ledger-3.1.0.zip` (Plugins → Add New → Upload) and activate both. The admin who activates Application Management becomes the first Super Admin.
 2. Add `[renewal_ledger]` to a private page.
 3. Application Management → Users & Access: enable users and assign roles.
 Details: `documentation/`.

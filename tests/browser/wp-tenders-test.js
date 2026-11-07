@@ -1,0 +1,78 @@
+/* Real-browser check of the Διαγωνισμοί tab in WordPress: create, budget, cancel, re-activate, promote (with corrections).
+   Usage: RL_URL=http://127.0.0.1:8088 RL_PAGE=/rl/ RL_USER=admin RL_PASS=... node tests/browser/wp-tenders-test.js */
+const { chromium } = require('playwright');
+const base = process.env.RL_URL || 'http://127.0.0.1:8088', page = process.env.RL_PAGE || '/rl/', user = process.env.RL_USER || 'admin', pass = process.env.RL_PASS;
+if (!pass) { console.error('RL_PASS required'); process.exit(2); }
+(async () => {
+  const b = await chromium.launch({ args: ['--proxy-server=direct://', '--proxy-bypass-list=*'] });
+  const p = await (await b.newContext({ viewport: { width: 1400, height: 1000 } })).newPage();
+  await p.route('**/*', r => { const u = r.request().url(); return u.startsWith(base) || u.startsWith('data:') || u.startsWith('blob:') ? r.continue() : r.abort(); });
+  const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('dialog', d => d.accept());
+  await p.goto(base + '/wp-login.php', { waitUntil: 'commit' });
+  await p.fill('#user_login', user); await p.fill('#user_pass', pass); await p.click('#wp-submit'); await p.waitForTimeout(3000);
+  await p.goto(base + page, { waitUntil: 'commit' }); await p.waitForSelector('#rl-app', { timeout: 20000 }); await p.waitForTimeout(3000);
+  let bad = 0; const ok = (n, c) => { if (!c) bad++; console.log((c ? '  ok   ' : '  FAIL ') + n); };
+  const T = s => p.innerText(s), W = ms => p.waitForTimeout(ms);
+  const api = (m, path, body) => p.evaluate(async ([m, path, body]) => { path = path.replace('&purge=1', (RL_CFG.rest.indexOf('?') >= 0 ? '&' : '?') + 'purge=1'); const r = await fetch(RL_CFG.rest + path, { method: m, headers: { 'X-WP-Nonce': RL_CFG.nonce, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); return r.status; }, [m, path, body]);
+  const name = 'Δ-Probe ' + Date.now(), art = await p.evaluate(() => RL_CFG.articles.find(a => a.split).code);
+  ok('tab Διαγωνισμοί is visible', await p.locator('#tabTn:visible').count() === 1);
+  await p.click('#tabTn'); await W(800);
+  ok('tender tab opens and adds a button for new tenders', (await T('#btnAdd')).includes('Νέος διαγωνισμός') && await p.locator('#btnImport:visible').count() === 0);
+  await p.click('#btnAdd'); await W(300);
+  await p.click('[data-act=ctfull]'); await W(300);
+  const labels = await T('#overlay');
+  ok('form has the tender fields', ['ΟΝΟΜΑ ΔΙΑΓΩΝΙΣΜΟΥ', 'ΑΡΙΘΜΟΣ ΔΙΑΓΩΝΙΣΜΟΥ', 'ΠΕΡΙΓΡΑΦΗ', 'ΔΙΑΡΚΕΙΑ', 'ΕΚΤΙΜΩΜΕΝΗ ΗΜΕΡ. ΕΝΑΡΞΗΣ', 'ΕΚΤΙΜΩΜΕΝΗ ΗΜΕΡ. ΛΗΞΗΣ', 'ΕΚΤΙΜΩΜΕΝΟ ΚΟΣΤΟΣ'].every(x => labels.includes(x)));
+  ok('form has no contractor / e-mail fields', !labels.includes('ΑΝΑΔΟΧΟΣ') && !labels.includes('EMAIL'));
+  await p.fill('#c_title', name); await p.fill('#c_tender', 'ΔΙΑΓ-1/2027'); await p.fill('#c_description', 'Δοκιμή');
+  await p.fill('#c_months', '24'); await p.dispatchEvent('#c_months', 'change');
+  await p.fill('#c_dateFrom', '2027-04-01'); await p.dispatchEvent('#c_dateFrom', 'change'); await W(300);
+  ok('end date and years are generated from the duration', (await p.inputValue('#c_dateTo')) === '2029-03-31' && await p.locator('#cy_from_1').count() === 1);
+  ok('years table has no reminder column', !(await T('#cYears')).includes('Υπενθύμιση'));
+  await p.click('[data-act=bpadd][data-year="1"]'); await W(300);
+  await p.selectOption('#bp_art_0', art); await p.fill('#bp_amt_0', '1200'); await p.dispatchEvent('#bp_amt_0', 'change');
+  await p.click('[data-act=bpadd][data-year="2"]'); await W(300);
+  await p.selectOption('#bp_art_1', art); await p.fill('#bp_amt_1', '600'); await p.dispatchEvent('#bp_amt_1', 'change');
+  ok('year cost is the sum of the partial amounts', (await p.inputValue('#cy_cost_0')) === '1200' && (await p.inputValue('#cy_cost_1')) === '600');
+  await p.click('[data-act=ctsave]'); await W(1500);
+  let d = await T('#overlay');
+  ok('tender saved and its detail opens', d.includes(name) && d.includes('Ενεργός'));
+  ok('detail offers cancel and promote', d.includes('Ακύρωση και αποθήκευση για αναφορά') && d.includes('Promote στις Συμβάσεις και αποθήκευση για αναφορά'));
+  ok('detail has an attachments field', d.includes('Συνημμένα') && await p.locator('[data-act=attach]').count() === 1);
+  await p.click('[data-act=close]'); await W(300);
+  ok('list shows the tender', (await T('#list')).includes(name));
+  await p.click('#tabBd'); await W(800);
+  ok('budget sheet includes the active tender (same table as contracts)', (await T('#list')).includes(name) && (await T('#list')).includes('Εκτιμώμενος διαγωνισμός: ΔΙΑΓ-1/2027'));
+  await p.click('#tabTn'); await W(600); await p.click('text=' + name); await W(300);
+  await p.click('[data-act=tncancel]'); await p.click('[data-act=tncancelyes]'); await W(1500);
+  d = await T('#overlay'); ok('cancel keeps the tender for reference', d.includes('Ακυρώθηκε') && d.includes('Δεν περιλαμβάνεται στον Προϋπολογισμό'));
+  ok('cancelled tender offers neither cancel nor promote', await p.locator('[data-act=tnpromote]').count() === 0 && await p.locator('[data-act=tncancel]').count() === 0);
+  await p.click('[data-act=close]'); await p.click('#tabBd'); await W(800);
+  ok('cancel removes it from the budget sheet', !(await T('#list')).includes(name));
+  await p.click('#tabTn'); await W(600); await p.click('text=' + name); await W(300);
+  await p.click('[data-act=tnreopen]'); await W(1500);
+  await p.click('[data-act=close]'); await p.click('#tabBd'); await W(800);
+  ok('re-activating puts it back in the budget', (await T('#list')).includes(name));
+  await p.click('#tabTn'); await W(600); await p.click('text=' + name); await W(300);
+  await p.click('[data-act=tnpromote]'); await W(500);
+  ok('promote opens the contract form pre-filled from the tender', (await T('#overlay')).includes('Promote στις Συμβάσεις') && (await p.inputValue('#c_title')) === name && (await p.inputValue('#c_tender')) === 'ΔΙΑΓ-1/2027' && (await p.inputValue('#c_months')) === '24');
+  ok('contract-only fields are available to fill in', (await T('#overlay')).includes('ΑΝΑΔΟΧΟΣ') && (await T('#cYears')).includes('Υπενθύμιση'));
+  await p.fill('#c_contractor', 'ACME Α.Ε.'); await p.fill('#c_dateFrom', '2027-05-01'); await p.dispatchEvent('#c_dateFrom', 'change'); await W(300);
+  await p.click('[data-act=ctsave]'); await W(2000);
+  d = await T('#overlay');
+  ok('promote saves the contract and opens it', d.includes(name) && d.includes('ACME Α.Ε.') && d.includes('01/05/2027'));
+  ok('app switched to the Συμβάσεις tab', (await p.getAttribute('#tabCt', 'aria-selected')) === 'true');
+  await p.click('[data-act=close]'); await W(300);
+  ok('contract is listed', (await T('#list')).includes(name));
+  await p.click('#tabTn'); await W(600);
+  ok('tender is kept as promoted', (await T('#list')).includes(name) && (await T('#list')).includes('Προωθήθηκε σε Σύμβαση'));
+  await p.click('text=' + name); await W(300);
+  ok('promoted tender links to the contract and offers no actions', (await T('#overlay')).includes('Άνοιγμα σύμβασης') && await p.locator('[data-act=tnpromote]').count() === 0);
+  await p.click('[data-act=close]'); await p.click('#tabBd'); await W(800);
+  const bd = await T('#list');
+  ok('budget has the contract and no longer the tender (no double count)', bd.includes(name) && bd.includes('Σύμβαση: 01/05/2027') && !bd.includes('Εκτιμώμενος διαγωνισμός: ΔΙΑΓ-1/2027'));
+  /* clean up through the API */
+  const ids = await p.evaluate(async () => { const o = {}; for (const c of ['tenders', 'contracts']) { const r = await (await fetch(RL_CFG.rest + 'records/' + c, { headers: { 'X-WP-Nonce': RL_CFG.nonce } })).json(); o[c] = r.items.filter(i => String(i.data.title).startsWith('Δ-Probe')).map(i => i.id); } return o; });
+  for (const c of Object.keys(ids)) for (const id of ids[c]) { await api('DELETE', `records/${c}/${id}`); await api('DELETE', `records/${c}/${id}&purge=1`); }
+  ok('no script errors', errs.length === 0); if (errs.length) console.log(errs.join('\n'));
+  console.log(bad ? '\n' + bad + ' failed' : '\nall passed'); await b.close(); process.exit(bad ? 1 : 0);
+})();

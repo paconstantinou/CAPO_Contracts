@@ -8,7 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class RL_DB {
 
-	const COLLECTIONS = array( 'software', 'contracts' );
+	const COLLECTIONS = array( 'software', 'contracts', 'tenders' );
 	const MAX_FILE    = 20971520; // 20 MB
 	const MAX_JSON    = 262144;   // 256 KB per record
 
@@ -149,7 +149,7 @@ class RL_DB {
 	/** How many records (live and in the trash) use each budget article code. @return array code => count */
 	public static function article_usage() {
 		$out = array();
-		foreach ( array( 'software', 'contracts' ) as $c ) {
+		foreach ( array( 'software', 'contracts', 'tenders' ) as $c ) {
 			foreach ( array( false, true ) as $tr ) {
 				foreach ( self::list_records( $c, $tr ) as $r ) {
 					$seen = array();
@@ -410,7 +410,7 @@ class RL_DB {
 		$g = function ( $k ) use ( $d ) {
 			return isset( $d[ $k ] ) ? $d[ $k ] : '';
 		};
-		$emails = self::v_emails( $g( 'emails' ) );
+		$emails = 'tenders' === $collection ? '' : self::v_emails( $g( 'emails' ) );
 		if ( is_wp_error( $emails ) ) {
 			return $emails;
 		}
@@ -452,6 +452,45 @@ class RL_DB {
 							'renewedOn' => self::v_date( isset( $h['renewedOn'] ) ? $h['renewedOn'] : '' ),
 						);
 					}
+				}
+			}
+			return $out;
+		}
+		if ( 'tenders' === $collection ) {
+			$out = array(
+				'title'       => self::v_str( $g( 'title' ), 300 ),
+				'tender'      => self::v_str( $g( 'tender' ), 100 ),
+				'description' => self::v_str( $g( 'description' ), 4000 ),
+				'months'      => max( 0, min( 1200, (int) $g( 'months' ) ) ),
+				'dateFrom'    => self::v_date( $g( 'dateFrom' ) ),
+				'dateTo'      => self::v_date( $g( 'dateTo' ) ),
+				'cost'        => self::v_num( $g( 'cost' ) ),
+				'years'       => array(),
+				'budget'      => self::v_budget( $g( 'budget' ) ),
+				'attachments' => self::v_attachments( $g( 'attachments' ), $collection ),
+				'status'      => in_array( $g( 'status' ), array( 'active', 'cancelled', 'promoted' ), true ) ? $g( 'status' ) : 'active',
+				'statusAt'    => self::v_date( $g( 'statusAt' ) ),
+				'promotedTo'  => preg_match( '/^[A-Za-z0-9_-]{1,64}$/', (string) $g( 'promotedTo' ) ) ? (string) $g( 'promotedTo' ) : '',
+				'createdAt'   => $created,
+				'sample'      => ! empty( $d['sample'] ),
+			);
+			if ( '' === $out['title'] ) {
+				return new WP_Error( 'rl_bad_data', 'Tender name is required.', array( 'status' => 400 ) );
+			}
+			if ( isset( $d['years'] ) && is_array( $d['years'] ) ) {
+				foreach ( array_slice( $d['years'], 0, 60 ) as $y ) {
+					if ( is_array( $y ) ) {
+						$out['years'][] = array(
+							'from' => self::v_date( isset( $y['from'] ) ? $y['from'] : '' ),
+							'to'   => self::v_date( isset( $y['to'] ) ? $y['to'] : '' ),
+							'cost' => self::v_num( isset( $y['cost'] ) ? $y['cost'] : '', true ),
+						);
+					}
+				}
+			}
+			foreach ( $out['years'] as $yi => $yr ) {
+				if ( array_filter( $out['budget'], function ( $p ) use ( $yi ) { return (int) $p['year'] === $yi + 1; } ) ) {
+					$out['years'][ $yi ]['cost'] = self::budget_sum( $out['budget'], $yi + 1 );
 				}
 			}
 			return $out;
@@ -566,6 +605,39 @@ class RL_DB {
 		global $wpdb;
 		$t = self::table_files();
 		return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $t WHERE id = %s", $id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/** Copy a stored file for another collection (used when a tender is promoted to a contract). @return array|false */
+	public static function copy_file( $id, $collection, $user_id ) {
+		global $wpdb;
+		$row = self::get_file( $id );
+		if ( ! $row ) {
+			return false;
+		}
+		$src = self::dir() . '/' . $row['stored_name'];
+		if ( ! is_file( $src ) ) {
+			return false;
+		}
+		$new    = bin2hex( random_bytes( 16 ) );
+		$stored = $new . '.dat';
+		if ( ! @copy( $src, self::dir() . '/' . $stored ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			return false;
+		}
+		$wpdb->insert(
+			self::table_files(),
+			array(
+				'id'          => $new,
+				'orig_name'   => $row['orig_name'],
+				'stored_name' => $stored,
+				'mime'        => $row['mime'],
+				'size'        => (int) $row['size'],
+				'collection'  => (string) $collection,
+				'uploaded_by' => (int) $user_id,
+				'created_at'  => current_time( 'mysql', true ),
+			),
+			array( '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%s' )
+		);
+		return array( 'id' => $new, 'name' => $row['orig_name'], 'size' => (int) $row['size'] );
 	}
 
 	public static function delete_file( $id ) {
