@@ -16,6 +16,12 @@ if (!pass) { console.error('RL_PASS required'); process.exit(2); }
   const api = (m, path, body) => p.evaluate(async ([m, path, body]) => { path = path.replace('&purge=1', (RL_CFG.rest.indexOf('?') >= 0 ? '&' : '?') + 'purge=1'); const r = await fetch(RL_CFG.rest + path, { method: m, headers: { 'X-WP-Nonce': RL_CFG.nonce, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); return r.status; }, [m, path, body]);
   const name = 'Δ-Probe ' + Date.now(), art = await p.evaluate(() => RL_CFG.articles.find(a => a.split).code);
   ok('tab Διαγωνισμοί is visible', await p.locator('#tabTn:visible').count() === 1);
+  await p.click('#btnGuide'); await W(400);
+  const gd = await T('#overlay');
+  ok('user guide opens from the header and describes every tab', ['Online Renewals', 'Συμβάσεις', 'Διαγωνισμοί', 'Προϋπολογισμός', 'ΦΠΑ 19%', 'Promote στις Συμβάσεις', 'Κάδος'].every(x => gd.includes(x)) && /έκδοση \d+\.\d+\.\d+/.test(gd));
+  await p.click('[data-act=gsec][data-id=tn]'); await W(600);
+  ok('guide topic buttons scroll to their section', await p.evaluate(() => { const e = document.getElementById('g-tn'); const r = e.getBoundingClientRect(); return r.top < window.innerHeight; }));
+  await p.click('#overlay [data-act=close]'); await W(300);
   await p.click('#tabTn'); await W(800);
   ok('tender tab opens and adds a button for new tenders', (await T('#btnAdd')).includes('Νέος διαγωνισμός') && await p.locator('#btnImport:visible').count() === 0);
   await p.click('#btnAdd'); await W(300);

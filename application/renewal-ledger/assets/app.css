@@ -54,6 +54,10 @@
 #rl-app .pill.warn{background:var(--warn-bg);color:var(--warn)}
 #rl-app .pill.bad{background:var(--bad-bg);color:var(--bad)}
 #rl-app .pill.mute{background:rgba(127,127,127,.18);color:inherit}
+#rl-app .guide h3{margin:22px 0 6px;font-size:1.05rem}
+#rl-app .guide p,#rl-app .guide li{line-height:1.5;max-width:75ch}
+#rl-app .guide ul{padding-left:20px;margin:6px 0}
+#rl-app .gtoc{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
 #rl-app .empty{padding:40px 20px;text-align:center;color:var(--muted)}
 #rl-app .empty h2{color:var(--ink);font-size:20px;margin-bottom:6px}
 #rl-app .empty .actions{justify-content:center;margin-top:14px}
