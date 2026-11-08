@@ -15,6 +15,8 @@
 #rl-app .top{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;justify-content:space-between;padding-block:20px 16px}
 #rl-app .brand h1{font-size:26px;font-weight:700}
 #rl-app .brand p{margin:2px 0 0;color:var(--muted)}
+#rl-app .brand .logo{display:block;height:72px;width:auto;max-width:100%}
+#rl-app .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 #rl-app .actions{display:flex;flex-wrap:wrap;gap:8px}
 #rl-app .btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:500;display:inline-flex;gap:6px;align-items:center;min-height:38px}
 #rl-app .btn:hover{border-color:var(--accent)}

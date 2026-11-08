@@ -4,7 +4,7 @@ Tracker for online software renewals (English) and contracts (Greek, per-year br
 
 ```
 /application
-    renewal-ledger/      WordPress plugin: the app (v3.3.0)
+    renewal-ledger/      WordPress plugin: the app (v3.4.0)
     standalone/          GitHub Pages (index.html), Windows installer sources (windows/), Claude-artifact copy – local, single user, NO roles
 /wordpress-plugin
     application-management/   WordPress plugin: users, roles, permissions, modules, activity logs (v1.1.0)
@@ -15,7 +15,7 @@ index.html               GitHub Pages entry (copy of application/standalone/inde
 ```
 
 ## Quick start
-1. Install `dist/application-management-1.1.0.zip`, then `dist/renewal-ledger-3.3.0.zip` (Plugins → Add New → Upload) and activate both. The admin who activates Application Management becomes the first Super Admin.
+1. Install `dist/application-management-1.1.0.zip`, then `dist/renewal-ledger-3.4.0.zip` (Plugins → Add New → Upload) and activate both. The admin who activates Application Management becomes the first Super Admin.
 2. Add `[renewal_ledger]` to a private page.
 3. Application Management → Users & Access: enable users and assign roles.
 Details: `documentation/`.
@@ -30,3 +30,7 @@ Verified by automated tests (WordPress 7.1.4, PHP CLI, **SQLite** test database)
 ## User guide (maintenance rule)
 
 The in-app guide («? Οδηγός» button) has a single source: `application/guide/guide.html`. `scripts/sync_guide.py` (run by `scripts/build.sh`) embeds it into the WordPress plugin and the three standalone builds. **Every change or addition to the application must be reflected in `guide.html` (the relevant section and the «Τι νέο υπάρχει» list) before a release is built.**
+
+## Logo
+
+Source: `application/branding/procure360-logo-original.png`. `python3 scripts/set_logo.py` (needs Pillow and numpy) embeds it into the header of all builds, the browser favicon and the Windows `icon.ico`. To change the logo, replace the PNG and run the script, then `scripts/build.sh`.
