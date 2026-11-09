@@ -113,5 +113,24 @@ $r = $c->rl( 'GET', 'records/software' );
 $byid = array(); foreach ( $r['json']['items'] as $i ) { $byid[ $i['id'] ] = $i['data']; }
 t( 'editor edit kept username', ( $byid['s1']['username'] ?? '' ) === 'secretuser' && 'Alpha edited' === ( $byid['s1']['name'] ?? '' ), json_encode( $byid['s1'] ?? null ) );
 
+echo "budget articles (PUT articles)\n";
+$arts = array( array( 'code' => 'PERM1', 'desc' => 'x', 'cat' => 'c', 'catDesc' => 'd', 'split' => false ) );
+$r = $anon->rl( 'PUT', 'articles', array( 'articles' => $arts ) ); t( 'anon cannot edit articles', in_array( $r['code'], array( 401, 403 ), true ), "got {$r['code']}" );
+foreach ( array( 'viewer1', 'editor1', 'manager1', 'nobody' ) as $u ) {
+	$k = client( $base, $u, "Pw-$u-12345!" );
+	$r = $k->rl( 'PUT', 'articles', array( 'articles' => $arts ) ); t( "$u (no manage permission) cannot edit articles", 403 === $r['code'], "got {$r['code']}" );
+}
+$r = $c->rl( 'PUT', 'articles', array( 'nope' => 1 ) ); t( 'admin: missing body is 400', 400 === $r['code'], "got {$r['code']}" );
+$r0 = $c->rl( 'PUT', 'articles', array( 'articles' => array( array( 'code' => 'PERM0', 'desc' => 'probe', 'cat' => '', 'catDesc' => '', 'split' => false ) ) ) );
+$r = $c->rl( 'PUT', 'articles', array( 'articles' => $arts ) ); t( 'admin edits articles', 200 === $r['code'] && 'PERM1' === ( $r['json']['articles'][0]['code'] ?? '' ), json_encode( $r['json'] ) );
+$r = $c->rl( 'PUT', 'articles', array( 'articles' => array( array( 'code' => 'A|B', 'desc' => "x\ny", 'cat' => '', 'catDesc' => '', 'split' => true ) ) ) );
+t( 'separators in values cannot split a row', 1 === count( $r['json']['articles'] ?? array() ) && $r['json']['articles'][0]['split'] === true, json_encode( $r['json'] ) );
+/* restore the default list (read from the plugin source) so the other tests start from the same state */
+$src = file_get_contents( __DIR__ . '/../../application/renewal-ledger/includes/class-rl-settings.php' );
+preg_match( "/<<<'TXT'\n(.*?)\nTXT;/s", $src, $m );
+$def = array();
+foreach ( explode( "\n", $m[1] ) as $ln ) { $p = array_map( 'trim', explode( '|', $ln ) ); $def[] = array( 'code' => $p[0], 'desc' => $p[1], 'cat' => $p[2], 'catDesc' => $p[3], 'split' => 'ΝΑΙ' === $p[4] ); }
+$r = $c->rl( 'PUT', 'articles', array( 'articles' => $def ) ); t( 'default list restored (17 articles)', 17 === count( $r['json']['articles'] ?? array() ) );
+
 echo "\n$pass passed, $fail failed\n";
 exit( $fail ? 1 : 0 );

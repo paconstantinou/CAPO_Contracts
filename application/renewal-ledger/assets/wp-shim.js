@@ -13,6 +13,7 @@
       });
     });
   }
+  window.RL_SAVE_ARTICLES=function(list){return api("PUT","articles",{articles:list})};
   var perms=cfg.perms||{};
   function curColl(){
     var t=document.getElementById("tabCt"),n=document.getElementById("tabTn");

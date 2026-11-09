@@ -35,8 +35,44 @@ class AM_Admin {
 		}
 	}
 
+	/** Menu slug of the PROCURE360 top-level menu, when that plugin is active. Application Management then lives under it. */
+	const PARENT = 'renewal-ledger';
+
+	public static function under_procure360() {
+		return defined( 'RL_VERSION' ) && class_exists( 'RL_Settings' );
+	}
+
 	public static function menu() {
 		$cap = AM::admin_capability();
+		if ( self::under_procure360() ) {
+			/* Application Management is ONE entry under PROCURE360; its screens are reached from the tabs inside it.
+			   The screens are still registered under the same parent (so WordPress opens and highlights them), and only their menu links are hidden. */
+			add_submenu_page( self::PARENT, 'Application Management', 'Application Management', $cap, 'am-dashboard', function () {
+				AM_Admin::render( 'am-dashboard' );
+			} );
+			foreach ( self::PAGES as $slug => $title ) {
+				if ( 'am-dashboard' === $slug ) {
+					continue;
+				}
+				add_submenu_page( self::PARENT, $title, $title, $cap, $slug, function () use ( $slug ) {
+					AM_Admin::render( $slug );
+				} );
+			}
+			add_filter( 'submenu_file', function ( $file ) {
+				$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				return isset( AM_Admin::PAGES[ $page ] ) ? 'am-dashboard' : $file;
+			} );
+			add_action( 'admin_head', function () {
+				$css = '';
+				foreach ( array_keys( AM_Admin::PAGES ) as $slug ) {
+					if ( 'am-dashboard' !== $slug ) {
+						$css .= '#adminmenu .wp-submenu li:has(> a[href$="page=' . $slug . '"]){display:none}';
+					}
+				}
+				echo '<style id="am-hide-subpages">' . $css . '</style>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static slugs
+			} );
+			return;
+		}
 		add_menu_page( 'Application Management', 'Application Management', $cap, 'am-dashboard', function () {
 			AM_Admin::render( 'am-dashboard' );
 		}, 'dashicons-shield-alt', 58 );

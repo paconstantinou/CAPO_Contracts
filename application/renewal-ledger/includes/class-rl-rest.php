@@ -57,6 +57,24 @@ class RL_REST {
 		);
 		return array(
 			array(
+				'route' => '/articles',
+				'args'  => array(
+					array(
+						'methods'             => 'PUT',
+						'callback'            => array( __CLASS__, 'save_articles' ),
+						'permission_callback' => function () {
+							if ( ! class_exists( 'AM' ) || ! method_exists( 'AM', 'authorize' ) ) {
+								return new WP_Error( 'rl_needs_am', 'The Application Management plugin must be active.', array( 'status' => 503 ) );
+							}
+							if ( RL_Settings::can_edit_articles() ) {
+								return true;
+							}
+							return new WP_Error( 'rl_forbidden', 'You are not allowed to edit the budget articles.', array( 'status' => 403 ) );
+						},
+					),
+				),
+			),
+			array(
 				'route' => '/records/(?P<coll>[a-z]+)',
 				'args'  => array(
 					'methods'             => 'GET',
@@ -191,6 +209,17 @@ class RL_REST {
 			}
 		}
 		return self::check( self::COLLECTIONS[0], $action );
+	}
+
+	public static function save_articles( $req ) {
+		$body = $req->get_json_params();
+		$rows = is_array( $body ) && isset( $body['articles'] ) && is_array( $body['articles'] ) ? $body['articles'] : null;
+		if ( null === $rows ) {
+			return new WP_Error( 'rl_bad_request', 'Missing articles.', array( 'status' => 400 ) );
+		}
+		$res = RL_Settings::save_articles( $rows );
+		self::log( 'articles_saved', 'software', array( 'count' => count( $res['articles'] ), 'kept' => $res['kept'] ) );
+		return $res;
 	}
 
 	/* ---------- records ---------- */

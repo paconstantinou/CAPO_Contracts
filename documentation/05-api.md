@@ -45,7 +45,7 @@ Third tab, calculated in the browser from the records the user may view (no extr
 | `POST /records/{coll}/{id}/restore` | `delete` | back to the live list (404 if not in the trash) |
 | `DELETE /records/{coll}/{id}?purge=1` | `purge` (new custom action, no role has it by default) | removes a record that is **in the trash** for good, with its attachment files (409 `rl_not_in_trash` otherwise) |
 
-A daily WP-Cron job removes records trashed longer than `rl_trash_days` (Settings → PROCURE360, default 30, 0 = never). Activity log actions: `ledger.record_delete` (`to_trash`), `ledger.record_restore`, `ledger.record_purge`, `ledger.trash_auto_purge`. Budget articles used by any record (live or trashed) cannot be removed from the settings; the server keeps them. Application Management 1.1.0 refuses to delete a role that users still hold (409 `am_role_in_use`).
+A daily WP-Cron job removes records trashed longer than `rl_trash_days` (PROCURE360 → Ρυθμίσεις, default 30, 0 = never). Activity log actions: `ledger.record_delete` (`to_trash`), `ledger.record_restore`, `ledger.record_purge`, `ledger.trash_auto_purge`. Budget articles used by any record (live or trashed) cannot be removed from the settings; the server keeps them. Application Management 1.1.0 refuses to delete a role that users still hold (409 `am_role_in_use`).
 
 ## Tenders (Διαγωνισμοί, 3.1.0)
 
@@ -54,3 +54,6 @@ Fourth collection `tenders` with its own Application Management module `tenders`
 * Only `active` tenders are counted in the budget sheet. Cancelling is a normal `PUT` with `status: cancelled`; the client cannot set `promoted`.
 * `POST /records/tenders/{id}/promote` with `{contractId, data}` is atomic from the client's view: it needs `edit` on tenders **and** `create` on contracts, validates and saves the (corrected) contract, copies the tender's attachment files to the contract, then marks the tender `promoted` with `promotedTo`. 409 `rl_tender_closed` if the tender is not active, 409 `rl_exists` if the contract id exists. A promoted tender stays promoted on later edits.
 * A user without `view` on a module gets an empty list for it in the app (the tab is hidden) instead of a sync error.
+
+## Budget articles (v3.6.0)
+`PUT /rl/v1/articles` body `{articles:[{code,desc,cat,catDesc,split}]}` → `{articles, kept}`. Allowed for WordPress administrators and for users who hold the `manage` permission on at least one module in Application Management (otherwise 403; anonymous 401/403). Articles that records still use are kept (`kept`), blank/duplicate codes are dropped, `|` and line breaks in values are replaced by spaces. The list is read-only for everybody else (embedded in `RL_CFG.articles`). Logged as `articles_saved`.
