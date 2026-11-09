@@ -2,7 +2,7 @@
 /**
  * Plugin Name: PROCURE360
  * Description: PROCURE360 – Integrated Procurement & Budget Management System. Συνδέει αγορές λογισμικού, συμβάσεις, μελλοντικούς διαγωνισμούς και προγραμματισμό προϋπολογισμού, με ετήσιες υπενθυμίσεις, συνημμένα, εισαγωγή/εξαγωγή Excel και ειδοποιήσεις email. Τα δεδομένα αποθηκεύονται στη βάση SQL του WordPress.
- * Version: 3.6.0
+ * Version: 3.7.0
  * Requires Plugins: application-management
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RL_VERSION', '3.6.0' );
+define( 'RL_VERSION', '3.7.0' );
 define( 'RL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RL_URL', plugin_dir_url( __FILE__ ) );
 
@@ -63,6 +63,12 @@ add_action( 'am_register_modules', function ( $registry ) {
 		'description' => 'Contracts with yearly reminders (PROCURE360).',
 		'source'      => 'renewal-ledger',
 		'actions'     => array( 'purge' => 'Delete permanently from the trash' ),
+	) );
+	$registry->register( 'articles', array(
+		'name'        => 'Budget Articles (Άρθρα)',
+		'description' => 'Who may add (create), change (edit) and remove (delete) budget articles. Everybody who can open PROCURE360 can see the list, so "view" has no effect here. Only Administrators get these permissions by default.',
+		'source'      => 'renewal-ledger',
+		'presets'     => array( 'manager' => array(), 'editor' => array(), 'viewer' => array() ),
 	) );
 	$registry->register( 'tenders', array(
 		'name'        => 'Tenders (Διαγωνισμοί)',
@@ -117,6 +123,7 @@ add_shortcode( 'renewal_ledger', function () {
 				'trashDays' => RL_Settings::trash_days(),
 				'canManage'   => current_user_can( 'manage_options' ),
 				'canArticles' => RL_Settings::can_edit_articles(),
+				'artPerms'    => RL_Settings::article_perms(),
 			)
 		) . ';',
 		'before'

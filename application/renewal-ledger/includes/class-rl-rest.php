@@ -63,13 +63,11 @@ class RL_REST {
 						'methods'             => 'PUT',
 						'callback'            => array( __CLASS__, 'save_articles' ),
 						'permission_callback' => function () {
-							if ( ! class_exists( 'AM' ) || ! method_exists( 'AM', 'authorize' ) ) {
-								return new WP_Error( 'rl_needs_am', 'The Application Management plugin must be active.', array( 'status' => 503 ) );
-							}
+							/* Needs at least one of create / edit / delete on the module "articles"; save_articles() checks the exact ones. */
 							if ( RL_Settings::can_edit_articles() ) {
 								return true;
 							}
-							return new WP_Error( 'rl_forbidden', 'You are not allowed to edit the budget articles.', array( 'status' => 403 ) );
+							return self::check( 'articles', 'edit' ); // 403 (logged) or 503 when Application Management is missing
 						},
 					),
 				),
@@ -217,8 +215,16 @@ class RL_REST {
 		if ( null === $rows ) {
 			return new WP_Error( 'rl_bad_request', 'Missing articles.', array( 'status' => 400 ) );
 		}
+		/* Adding needs "create", changing "edit", removing "delete" on the module "articles". */
+		$diff = RL_Settings::diff_articles( RL_Settings::articles(), RL_Settings::normalize_articles( $rows ) );
+		foreach ( $diff as $action => $codes ) {
+			if ( $codes && ! self::can( 'articles', $action ) ) {
+				$res = self::check( 'articles', $action );
+				return is_wp_error( $res ) ? $res : new WP_Error( 'am_forbidden', 'You do not have permission to do this.', array( 'status' => 403 ) );
+			}
+		}
 		$res = RL_Settings::save_articles( $rows );
-		self::log( 'articles_saved', 'software', array( 'count' => count( $res['articles'] ), 'kept' => $res['kept'] ) );
+		self::log( 'articles_saved', 'articles', array( 'count' => count( $res['articles'] ), 'kept' => $res['kept'] ) );
 		return $res;
 	}
 

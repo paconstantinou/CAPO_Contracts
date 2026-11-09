@@ -4,10 +4,10 @@ Tracker for online software renewals (English) and contracts (Greek, per-year br
 
 ```
 /application
-    renewal-ledger/      WordPress plugin: the app (v3.6.0)
+    renewal-ledger/      WordPress plugin: the app (v3.7.0)
     standalone/          GitHub Pages (index.html), Windows installer sources (windows/), Claude-artifact copy – local, single user, NO roles
 /wordpress-plugin
-    application-management/   WordPress plugin: users, roles, permissions, modules, activity logs (v1.2.0)
+    application-management/   WordPress plugin: users, roles, permissions, modules, activity logs (v1.3.0)
 /documentation           installation, configuration, integration, permissions, API, troubleshooting, testing
 /tests/integration       automated tests (run against a real WordPress)
 /dist                    plugin ZIPs, PROCURE360.html (single file) and PROCURE360-Windows.zip
@@ -15,7 +15,7 @@ index.html               GitHub Pages entry (copy of application/standalone/inde
 ```
 
 ## Quick start
-1. Install `dist/application-management-1.2.0.zip`, then `dist/renewal-ledger-3.6.0.zip` (Plugins → Add New → Upload) and activate both. The admin who activates Application Management becomes the first Super Admin.
+1. Install `dist/application-management-1.3.0.zip`, then `dist/renewal-ledger-3.7.0.zip` (Plugins → Add New → Upload) and activate both. The admin who activates Application Management becomes the first Super Admin.
 2. Add `[renewal_ledger]` to a private page.
 3. Application Management → Users & Access: enable users and assign roles.
 Details: `documentation/`.

@@ -59,32 +59,23 @@ class RL_Settings {
 	}
 
 
-	/**
-	 * Who may edit the budget articles from inside the application: a WordPress administrator, or anybody the
-	 * Application Management plugin gives the "manage" permission on at least one module.
-	 */
-	public static function can_edit_articles() {
-		if ( current_user_can( 'manage_options' ) ) {
-			return true;
-		}
+	/** Permissions of the current user on the Application Management module "articles": add (create), change (edit), remove (delete). */
+	public static function article_perms() {
+		$p = array( 'create' => false, 'edit' => false, 'delete' => false );
 		if ( class_exists( 'AM' ) ) {
-			foreach ( array( 'software', 'contracts', 'tenders' ) as $m ) {
-				if ( AM::can( $m, 'manage' ) ) {
-					return true;
-				}
+			foreach ( $p as $k => $v ) {
+				$p[ $k ] = (bool) AM::can( 'articles', $k );
 			}
 		}
-		return false;
+		return $p;
 	}
 
-	/**
-	 * Save the list of articles sent by the application. An article that records still use can not be removed
-	 * or renamed: it is kept, so no amount loses its article by accident.
-	 *
-	 * @param array $rows rows with code, desc, cat, catDesc, split (bool).
-	 * @return array { articles: list, kept: codes that were kept because they are in use }
-	 */
-	public static function save_articles( $rows ) {
+	public static function can_edit_articles() {
+		return (bool) array_filter( self::article_perms() );
+	}
+
+	/** Turn rows sent by the application into the clean article list (blank and duplicate codes dropped, separators neutralised). */
+	public static function normalize_articles( $rows ) {
 		$lines = array();
 		foreach ( (array) $rows as $row ) {
 			if ( ! is_array( $row ) ) {
@@ -95,7 +86,48 @@ class RL_Settings {
 			};
 			$lines[] = implode( ' | ', array( $g( 'code' ), $g( 'desc' ), $g( 'cat' ), $g( 'catDesc' ), ( isset( $row['split'] ) && ( true === $row['split'] || in_array( $row['split'], array( 'NAI', 'ΝΑΙ', '1', 1 ), true ) ) ) ? 'ΝΑΙ' : 'ΌΧΙ' ) );
 		}
-		$new  = self::parse_articles( implode( "\n", $lines ) );
+		return self::parse_articles( implode( "\n", $lines ) );
+	}
+
+	/**
+	 * What a new list changes compared with the stored one: codes added (create), rows changed (edit), codes removed (delete).
+	 * An article that records use is never removed (see save_articles), so it does not count as a removal.
+	 */
+	public static function diff_articles( array $old, array $new ) {
+		$o     = array();
+		foreach ( $old as $a ) {
+			$o[ $a['code'] ] = $a;
+		}
+		$n = array();
+		foreach ( $new as $a ) {
+			$n[ $a['code'] ] = $a;
+		}
+		$usage = RL_DB::article_usage();
+		$d     = array( 'create' => array(), 'edit' => array(), 'delete' => array() );
+		foreach ( $n as $code => $a ) {
+			if ( ! isset( $o[ $code ] ) ) {
+				$d['create'][] = (string) $code;
+			} elseif ( $o[ $code ] != $a ) { // phpcs:ignore Universal.Operators.StrictComparisons.LooseNotEqual -- same key order, scalar values
+				$d['edit'][] = (string) $code;
+			}
+		}
+		foreach ( $o as $code => $a ) {
+			if ( ! isset( $n[ $code ] ) && empty( $usage[ $code ] ) ) {
+				$d['delete'][] = (string) $code;
+			}
+		}
+		return $d;
+	}
+
+	/**
+	 * Save the list of articles sent by the application. An article that records still use can not be removed
+	 * or renamed: it is kept, so no amount loses its article by accident.
+	 *
+	 * @param array $rows rows with code, desc, cat, catDesc, split (bool).
+	 * @return array { articles: list, kept: codes that were kept because they are in use }
+	 */
+	public static function save_articles( $rows ) {
+		$new  = self::normalize_articles( $rows );
 		$have = array_column( $new, 'code' );
 		$kept = array();
 		$old  = self::articles();
@@ -227,7 +259,7 @@ TXT;
 			<?php else : ?>
 				<div class="notice notice-info inline"><p>Ποιος μπορεί να βλέπει, να δημιουργεί, να επεξεργάζεται, να διαγράφει ή να εξάγει ορίζεται <strong>μόνο</strong> από το
 					<a href="<?php echo esc_url( admin_url( 'admin.php?page=am-users' ) ); ?>">Application Management → Users &amp; Access</a>.
-					Τα modules είναι <code>software</code>, <code>contracts</code> και <code>tenders</code>.</p></div>
+					Τα modules είναι <code>software</code>, <code>contracts</code>, <code>tenders</code> και <code>articles</code>.</p></div>
 			<?php endif; ?>
 
 			<p>Για να εμφανίσεις την εφαρμογή, δημιούργησε μια σελίδα (ιδανικά ιδιωτική) και πρόσθεσε μέσα το shortcode <code>[renewal_ledger]</code>.
@@ -268,7 +300,7 @@ TXT;
 									<a href="<?php echo esc_url( $url ); ?>">Άνοιγμα εφαρμογής</a>
 								<?php endif; ?>
 							</p>
-							<p class="description">Δικαίωμα επεξεργασίας έχουν οι διαχειριστές του WordPress και όσοι έχουν το δικαίωμα «manage» σε κάποιο module στο Application Management.</p>
+							<p class="description">Ποιος μπορεί να προσθέτει, να αλλάζει ή να διαγράφει άρθρα ορίζεται στο <a href="<?php echo esc_url( admin_url( 'admin.php?page=am-users' ) ); ?>">Application Management</a>, στο module «Budget Articles (Άρθρα)» (create / edit / delete).</p>
 						</td>
 					</tr>
 				</table>

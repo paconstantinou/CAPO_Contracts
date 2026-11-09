@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Application Management
  * Description:       Central user, role and permission management for applications that run on this WordPress site. Uses the existing WordPress users; everything is managed from the WordPress Admin.
- * Version:           1.2.0
+ * Version:           1.3.0
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * License:           GPL-2.0-or-later
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AM_VERSION', '1.2.0' );
+define( 'AM_VERSION', '1.3.0' );
 define( 'AM_FILE', __FILE__ );
 define( 'AM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AM_URL', plugin_dir_url( __FILE__ ) );

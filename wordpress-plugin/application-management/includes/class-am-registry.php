@@ -13,6 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  *           'name'        => 'Invoices',
  *           'description' => 'Customer invoices',
  *           'actions'     => array( 'approve' => 'Approve invoices' ),   // optional custom permissions
+ *           'presets'     => array( 'editor' => array(), 'manager' => array() ),   // optional: replace the default grants of a role
  *       ) );
  *   } );
  *
@@ -53,6 +54,7 @@ class AM_Registry {
 			'description' => isset( $args['description'] ) ? (string) $args['description'] : '',
 			'source'      => isset( $args['source'] ) ? (string) $args['source'] : '',
 			'actions'     => $actions,
+			'presets'     => ( ! empty( $args['presets'] ) && is_array( $args['presets'] ) ) ? $args['presets'] : array(),
 		);
 		return $slug;
 	}
@@ -108,7 +110,7 @@ class AM_Registry {
 				'actions'     => $d['actions'],
 			) );
 			if ( $is_new ) {
-				self::apply_presets( $store, $slug, array_merge( array_keys( AM_Engine::STANDARD ), array_keys( $d['actions'] ) ), $grants );
+				self::apply_presets( $store, $slug, array_merge( array_keys( AM_Engine::STANDARD ), array_keys( $d['actions'] ) ), $grants, $d['presets'] );
 				$grants = $store->get_all_role_grants(); // the next module must see the grants just written
 			}
 		}
@@ -122,11 +124,14 @@ class AM_Registry {
 	}
 
 	/** Give each preset role its default grants for one module. */
-	public static function apply_presets( AM_Store $store, $module, array $actions, ?array $all_grants = null ) {
+	public static function apply_presets( AM_Store $store, $module, array $actions, ?array $all_grants = null, array $override = array() ) {
 		if ( null === $all_grants ) {
 			$all_grants = $store->get_all_role_grants();
 		}
 		foreach ( self::PRESETS as $role => $list ) {
+			if ( isset( $override[ $role ] ) && is_array( $override[ $role ] ) ) {
+				$list = $override[ $role ];
+			}
 			if ( ! $store->get_role( $role ) || ! $list ) {
 				continue;
 			}

@@ -13,3 +13,6 @@
 Default reminder recipients (comma separated, default: site admin e-mail) and repeat interval in days. A record's own *Notification emails* field overrides the default recipients for that record. A daily WP-Cron job sends the digest. Reminder e-mails never contain passwords. For reliable delivery on low-traffic sites trigger `wp-cron.php` from a real cron job.
 
 Who may use the application is **never** configured in PROCURE360.
+
+## Budget articles permissions
+Module **Budget Articles (Άρθρα)** in Application Management: `create` (add), `edit` (change), `delete` (remove). Only Administrator roles hold them by default; grant them per role (Permissions Management) or per user (Users & Access → overrides). Everybody who can open PROCURE360 sees the list.
