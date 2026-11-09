@@ -19,6 +19,7 @@
     return n&&n.getAttribute("aria-selected")==="true"?"tenders":t&&t.getAttribute("aria-selected")==="true"?"contracts":"software";
   }
   function onBd(){var t=document.getElementById("tabBd");return !!t&&t.getAttribute("aria-selected")==="true"}
+  function onAr(){var t=document.getElementById("tabAr");return !!t&&t.getAttribute("aria-selected")==="true"}
   function P(c,a){return !!(perms[c]&&perms[c][a])}
   var cache={},subs=[],loaded={};
   function snapFor(name){
@@ -124,6 +125,13 @@
       var bdt=document.getElementById("tabBd");
       var anyView=P("software","view")||P("contracts","view")||P("tenders","view");
       if(bdt)bdt.style.display=anyView?"":"none";
+      var art=document.getElementById("tabAr");if(art)art.style.display=anyView?"":"none";
+      if(onAr()){
+        /* the article list is reference data for everyone who can view something; editing happens in the WordPress settings */
+        hide("#btnAdd,#emAdd,#btnImport,#emImp,#btnExport",root,true);
+        if(!anyView)setTimeout(function(){var x=document.getElementById("tabSw");x&&x.click()},0);
+        return;
+      }
       if(onBd()){
         /* budget sheet is calculated from the records the user may view; nothing to add or import here */
         hide("#btnAdd,#emAdd,#btnImport,#emImp",root,true);

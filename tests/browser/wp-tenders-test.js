@@ -48,6 +48,15 @@ if (!pass) { console.error('RL_PASS required'); process.exit(2); }
   ok('list shows the tender', (await T('#list')).includes(name));
   await p.click('#tabBd'); await W(800);
   ok('budget sheet includes the active tender (same table as contracts)', (await T('#list')).includes(name) && (await T('#list')).includes('Εκτιμώμενος διαγωνισμός: ΔΙΑΓ-1/2027'));
+  const bg = sel => p.evaluate(s => { const e = document.querySelector(s); return e ? getComputedStyle(e).backgroundColor : null; }, sel);
+  ok('budget row of a tender is shaded with the tender tab colour', (await bg('table.bdt tr.src-tn td')) === 'rgb(236, 228, 248)');
+  ok('budget legend names the three sources', (await T('.bdleg')).includes('Online Renewals') && (await T('.bdleg')).includes('Διαγωνισμοί'));
+  ok('year in the budget totals is emphasised', await p.locator('.stat .yr').count() > 0 && (await p.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.stat .yr')).fontSize))) > 16);
+  await p.click('#tabAr'); await W(600);
+  const artTxt = await T('#list');
+  ok('Άρθρα tab lists the budget articles', artTxt.includes('Κωδικός') && artTxt.includes('Περιγραφή άρθρου') && await p.locator('table.arview tbody tr').count() > 3);
+  ok('Άρθρα tab shows the edit entry point', await p.locator('a.btn.primary[href*="renewal-ledger"]').count() === 1);
+  await p.click('#tabBd'); await W(600);
   const bt = await T('#list'); ok('budget amounts include 19% VAT (1200 net -> 1.428,00)', bt.includes('ΦΠΑ 19%') && bt.includes('1.428,00') && bt.includes('με ΦΠΑ'));
   await p.click('#tabTn'); await W(600); await p.click('text=' + name); await W(300);
   await p.click('[data-act=tncancel]'); await p.click('[data-act=tncancelyes]'); await W(1500);
@@ -76,6 +85,7 @@ if (!pass) { console.error('RL_PASS required'); process.exit(2); }
   ok('promoted tender links to the contract and offers no actions', (await T('#overlay')).includes('Άνοιγμα σύμβασης') && await p.locator('[data-act=tnpromote]').count() === 0);
   await p.click('[data-act=close]'); await p.click('#tabBd'); await W(800);
   const bd = await T('#list');
+  ok('budget row of a contract is shaded with the contract tab colour', (await bg('table.bdt tr.src-ct td')) === 'rgb(225, 231, 246)');
   ok('budget has the contract and no longer the tender (no double count)', bd.includes(name) && bd.includes('Σύμβαση: 01/05/2027') && !bd.includes('Εκτιμώμενος διαγωνισμός: ΔΙΑΓ-1/2027'));
   /* clean up through the API */
   const ids = await p.evaluate(async () => { const o = {}; for (const c of ['tenders', 'contracts']) { const r = await (await fetch(RL_CFG.rest + 'records/' + c, { headers: { 'X-WP-Nonce': RL_CFG.nonce } })).json(); o[c] = r.items.filter(i => String(i.data.title).startsWith('Δ-Probe')).map(i => i.id); } return o; });
