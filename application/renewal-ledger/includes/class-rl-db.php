@@ -13,6 +13,32 @@ class RL_DB {
 	const MAX_JSON    = 262144;   // 256 KB per record
 
 	/** extension => mime type served back */
+	/** Largest attachment the server accepts: 20 MB, or less when PHP / WordPress allow less (upload_max_filesize, post_max_size). */
+	public static function max_upload() {
+		$wp = function_exists( 'wp_max_upload_size' ) ? (int) wp_max_upload_size() : self::MAX_FILE;
+		return max( 1, min( self::MAX_FILE, $wp ) );
+	}
+
+	/** A tender number compared without case and spaces: "12 / 2024" equals "12/2024". */
+	public static function tender_key( $n ) {
+		$n = preg_replace( '/\s+/u', '', is_scalar( $n ) ? (string) $n : '' );
+		return function_exists( 'mb_strtoupper' ) ? mb_strtoupper( (string) $n, 'UTF-8' ) : strtoupper( (string) $n );
+	}
+
+	/** The live (not trashed) tender that already uses this number, other than $except_id. @return array|null { id, title } */
+	public static function tender_with_number( $number, $except_id = '' ) {
+		$key = self::tender_key( $number );
+		if ( '' === $key ) {
+			return null;
+		}
+		foreach ( self::list_records( 'tenders' ) as $r ) {
+			if ( (string) $r['id'] !== (string) $except_id && self::tender_key( isset( $r['data']['tender'] ) ? $r['data']['tender'] : '' ) === $key ) {
+				return array( 'id' => $r['id'], 'title' => isset( $r['data']['title'] ) ? (string) $r['data']['title'] : '' );
+			}
+		}
+		return null;
+	}
+
 	public static function allowed_types() {
 		return array(
 			'pdf'  => 'application/pdf',
@@ -27,6 +53,8 @@ class RL_DB {
 			'doc'  => 'application/msword',
 			'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 			'xls'  => 'application/vnd.ms-excel',
+			'html' => 'text/html',
+			'htm'  => 'text/html',
 			'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 			'ppt'  => 'application/vnd.ms-powerpoint',
 			'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
@@ -500,6 +528,11 @@ class RL_DB {
 			'tender'      => self::v_str( $g( 'tender' ), 100 ),
 			'description' => self::v_str( $g( 'description' ), 4000 ),
 			'contractor'  => self::v_str( $g( 'contractor' ), 300 ),
+			'contractorVat'     => self::v_str( $g( 'contractorVat' ), 40 ),
+			'contractorAddress' => self::v_str( $g( 'contractorAddress' ), 300 ),
+			'contractorContact' => self::v_str( $g( 'contractorContact' ), 200 ),
+			'contractorPhone'   => self::v_str( $g( 'contractorPhone' ), 60 ),
+			'contractorEmail'   => self::v_str( $g( 'contractorEmail' ), 300 ),
 			'coordinator' => self::v_str( $g( 'coordinator' ), 300 ),
 			'months'      => max( 0, min( 1200, (int) $g( 'months' ) ) ),
 			'dateFrom'    => self::v_date( $g( 'dateFrom' ) ),

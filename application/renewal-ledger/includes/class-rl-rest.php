@@ -338,6 +338,12 @@ class RL_REST {
 				$data['statusAt'] = gmdate( 'Y-m-d' );
 			}
 		}
+		if ( 'tenders' === $coll && ! empty( $data['tender'] ) ) {
+			$dup = RL_DB::tender_with_number( $data['tender'], $id );
+			if ( $dup ) {
+				return new WP_Error( 'rl_duplicate_tender', 'Tender number "' . $data['tender'] . '" is already used by the tender "' . $dup['title'] . '".', array( 'status' => 409 ) );
+			}
+		}
 		$res = RL_DB::save_record( $coll, $id, $data, get_current_user_id() );
 		if ( is_wp_error( $res ) ) {
 			return $res;
@@ -386,6 +392,13 @@ class RL_REST {
 	public static function restore_record( $req ) {
 		$coll = $req['coll'];
 		$id   = $req['id'];
+		if ( 'tenders' === $coll ) {
+			$rec = RL_DB::get_record( $coll, $id );
+			$dup = ( $rec && ! empty( $rec['tender'] ) ) ? RL_DB::tender_with_number( $rec['tender'], $id ) : null;
+			if ( $dup ) {
+				return new WP_Error( 'rl_duplicate_tender', 'Tender number "' . $rec['tender'] . '" is already used by the tender "' . $dup['title'] . '".', array( 'status' => 409 ) );
+			}
+		}
 		if ( ! RL_DB::restore_record( $coll, $id ) ) {
 			return new WP_Error( 'rl_not_in_trash', 'Record is not in the trash.', array( 'status' => 404 ) );
 		}
@@ -434,7 +447,10 @@ class RL_REST {
 		$coll  = (string) $req->get_param( 'coll' );
 		$files = $req->get_file_params();
 		if ( empty( $files['file'] ) || ! isset( $files['file']['error'] ) || UPLOAD_ERR_OK !== (int) $files['file']['error'] ) {
-			$code = ( ! empty( $files['file'] ) && in_array( (int) $files['file']['error'], array( UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE ), true ) ) ? 'rl_too_large' : 'rl_no_file';
+			$post_max = (int) wp_convert_hr_to_bytes( (string) ini_get( 'post_max_size' ) );
+			$too_big  = ( ! empty( $files['file'] ) && in_array( (int) $files['file']['error'], array( UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE ), true ) )
+				|| ( empty( $files['file'] ) && $post_max > 0 && isset( $_SERVER['CONTENT_LENGTH'] ) && (int) $_SERVER['CONTENT_LENGTH'] > $post_max ); // the whole request was dropped by PHP
+			$code     = $too_big ? 'rl_too_large' : 'rl_no_file';
 			return new WP_Error( $code, 'Upload failed', array( 'status' => 400 ) );
 		}
 		$f   = $files['file'];

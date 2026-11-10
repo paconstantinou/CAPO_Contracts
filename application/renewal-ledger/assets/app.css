@@ -70,6 +70,12 @@
 #rl-app .overlay{position:fixed;inset:0;background:rgba(10,16,24,.5);z-index:99990;display:flex;justify-content:flex-end}
 #rl-app .panel{background:var(--surface);width:min(560px,100%);height:100%;overflow-y:auto;box-shadow:var(--shadow);padding:20px max(16px,env(safe-area-inset-right,0px)) calc(28px + env(safe-area-inset-bottom,0px)) 20px;display:flex;flex-direction:column;gap:16px}
 #rl-app .panel.wide{width:min(860px,100%)}
+#rl-app .overlay[data-kind=wiz]{background:var(--surface);justify-content:center}
+#rl-app .overlay[data-kind=wiz] .panel{width:100%;max-width:none;box-shadow:none;align-items:center;padding-top:24px}
+#rl-app .overlay[data-kind=wiz] .panel>*{width:min(1040px,100%)}
+#rl-app .overlay[data-kind=wiz] .panel>div[style*="display:grid"]{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+#rl-app .overlay[data-kind=wiz] .panel>div[style*="display:grid"] label.f:has(textarea){grid-column:1/-1}
+#rl-app .overlay[data-kind=wiz] .panel>div[style*="display:grid"] label.f{align-content:start}
 #rl-app .ph{display:flex;gap:12px;justify-content:space-between;align-items:flex-start}
 #rl-app .ph h2{font-size:22px;overflow-wrap:anywhere}
 #rl-app .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}

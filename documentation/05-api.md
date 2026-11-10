@@ -17,7 +17,9 @@ Base: `/wp-json/`. Authentication: WordPress cookie + `X-WP-Nonce: <wp_rest nonc
 | `POST /rl/v1/files` (multipart `file`, `coll`) | create or edit |
 | `GET /rl/v1/files/{id}` | view |
 | `DELETE /rl/v1/files/{id}` | edit |
-Uploads: type allow-list, 20 MB, stored outside direct web access with a random name.
+Uploads: type allow-list (PDF, images, CSV, TXT, Word, Excel, HTML), 20 MB or the smaller PHP limit (`upload_max_filesize` / `post_max_size`, exposed as `RL_CFG.maxUpload`), stored outside direct web access with a random name. HTML files are always served as a download (never inline) and the client never renders them.
+
+Tender numbers are unique among live tenders (case- and space-insensitive): `PUT records/tenders/{id}` and `POST records/tenders/{id}/restore` answer `409 rl_duplicate_tender` otherwise. Contracts carry `contractorVat`, `contractorAddress`, `contractorContact`, `contractorPhone`, `contractorEmail`.
 
 ## Milestones
 Each record (software or contract) may carry `milestones`: `[{id, year, description, due, remind (30|60), comments, done, attachments[]}]`, saved with the record through `PUT /rl/v1/records/{coll}/{id}` and therefore governed by **create/edit**. Server-side: ids must be unique `[A-Za-z0-9_-]`, description required (max 1000), `year` 1–60, `remind` forced to 30 or 60, dates validated, attachments must be existing files of the same module; max 300 per record. Deleting a record deletes the milestone attachments. Open (not done) milestones are included in the daily reminder e-mail: from 30/60 days before the due date, and for 30 days after it is overdue.

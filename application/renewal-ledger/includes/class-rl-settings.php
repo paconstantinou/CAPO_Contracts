@@ -275,6 +275,7 @@ TXT;
 						<th scope="row"><label for="rl_recipients">Παραλήπτες email υπενθυμίσεων</label></th>
 						<td>
 							<input type="text" class="regular-text" id="rl_recipients" name="rl_recipients" value="<?php echo esc_attr( $to ); ?>" placeholder="<?php echo esc_attr( get_option( 'admin_email' ) ); ?>">
+							<p class="description">Για περισσότερα από ένα email χρησιμοποίησε κόμμα (,) ή ερωτηματικό (;), π.χ. <code>a@example.com, b@example.com</code>. Έως 20 διευθύνσεις.</p>
 							<p class="description">Χωρισμένα με κόμμα. Χρησιμοποιούνται για εγγραφές που δεν έχουν δικά τους email ειδοποιήσεων (το πεδίο «Notification emails» κάθε εγγραφής υπερισχύει). Αν μείνει κενό, χρησιμοποιείται το email διαχειριστή του site. Τα email περιέχουν τίτλους, ημερομηνίες και κόστος, ποτέ κωδικούς.</p>
 						</td>
 					</tr>

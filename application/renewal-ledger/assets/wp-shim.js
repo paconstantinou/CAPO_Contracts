@@ -79,6 +79,8 @@
       var fd=new FormData();fd.append("file",blob,blob.name||"file");fd.append("coll",curColl());
       return api("POST","files",fd,true).then(function(r){return {id:r.id,url:"#",sizeBytes:r.size,contentType:r.type}},function(e){
         var m={rl_too_large:"too_large",rl_bad_type:"unsupported_type"};
+        /* PHP drops a request bigger than post_max_size before WordPress sees it, so the server then only reports a missing field */
+        if((e.code==="rl_bad_coll"||e.code==="rl_no_file")&&cfg.maxUpload&&blob.size>cfg.maxUpload)throw {code:"too_large",message:e.message};
         throw {code:m[e.code]||e.code||"upstream_error",message:e.message};
       });
     },
@@ -102,13 +104,17 @@
     return Promise.resolve(null);
   }};
   /* attachments are private: fetch with the login nonce, then open the file */
+  function isHtmlFile(name,type){return /\.html?$/i.test(name||"")||/^text\/html/i.test(type||"")}
+  function saveAs(b,name){var d=document.createElement("a");d.href=URL.createObjectURL(new Blob([b],{type:"application/octet-stream"}));d.download=name||"file.html";document.body.appendChild(d);d.click();setTimeout(function(){URL.revokeObjectURL(d.href);d.remove()},1500)}
   document.addEventListener("click",function(e){
     var a=e.target.closest&&e.target.closest("a[data-blob]");if(!a)return;
     e.preventDefault();
-    var w=window.open("","_blank");
+    var html=isHtmlFile(a.textContent,"");/* HTML attachments are downloaded, never rendered inside the site */
+    var w=html?null:window.open("","_blank");
     fetch(cfg.rest+"files/"+a.getAttribute("data-blob"),{credentials:"same-origin",headers:{"X-WP-Nonce":cfg.nonce||""}}).then(function(r){
       if(!r.ok)throw new Error(r.status);return r.blob();
     }).then(function(b){
+      if(html||isHtmlFile("",b.type)){if(w)w.close();saveAs(b,a.textContent);return}
       var u=URL.createObjectURL(b);
       if(w){w.location.href=u}else{var d=document.createElement("a");d.href=u;d.download=a.textContent||"file";document.body.appendChild(d);d.click();d.remove()}
     }).catch(function(){if(w)w.close();alert("Το αρχείο δεν βρέθηκε ή δεν έχεις δικαίωμα. / File not found or access denied.")});

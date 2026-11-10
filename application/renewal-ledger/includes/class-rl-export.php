@@ -155,7 +155,7 @@ class RL_Export {
 		for ( $i = 1; $i <= $max; $i++ ) {
 			array_push( $head, "ΕΤΟΣ $i - ΗΜΕΡ.ΕΝΑΡΞΗΣ", "ΕΤΟΣ $i - ΗΜΕΡ.ΛΗΞΗΣ", "ΕΤΟΣ $i - ΚΟΣΤΟΣ", "ΕΤΟΣ $i - ΥΠΕΝΘΥΜΙΣΗ (ΗΜΕΡΕΣ ΠΡΙΝ)" );
 		}
-		array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ', 'ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ', 'MILESTONES', 'ΚΑΤΑΣΤΑΣΗ' );
+		array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ', 'ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ', 'MILESTONES', 'ΚΑΤΑΣΤΑΣΗ', 'ΑΦΜ ΑΝΑΔΟΧΟΥ', 'ΔΙΕΥΘΥΝΣΗ ΑΝΑΔΟΧΟΥ', 'ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ ΑΝΑΔΟΧΟΥ', 'ΤΗΛΕΦΩΝΟ ΑΝΑΔΟΧΟΥ', 'EMAIL ΑΝΑΔΟΧΟΥ' );
 		$rows = array();
 		foreach ( $items as $it ) {
 			$d   = $it['data'];
@@ -170,6 +170,9 @@ class RL_Export {
 			$row[]  = self::budget( $d );
 			$row[]  = self::milestones( $d );
 			$row[]  = self::status_contract( $d );
+			foreach ( array( 'contractorVat', 'contractorAddress', 'contractorContact', 'contractorPhone', 'contractorEmail' ) as $k ) {
+				$row[] = self::g( $d, $k );
+			}
 			$rows[] = $row;
 		}
 		return array( $head, $rows );

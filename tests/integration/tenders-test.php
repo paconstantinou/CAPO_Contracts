@@ -132,6 +132,31 @@ foreach ( array( 'viewer1', 'nobody' ) as $u ) {
 	t( "$u cannot create or promote tenders", in_array( $r1['code'], array( 401, 403 ), true ) && in_array( $r2['code'], array( 401, 403 ), true ), $r1['code'] . '/' . $r2['code'] );
 	t( "$u: nothing was created", null === $get( $c, 'tenders', 'tnt2' ) && null === $get( $c, 'contracts', 'tnc7' ) );
 }
+echo "tender numbers are unique\n";
+$clean( $c );
+$mkt = function ( $title, $num ) { return array( 'title' => $title, 'tender' => $num, 'months' => 12, 'dateFrom' => '2028-01-01', 'dateTo' => '2028-12-31', 'cost' => 10, 'years' => array( array( 'from' => '2028-01-01', 'to' => '2028-12-31', 'cost' => 10 ) ) ); };
+$r = $c->rl( 'PUT', 'records/tenders/tnt1', array( 'data' => $mkt( 'Πρώτος', 'ΑΡ-5/2028' ) ) ); t( 'first tender with the number is saved', 200 === $r['code'], $r['code'] );
+$r = $c->rl( 'PUT', 'records/tenders/tnt2', array( 'data' => $mkt( 'Δεύτερος', 'ΑΡ-5/2028' ) ) ); t( 'same number on another tender: 409', 409 === $r['code'] && 'rl_duplicate_tender' === ( $r['json']['code'] ?? '' ), $r['code'] . $r['body'] );
+$r = $c->rl( 'PUT', 'records/tenders/tnt2', array( 'data' => $mkt( 'Δεύτερος', ' αρ-5 / 2028 ' ) ) ); t( 'case and spaces do not make it different: 409', 409 === $r['code'], $r['code'] );
+t( 'nothing was saved by the refused requests', null === $get( $c, 'tenders', 'tnt2' ) );
+$r = $c->rl( 'PUT', 'records/tenders/tnt1', array( 'data' => $mkt( 'Πρώτος (αλλαγή)', 'ΑΡ-5/2028' ) ) ); t( 'a tender can be saved again with its own number', 200 === $r['code'], $r['code'] );
+$r = $c->rl( 'PUT', 'records/tenders/tnt2', array( 'data' => $mkt( 'Χωρίς αριθμό Α', '' ) ) ); $r2 = $c->rl( 'PUT', 'records/tenders/tnt3', array( 'data' => $mkt( 'Χωρίς αριθμό Β', '' ) ) );
+t( 'tenders without a number are not treated as duplicates', 200 === $r['code'] && 200 === $r2['code'] );
+foreach ( array( 'tnt2', 'tnt3' ) as $i ) { $c->rl( 'DELETE', "records/tenders/$i" ); $c->rl( 'DELETE', "records/tenders/$i&purge=1" ); }
+$c->rl( 'DELETE', 'records/tenders/tnt1' );
+$r = $c->rl( 'PUT', 'records/tenders/tnt2', array( 'data' => $mkt( 'Νέος με τον ίδιο αριθμό', 'ΑΡ-5/2028' ) ) ); t( 'the number of a trashed tender can be used again', 200 === $r['code'], $r['code'] );
+$r = $c->rl( 'POST', 'records/tenders/tnt1/restore' ); t( 'restoring the trashed tender is refused while its number is in use: 409', 409 === $r['code'] && 'rl_duplicate_tender' === ( $r['json']['code'] ?? '' ), $r['code'] . $r['body'] );
+$c->rl( 'DELETE', 'records/tenders/tnt2' ); $c->rl( 'DELETE', 'records/tenders/tnt2&purge=1' );
+$r = $c->rl( 'POST', 'records/tenders/tnt1/restore' ); t( 'it can be restored once the number is free', 200 === $r['code'], $r['code'] );
+
+echo "contract: contractor details\n";
+$k = array( 'title' => 'Με στοιχεία αναδόχου', 'tender' => 'Χ-1', 'contractor' => 'Ανάδοχος ΑΕ', 'contractorVat' => 'CY123', 'contractorAddress' => 'Οδός 1', 'contractorContact' => 'Μαρία', 'contractorPhone' => '+357 22 123456', 'contractorEmail' => 'a@x.com; b@y.org', 'months' => 12, 'dateFrom' => '2028-01-01', 'dateTo' => '2028-12-31', 'cost' => 5, 'years' => array( array( 'from' => '2028-01-01', 'to' => '2028-12-31', 'cost' => 5, 'remind' => 30 ) ) );
+$r = $c->rl( 'PUT', 'records/contracts/tnc1', array( 'data' => $k ) ); t( 'contract with contractor details is saved', 200 === $r['code'], $r['code'] . $r['body'] );
+$g = $get( $c, 'contracts', 'tnc1' );
+t( 'contractor details are stored', $g && 'CY123' === $g['contractorVat'] && 'Οδός 1' === $g['contractorAddress'] && 'Μαρία' === $g['contractorContact'] && '+357 22 123456' === $g['contractorPhone'] && 'a@x.com; b@y.org' === $g['contractorEmail'], json_encode( $g ) );
+$ex = $c->req( 'GET', '/?rest_route=/rl/v1/export/contracts&format=csv' );
+t( 'the Excel/CSV export has the new contractor columns', false !== strpos( $ex['body'], 'ΤΗΛΕΦΩΝΟ ΑΝΑΔΟΧΟΥ' ) && false !== strpos( $ex['body'], '+357 22 123456' ), substr( $ex['body'], 0, 200 ) );
+$c->rl( 'DELETE', 'records/contracts/tnc1' );
 $clean( $c );
 echo "\n$pass passed, $fail failed\n";
 exit( $fail ? 1 : 0 );
