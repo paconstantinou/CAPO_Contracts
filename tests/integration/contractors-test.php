@@ -111,7 +111,7 @@ $r = $c->req( 'GET', '/?rest_route=/rl/v1/export/contractors&format=csv' );
 t( 'export csv 200', 200 === $r['code'], substr( $r['body'], 0, 200 ) );
 t( 'csv has the count columns and the contractor row', false !== strpos( $r['body'], 'ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ' ) && false === strpos( $r['body'], 'ΑΦΜ' ) && false !== strpos( $r['body'], 'Νέο Όνομα Α.Ε.' ) );
 $lines = preg_split( '/\r?\n/', trim( $r['body'] ) ); $row = null; foreach ( $lines as $ln ) { if ( false !== strpos( $ln, 'Νέο Όνομα' ) ) { $row = str_getcsv( $ln ); } }
-t( 'active contracts = 1 and tenders = 1', $row && '1' === end( $row ) && '1' === $row[ count( $row ) - 2 ], json_encode( $row ) );
+t( 'active contracts = 1 and the tender number is listed', $row && '12/2026' === end( $row ) && '1' === $row[ count( $row ) - 2 ], json_encode( $row ) );
 $r = $c->req( 'GET', '/?rest_route=/rl/v1/export/contracts&format=csv' );
 t( 'contracts export has contractor details and representative', false !== strpos( $r['body'], 'ΑΝΤΙΠΡΟΣΩΠΟΣ' ) && false !== strpos( $r['body'], 'Μαρία Αντιπρόσωπος' ) && false === strpos( $r['body'], 'EL 123456789' ), '' );
 

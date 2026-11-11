@@ -36,7 +36,7 @@ const file = require('path').resolve(process.argv[2] || 'index.html');
   ok('same name again is refused (case-insensitive)', (await T('#werr')).includes('Υπάρχει ήδη ανάδοχος'));
   await p.click('[data-act=cocancel]'); await W(300);
   let L = await T('#list');
-  ok('list shows the contractor with columns for active contracts and tenders', L.includes(nm) && L.includes('Ενεργές συμβάσεις') && L.includes('Διαγωνισμοί ενεργών συμβάσεων'));
+  ok('list shows the contractor with columns for active contracts and tenders', L.includes(nm) && L.includes('Ενεργές συμβάσεις') && L.includes('Αρ. διαγωνισμού ενεργών συμβάσεων'));
 
   /* contracts */
   await p.click('#tabCt'); await W(800); await p.click('#btnAdd'); await W(300); await p.click('[data-act=ctfull]'); await W(300);
@@ -70,9 +70,9 @@ const file = require('path').resolve(process.argv[2] || 'index.html');
   await p.click('#tabCo'); await W(800);
   const row = await p.locator('#list .row', { hasText: nm }).first();
   const cells = await row.locator('.cell').allInnerTexts();
-  ok('active contracts = 1 and tenders = 1 for the contractor with the contract', cells.slice(-2).join('|').replace(/\s/g, '') === '1|1', cells.join('|'));
+  ok('active contracts = 1 and the tender number is shown for the contractor with the contract', cells.slice(-2).join('|').replace(/\s/g, '') === '1|ΑΝΑ-1/2027', cells.join('|'));
   const row2 = await p.locator('#list .row', { hasText: nm2 }).first();
-  ok('contractor without contracts shows 0 and 0', (await row2.locator('.cell').allInnerTexts()).slice(-2).join('|').replace(/\s/g, '') === '0|0');
+  ok('contractor without contracts shows 0 and no tender', (await row2.locator('.cell').allInnerTexts()).slice(-2).join('|').replace(/\s/g, '') === '0|—');
   await row.click(); await W(500);
   ok('detail lists the contract and its tender number', (await T('#overlay')).includes(tit) && (await T('#overlay')).includes('ΑΝΑ-1/2027'));
   await p.click('[data-act=codel]'); await W(300);

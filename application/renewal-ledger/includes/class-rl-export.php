@@ -68,7 +68,7 @@ class RL_Export {
 			$out[ $id ]['active']++;
 			$k = RL_DB::tender_key( isset( $d['tender'] ) ? $d['tender'] : '' );
 			if ( '' !== $k ) {
-				$out[ $id ]['tenders'][ $k ] = true;
+				$out[ $id ]['tenders'][ $k ] = trim( (string) $d['tender'] );
 			}
 		}
 		return $out;
@@ -148,12 +148,12 @@ class RL_Export {
 				return strcmp( self::g( $a['data'], 'name' ), self::g( $b['data'], 'name' ) );
 			} );
 			$stats = self::contractor_stats();
-			$head  = array( 'ΟΝΟΜΑ', 'ΔΙΕΥΘΥΝΣΗ', 'ΔΙΕΥΘΥΝΣΗ (ΣΥΝΕΧΕΙΑ)', 'Τ.Κ.', 'ΠΟΛΗ', 'ΧΩΡΑ', 'ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ', 'EMAIL', 'ΤΗΛΕΦΩΝΟ', 'ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ', 'ΔΙΑΓΩΝΙΣΜΟΙ ΕΝΕΡΓΩΝ ΣΥΜΒΑΣΕΩΝ (ΠΛΗΘΟΣ)' );
+			$head  = array( 'ΟΝΟΜΑ', 'ΔΙΕΥΘΥΝΣΗ', 'ΔΙΕΥΘΥΝΣΗ (ΣΥΝΕΧΕΙΑ)', 'Τ.Κ.', 'ΠΟΛΗ', 'ΧΩΡΑ', 'ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ', 'EMAIL', 'ΤΗΛΕΦΩΝΟ', 'ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ', 'ΑΡ. ΔΙΑΓΩΝΙΣΜΟΥ ΕΝΕΡΓΩΝ ΣΥΜΒΑΣΕΩΝ' );
 			$rows  = array();
 			foreach ( $items as $it ) {
 				$d      = $it['data'];
 				$s      = isset( $stats[ $it['id'] ] ) ? $stats[ $it['id'] ] : array( 'active' => 0, 'tenders' => array() );
-				$rows[] = array( self::g( $d, 'name' ), self::g( $d, 'address' ), self::g( $d, 'address2' ), self::g( $d, 'postal' ), self::g( $d, 'city' ), self::g( $d, 'country' ), self::g( $d, 'contact' ), self::g( $d, 'email' ), self::g( $d, 'phone' ), (int) $s['active'], count( $s['tenders'] ) );
+				$rows[] = array( self::g( $d, 'name' ), self::g( $d, 'address' ), self::g( $d, 'address2' ), self::g( $d, 'postal' ), self::g( $d, 'city' ), self::g( $d, 'country' ), self::g( $d, 'contact' ), self::g( $d, 'email' ), self::g( $d, 'phone' ), (int) $s['active'], implode( ', ', array_values( $s['tenders'] ) ) );
 			}
 			return array( $head, $rows );
 		}
