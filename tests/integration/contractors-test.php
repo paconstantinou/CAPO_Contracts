@@ -41,13 +41,13 @@ $c = client( $base, 'admin', getenv( 'RL_TEST_ADMIN_PASS' ) ?: die( "Set RL_TEST
 $get = function ( $k, $coll, $id ) { $r = $k->rl( 'GET', "records/$coll" ); foreach ( $r['json']['items'] ?? array() as $i ) { if ( $i['id'] === $id ) { return $i['data']; } } return null; };
 $clean = function ( $k ) { foreach ( array( 'ctr1', 'ctr2', 'ctr3' ) as $i ) { $k->rl( 'DELETE', "records/contractors/$i" ); $k->rl( 'DELETE', "records/contractors/$i&purge=1" ); } foreach ( array( 'ctc1', 'ctc2' ) as $i ) { $k->rl( 'DELETE', "records/contracts/$i" ); $k->rl( 'DELETE', "records/contracts/$i&purge=1" ); } };
 $clean( $c ); $clean( $c );
-$ctr = array( 'name' => '  Παράδειγμα  Α.Ε. ', 'vat' => 'EL 123456789', 'address' => 'Οδός 1', 'address2' => 'Όροφος 2', 'postal' => '1065', 'city' => 'Λευκωσία', 'region' => 'Λευκωσία', 'country' => 'Κύπρος', 'contact' => 'Γιάννης', 'phone' => '22 123456', 'email' => 'a@example.com; b@example.com', 'evil' => 'x' );
+$ctr = array( 'name' => '  Παράδειγμα  Α.Ε. ', 'vat' => 'EL 123456789', 'region' => 'X', 'address' => 'Οδός 1', 'address2' => 'Όροφος 2', 'postal' => '1065', 'city' => 'Λευκωσία', 'region' => 'Λευκωσία', 'country' => 'Κύπρος', 'contact' => 'Γιάννης', 'phone' => '22 123456', 'email' => 'a@example.com; b@example.com', 'evil' => 'x' );
 
 echo "contractors: create and sanitize\n";
 $r = $c->rl( 'PUT', 'records/contractors/ctr1', array( 'data' => $ctr ) );
 t( 'PUT contractor ok', 200 === $r['code'], $r['body'] );
 $d = $get( $c, 'contractors', 'ctr1' );
-t( 'fields stored, unknown fields dropped', 'Παράδειγμα Α.Ε.' === preg_replace( '/\s+/u', ' ', $d['name'] ) && '1065' === $d['postal'] && 'Κύπρος' === $d['country'] && ! isset( $d['evil'] ), json_encode( $d ) );
+t( 'fields stored, unknown and removed fields (VAT, region) dropped', 'Παράδειγμα Α.Ε.' === preg_replace( '/\s+/u', ' ', $d['name'] ) && '1065' === $d['postal'] && 'Κύπρος' === $d['country'] && ! isset( $d['evil'] ) && ! isset( $d['vat'] ) && ! isset( $d['region'] ), json_encode( $d ) );
 $r = $c->rl( 'PUT', 'records/contractors/ctr2', array( 'data' => array( 'name' => '' ) ) );
 t( 'name is required (400)', 400 === $r['code'] );
 
@@ -55,7 +55,8 @@ echo "contractors: uniqueness\n";
 $r = $c->rl( 'PUT', 'records/contractors/ctr2', array( 'data' => array( 'name' => 'ΠΑΡΑΔΕΙΓΜΑ α.ε.', 'vat' => '' ) ) );
 t( 'same name (case/space-insensitive) -> 409', 409 === $r['code'] && 'rl_duplicate_contractor' === ( $r['json']['code'] ?? '' ), $r['body'] );
 $r = $c->rl( 'PUT', 'records/contractors/ctr2', array( 'data' => array( 'name' => 'Άλλος', 'vat' => 'el123456789' ) ) );
-t( 'same VAT -> 409', 409 === $r['code'], $r['body'] );
+t( 'VAT is no longer a key: a different name is accepted', 200 === $r['code'], $r['body'] );
+$c->rl( 'DELETE', 'records/contractors/ctr2' ); $c->rl( 'DELETE', 'records/contractors/ctr2&purge=1' );
 $r = $c->rl( 'PUT', 'records/contractors/ctr1', array( 'data' => $ctr ) );
 t( 'saving itself again is fine', 200 === $r['code'], $r['body'] );
 $r = $c->rl( 'PUT', 'records/contractors/ctr2', array( 'data' => array( 'name' => 'Δεύτερος Ε.Π.Ε.', 'vat' => '' ) ) );
@@ -108,11 +109,11 @@ echo "contractors: export with counts\n";
 $d = $get( $c, 'contracts', 'ctc1' );
 $r = $c->req( 'GET', '/?rest_route=/rl/v1/export/contractors&format=csv' );
 t( 'export csv 200', 200 === $r['code'], substr( $r['body'], 0, 200 ) );
-t( 'csv has the count columns and the contractor row', false !== strpos( $r['body'], 'ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ' ) && false !== strpos( $r['body'], 'Νέο Όνομα Α.Ε.' ) );
+t( 'csv has the count columns and the contractor row', false !== strpos( $r['body'], 'ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ' ) && false === strpos( $r['body'], 'ΑΦΜ' ) && false !== strpos( $r['body'], 'Νέο Όνομα Α.Ε.' ) );
 $lines = preg_split( '/\r?\n/', trim( $r['body'] ) ); $row = null; foreach ( $lines as $ln ) { if ( false !== strpos( $ln, 'Νέο Όνομα' ) ) { $row = str_getcsv( $ln ); } }
 t( 'active contracts = 1 and tenders = 1', $row && '1' === end( $row ) && '1' === $row[ count( $row ) - 2 ], json_encode( $row ) );
 $r = $c->req( 'GET', '/?rest_route=/rl/v1/export/contracts&format=csv' );
-t( 'contracts export has contractor details and representative', false !== strpos( $r['body'], 'ΑΝΤΙΠΡΟΣΩΠΟΣ' ) && false !== strpos( $r['body'], 'Μαρία Αντιπρόσωπος' ) && false !== strpos( $r['body'], 'EL 123456789' ), '' );
+t( 'contracts export has contractor details and representative', false !== strpos( $r['body'], 'ΑΝΤΙΠΡΟΣΩΠΟΣ' ) && false !== strpos( $r['body'], 'Μαρία Αντιπρόσωπος' ) && false === strpos( $r['body'], 'EL 123456789' ), '' );
 
 echo "contractors: permissions\n";
 foreach ( array( 'nobody' ) as $u ) {

@@ -345,10 +345,9 @@ class RL_REST {
 			}
 		}
 		if ( 'contractors' === $coll ) {
-			$dup = RL_DB::contractor_duplicate( $data['name'], $data['vat'], $id );
+			$dup = RL_DB::contractor_duplicate( $data['name'], $id );
 			if ( $dup ) {
-				$what = 'vat' === $dup['by'] ? 'VAT number "' . $data['vat'] . '"' : 'name "' . $data['name'] . '"';
-				return new WP_Error( 'rl_duplicate_contractor', 'A contractor with the same ' . $what . ' already exists ("' . $dup['name'] . '").', array( 'status' => 409, 'existing' => $dup['id'] ) );
+				return new WP_Error( 'rl_duplicate_contractor', 'A contractor with the same name already exists ("' . $dup['name'] . '").', array( 'status' => 409, 'existing' => $dup['id'] ) );
 			}
 		}
 		$res = RL_DB::save_record( $coll, $id, $data, get_current_user_id() );
@@ -417,9 +416,9 @@ class RL_REST {
 		}
 		if ( 'contractors' === $coll ) {
 			$rec = RL_DB::get_record( $coll, $id );
-			$dup = $rec ? RL_DB::contractor_duplicate( isset( $rec['name'] ) ? $rec['name'] : '', isset( $rec['vat'] ) ? $rec['vat'] : '', $id ) : null;
+			$dup = $rec ? RL_DB::contractor_duplicate( isset( $rec['name'] ) ? $rec['name'] : '', $id ) : null;
 			if ( $dup ) {
-				return new WP_Error( 'rl_duplicate_contractor', 'A contractor with the same name or VAT number already exists ("' . $dup['name'] . '").', array( 'status' => 409 ) );
+				return new WP_Error( 'rl_duplicate_contractor', 'A contractor with the same name already exists ("' . $dup['name'] . '").', array( 'status' => 409 ) );
 			}
 		}
 		if ( ! RL_DB::restore_record( $coll, $id ) ) {

@@ -64,8 +64,8 @@ Fourth collection `tenders` with its own Application Management module `tenders`
 
 Fifth collection `contractors` with its own Application Management module `contractors` (actions view/create/edit/delete/export/manage + `purge`). Same REST routes as the other collections (`/records/contractors`, `/export/contractors`).
 
-* Fields: `name` (required), `vat`, `address`, `address2`, `postal`, `city`, `region`, `country`, `contact`, `phone`, `email`.
-* Name and VAT are unique among live contractors (case-, space- and accent-insensitive): `PUT`/restore answer `409 rl_duplicate_contractor`.
+* Fields: `name` (required), `address`, `address2`, `postal`, `city`, `country`, `contact`, `phone`, `email`.
+* The name is unique among live contractors (case-, space- and accent-insensitive): `PUT`/restore answer `409 rl_duplicate_contractor`.
 * A contractor that live contracts reference cannot be trashed: `DELETE` answers `409 rl_contractor_in_use` (with the contract list in `data.contracts`).
 * Contracts get `contractorId` (must be a live contractor, else `400 rl_bad_contractor`) plus `repName`, `repPhone`, `repEmail` (the contractor's representative for that contract). With a `contractorId` the server stores the contractor's name in `contractor` as a copy and clears the older free-text `contractorVat/Address/Contact/Phone/Email`; renaming a contractor refreshes the copy in its contracts.
 * The contractors export adds `ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ` (contracts not yet expired) and `ΔΙΑΓΩΝΙΣΜΟΙ ΕΝΕΡΓΩΝ ΣΥΜΒΑΣΕΩΝ (ΠΛΗΘΟΣ)` (distinct tender numbers of those contracts). The contracts export takes the contractor columns from the registered contractor and appends the representative columns.

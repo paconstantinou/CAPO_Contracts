@@ -148,12 +148,12 @@ class RL_Export {
 				return strcmp( self::g( $a['data'], 'name' ), self::g( $b['data'], 'name' ) );
 			} );
 			$stats = self::contractor_stats();
-			$head  = array( 'ΟΝΟΜΑ', 'ΑΦΜ', 'ΔΙΕΥΘΥΝΣΗ', 'ΔΙΕΥΘΥΝΣΗ (ΣΥΝΕΧΕΙΑ)', 'Τ.Κ.', 'ΠΟΛΗ', 'ΠΕΡΙΦΕΡΕΙΑ/ΝΟΜΟΣ', 'ΧΩΡΑ', 'ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ', 'EMAIL', 'ΤΗΛΕΦΩΝΟ', 'ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ', 'ΔΙΑΓΩΝΙΣΜΟΙ ΕΝΕΡΓΩΝ ΣΥΜΒΑΣΕΩΝ (ΠΛΗΘΟΣ)' );
+			$head  = array( 'ΟΝΟΜΑ', 'ΔΙΕΥΘΥΝΣΗ', 'ΔΙΕΥΘΥΝΣΗ (ΣΥΝΕΧΕΙΑ)', 'Τ.Κ.', 'ΠΟΛΗ', 'ΧΩΡΑ', 'ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ', 'EMAIL', 'ΤΗΛΕΦΩΝΟ', 'ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ', 'ΔΙΑΓΩΝΙΣΜΟΙ ΕΝΕΡΓΩΝ ΣΥΜΒΑΣΕΩΝ (ΠΛΗΘΟΣ)' );
 			$rows  = array();
 			foreach ( $items as $it ) {
 				$d      = $it['data'];
 				$s      = isset( $stats[ $it['id'] ] ) ? $stats[ $it['id'] ] : array( 'active' => 0, 'tenders' => array() );
-				$rows[] = array( self::g( $d, 'name' ), self::g( $d, 'vat' ), self::g( $d, 'address' ), self::g( $d, 'address2' ), self::g( $d, 'postal' ), self::g( $d, 'city' ), self::g( $d, 'region' ), self::g( $d, 'country' ), self::g( $d, 'contact' ), self::g( $d, 'email' ), self::g( $d, 'phone' ), (int) $s['active'], count( $s['tenders'] ) );
+				$rows[] = array( self::g( $d, 'name' ), self::g( $d, 'address' ), self::g( $d, 'address2' ), self::g( $d, 'postal' ), self::g( $d, 'city' ), self::g( $d, 'country' ), self::g( $d, 'contact' ), self::g( $d, 'email' ), self::g( $d, 'phone' ), (int) $s['active'], count( $s['tenders'] ) );
 			}
 			return array( $head, $rows );
 		}
@@ -217,8 +217,8 @@ class RL_Export {
 			$cid = self::g( $d, 'contractorId' );
 			if ( '' !== $cid && isset( $cmap[ $cid ] ) ) {
 				$c = $cmap[ $cid ];
-				$addr = trim( implode( ', ', array_filter( array( self::g( $c, 'address' ), self::g( $c, 'address2' ), trim( self::g( $c, 'postal' ) . ' ' . self::g( $c, 'city' ) ), self::g( $c, 'region' ), self::g( $c, 'country' ) ) ) ) );
-				array_push( $row, self::g( $c, 'vat' ), $addr, self::g( $c, 'contact' ), self::g( $c, 'phone' ), self::g( $c, 'email' ) );
+				$addr = trim( implode( ', ', array_filter( array( self::g( $c, 'address' ), self::g( $c, 'address2' ), trim( self::g( $c, 'postal' ) . ' ' . self::g( $c, 'city' ) ), self::g( $c, 'country' ) ) ) ) );
+				array_push( $row, '', $addr, self::g( $c, 'contact' ), self::g( $c, 'phone' ), self::g( $c, 'email' ) );
 			} else {
 				foreach ( array( 'contractorVat', 'contractorAddress', 'contractorContact', 'contractorPhone', 'contractorEmail' ) as $k ) {
 					$row[] = self::g( $d, $k );

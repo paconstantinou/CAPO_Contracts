@@ -201,17 +201,16 @@ class RL_DB {
 		return function_exists( 'mb_strtoupper' ) ? mb_strtoupper( (string) $n, 'UTF-8' ) : strtoupper( (string) $n );
 	}
 
-	/** The live contractor with the same name or the same VAT number (other than $except_id). @return array|null { id, name, by } */
-	public static function contractor_duplicate( $name, $vat, $except_id = '' ) {
+	/** The live contractor with the same name (other than $except_id). @return array|null { id, name } */
+	public static function contractor_duplicate( $name, $except_id = '' ) {
 		$nk = self::name_key( $name );
-		$vk = self::tender_key( $vat );
 		foreach ( self::list_records( 'contractors' ) as $r ) {
 			if ( (string) $r['id'] === (string) $except_id ) {
 				continue;
 			}
 			$d = $r['data'];
-			if ( ( '' !== $nk && self::name_key( isset( $d['name'] ) ? $d['name'] : '' ) === $nk ) || ( '' !== $vk && self::tender_key( isset( $d['vat'] ) ? $d['vat'] : '' ) === $vk ) ) {
-				return array( 'id' => $r['id'], 'name' => isset( $d['name'] ) ? (string) $d['name'] : '', 'by' => ( '' !== $nk && self::name_key( isset( $d['name'] ) ? $d['name'] : '' ) === $nk ) ? 'name' : 'vat' );
+			if ( '' !== $nk && self::name_key( isset( $d['name'] ) ? $d['name'] : '' ) === $nk ) {
+				return array( 'id' => $r['id'], 'name' => isset( $d['name'] ) ? (string) $d['name'] : '' );
 			}
 		}
 		return null;
@@ -532,12 +531,10 @@ class RL_DB {
 		if ( 'contractors' === $collection ) {
 			$out = array(
 				'name'      => self::v_str( $g( 'name' ), 300 ),
-				'vat'       => self::v_str( $g( 'vat' ), 40 ),
 				'address'   => self::v_str( $g( 'address' ), 300 ),
 				'address2'  => self::v_str( $g( 'address2' ), 300 ),
 				'postal'    => self::v_str( $g( 'postal' ), 20 ),
 				'city'      => self::v_str( $g( 'city' ), 120 ),
-				'region'    => self::v_str( $g( 'region' ), 120 ),
 				'country'   => self::v_str( $g( 'country' ), 120 ),
 				'contact'   => self::v_str( $g( 'contact' ), 200 ),
 				'phone'     => self::v_str( $g( 'phone' ), 60 ),
