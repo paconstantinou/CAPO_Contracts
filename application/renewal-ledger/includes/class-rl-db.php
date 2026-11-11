@@ -8,7 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class RL_DB {
 
-	const COLLECTIONS = array( 'software', 'contracts', 'tenders' );
+	const COLLECTIONS = array( 'software', 'contracts', 'tenders', 'contractors' );
 	const MAX_FILE    = 20971520; // 20 MB
 	const MAX_JSON    = 262144;   // 256 KB per record
 
@@ -192,6 +192,51 @@ class RL_DB {
 			}
 		}
 		return $out;
+	}
+
+	/** A name compared without case and extra spaces. */
+	public static function name_key( $n ) {
+		$n = trim( preg_replace( '/\s+/u', ' ', is_scalar( $n ) ? (string) $n : '' ) );
+		$n = strtr( $n, array( 'ά' => 'α', 'έ' => 'ε', 'ή' => 'η', 'ί' => 'ι', 'ϊ' => 'ι', 'ΐ' => 'ι', 'ό' => 'ο', 'ύ' => 'υ', 'ϋ' => 'υ', 'ΰ' => 'υ', 'ώ' => 'ω', 'Ά' => 'Α', 'Έ' => 'Ε', 'Ή' => 'Η', 'Ί' => 'Ι', 'Ϊ' => 'Ι', 'Ό' => 'Ο', 'Ύ' => 'Υ', 'Ϋ' => 'Υ', 'Ώ' => 'Ω' ) ); // accents do not matter
+		return function_exists( 'mb_strtoupper' ) ? mb_strtoupper( (string) $n, 'UTF-8' ) : strtoupper( (string) $n );
+	}
+
+	/** The live contractor with the same name or the same VAT number (other than $except_id). @return array|null { id, name, by } */
+	public static function contractor_duplicate( $name, $vat, $except_id = '' ) {
+		$nk = self::name_key( $name );
+		$vk = self::tender_key( $vat );
+		foreach ( self::list_records( 'contractors' ) as $r ) {
+			if ( (string) $r['id'] === (string) $except_id ) {
+				continue;
+			}
+			$d = $r['data'];
+			if ( ( '' !== $nk && self::name_key( isset( $d['name'] ) ? $d['name'] : '' ) === $nk ) || ( '' !== $vk && self::tender_key( isset( $d['vat'] ) ? $d['vat'] : '' ) === $vk ) ) {
+				return array( 'id' => $r['id'], 'name' => isset( $d['name'] ) ? (string) $d['name'] : '', 'by' => ( '' !== $nk && self::name_key( isset( $d['name'] ) ? $d['name'] : '' ) === $nk ) ? 'name' : 'vat' );
+			}
+		}
+		return null;
+	}
+
+	/** Live contracts that use this contractor. @return array of { id, title } */
+	public static function contractor_contracts( $id ) {
+		$out = array();
+		foreach ( self::list_records( 'contracts' ) as $r ) {
+			if ( isset( $r['data']['contractorId'] ) && (string) $r['data']['contractorId'] === (string) $id ) {
+				$out[] = array( 'id' => $r['id'], 'title' => isset( $r['data']['title'] ) ? (string) $r['data']['title'] : '' );
+			}
+		}
+		return $out;
+	}
+
+	/** After a contractor is renamed: refresh the name copy kept inside its contracts. */
+	public static function refresh_contractor_name( $id, $name, $user_id ) {
+		foreach ( self::list_records( 'contracts' ) as $r ) {
+			if ( isset( $r['data']['contractorId'] ) && (string) $r['data']['contractorId'] === (string) $id && ( ! isset( $r['data']['contractor'] ) || $r['data']['contractor'] !== $name ) ) {
+				$d               = $r['data'];
+				$d['contractor'] = $name;
+				self::save_record( 'contracts', $r['id'], $d, $user_id );
+			}
+		}
 	}
 
 	public static function is_trashed( $collection, $id ) {
@@ -484,6 +529,27 @@ class RL_DB {
 			}
 			return $out;
 		}
+		if ( 'contractors' === $collection ) {
+			$out = array(
+				'name'      => self::v_str( $g( 'name' ), 300 ),
+				'vat'       => self::v_str( $g( 'vat' ), 40 ),
+				'address'   => self::v_str( $g( 'address' ), 300 ),
+				'address2'  => self::v_str( $g( 'address2' ), 300 ),
+				'postal'    => self::v_str( $g( 'postal' ), 20 ),
+				'city'      => self::v_str( $g( 'city' ), 120 ),
+				'region'    => self::v_str( $g( 'region' ), 120 ),
+				'country'   => self::v_str( $g( 'country' ), 120 ),
+				'contact'   => self::v_str( $g( 'contact' ), 200 ),
+				'phone'     => self::v_str( $g( 'phone' ), 60 ),
+				'email'     => self::v_str( $g( 'email' ), 300 ),
+				'createdAt' => $created,
+				'sample'    => ! empty( $d['sample'] ),
+			);
+			if ( '' === $out['name'] ) {
+				return new WP_Error( 'rl_bad_data', 'Contractor name is required.', array( 'status' => 400 ) );
+			}
+			return $out;
+		}
 		if ( 'tenders' === $collection ) {
 			$out = array(
 				'title'       => self::v_str( $g( 'title' ), 300 ),
@@ -548,6 +614,21 @@ class RL_DB {
 		);
 		$out['emails'] = $emails;
 		$out['budget'] = self::v_budget( $g( 'budget' ) );
+		$out['contractorId'] = preg_match( '/^[A-Za-z0-9_-]{1,64}$/', (string) $g( 'contractorId' ) ) ? (string) $g( 'contractorId' ) : '';
+		$out['repName']      = self::v_str( $g( 'repName' ), 200 );
+		$out['repPhone']     = self::v_str( $g( 'repPhone' ), 60 );
+		$out['repEmail']     = self::v_str( $g( 'repEmail' ), 300 );
+		if ( '' !== $out['contractorId'] ) {
+			$cr = self::get_record( 'contractors', $out['contractorId'] );
+			if ( ! $cr || self::is_trashed( 'contractors', $out['contractorId'] ) ) {
+				return new WP_Error( 'rl_bad_contractor', 'The selected contractor does not exist.', array( 'status' => 400 ) );
+			}
+			/* the contractor's own details live in the contractors list; the contract keeps only the name as a copy */
+			$out['contractor'] = isset( $cr['name'] ) ? (string) $cr['name'] : '';
+			foreach ( array( 'contractorVat', 'contractorAddress', 'contractorContact', 'contractorPhone', 'contractorEmail' ) as $k ) {
+				$out[ $k ] = '';
+			}
+		}
 		if ( '' === $out['title'] ) {
 			return new WP_Error( 'rl_bad_data', 'Contract title is required.', array( 'status' => 400 ) );
 		}

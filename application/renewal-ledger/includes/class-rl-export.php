@@ -49,6 +49,31 @@ class RL_Export {
 		return 'Σε ισχύ';
 	}
 
+	/** Per contractor id: { active: number of active contracts, tenders: distinct tender numbers of those contracts }. Active = in force or expiring soon. */
+	public static function contractor_stats() {
+		$out = array();
+		foreach ( RL_DB::list_records( 'contracts' ) as $r ) {
+			$d  = $r['data'];
+			$id = isset( $d['contractorId'] ) ? (string) $d['contractorId'] : '';
+			if ( '' === $id ) {
+				continue;
+			}
+			if ( ! isset( $out[ $id ] ) ) {
+				$out[ $id ] = array( 'active' => 0, 'tenders' => array() );
+			}
+			$st = self::status_contract( $d );
+			if ( 'Σε ισχύ' !== $st && 'Λήγει σύντομα' !== $st ) {
+				continue;
+			}
+			$out[ $id ]['active']++;
+			$k = RL_DB::tender_key( isset( $d['tender'] ) ? $d['tender'] : '' );
+			if ( '' !== $k ) {
+				$out[ $id ]['tenders'][ $k ] = true;
+			}
+		}
+		return $out;
+	}
+
 	/** One cell: "Έτος 1: description - due (30d) [done]; ..." */
 	private static function milestones( $d ) {
 		$out = array();
@@ -118,6 +143,21 @@ class RL_Export {
 			return array( $head, $rows );
 		}
 
+		if ( 'contractors' === $collection ) {
+			usort( $items, function ( $a, $b ) {
+				return strcmp( self::g( $a['data'], 'name' ), self::g( $b['data'], 'name' ) );
+			} );
+			$stats = self::contractor_stats();
+			$head  = array( 'ΟΝΟΜΑ', 'ΑΦΜ', 'ΔΙΕΥΘΥΝΣΗ', 'ΔΙΕΥΘΥΝΣΗ (ΣΥΝΕΧΕΙΑ)', 'Τ.Κ.', 'ΠΟΛΗ', 'ΠΕΡΙΦΕΡΕΙΑ/ΝΟΜΟΣ', 'ΧΩΡΑ', 'ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ', 'EMAIL', 'ΤΗΛΕΦΩΝΟ', 'ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ', 'ΔΙΑΓΩΝΙΣΜΟΙ ΕΝΕΡΓΩΝ ΣΥΜΒΑΣΕΩΝ (ΠΛΗΘΟΣ)' );
+			$rows  = array();
+			foreach ( $items as $it ) {
+				$d      = $it['data'];
+				$s      = isset( $stats[ $it['id'] ] ) ? $stats[ $it['id'] ] : array( 'active' => 0, 'tenders' => array() );
+				$rows[] = array( self::g( $d, 'name' ), self::g( $d, 'vat' ), self::g( $d, 'address' ), self::g( $d, 'address2' ), self::g( $d, 'postal' ), self::g( $d, 'city' ), self::g( $d, 'region' ), self::g( $d, 'country' ), self::g( $d, 'contact' ), self::g( $d, 'email' ), self::g( $d, 'phone' ), (int) $s['active'], count( $s['tenders'] ) );
+			}
+			return array( $head, $rows );
+		}
+
 		if ( 'tenders' === $collection ) {
 			$max = 1;
 			foreach ( $items as $it ) {
@@ -155,7 +195,11 @@ class RL_Export {
 		for ( $i = 1; $i <= $max; $i++ ) {
 			array_push( $head, "ΕΤΟΣ $i - ΗΜΕΡ.ΕΝΑΡΞΗΣ", "ΕΤΟΣ $i - ΗΜΕΡ.ΛΗΞΗΣ", "ΕΤΟΣ $i - ΚΟΣΤΟΣ", "ΕΤΟΣ $i - ΥΠΕΝΘΥΜΙΣΗ (ΗΜΕΡΕΣ ΠΡΙΝ)" );
 		}
-		array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ', 'ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ', 'MILESTONES', 'ΚΑΤΑΣΤΑΣΗ', 'ΑΦΜ ΑΝΑΔΟΧΟΥ', 'ΔΙΕΥΘΥΝΣΗ ΑΝΑΔΟΧΟΥ', 'ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ ΑΝΑΔΟΧΟΥ', 'ΤΗΛΕΦΩΝΟ ΑΝΑΔΟΧΟΥ', 'EMAIL ΑΝΑΔΟΧΟΥ' );
+		array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ', 'ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ', 'MILESTONES', 'ΚΑΤΑΣΤΑΣΗ', 'ΑΦΜ ΑΝΑΔΟΧΟΥ', 'ΔΙΕΥΘΥΝΣΗ ΑΝΑΔΟΧΟΥ', 'ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ ΑΝΑΔΟΧΟΥ', 'ΤΗΛΕΦΩΝΟ ΑΝΑΔΟΧΟΥ', 'EMAIL ΑΝΑΔΟΧΟΥ', 'ΑΝΤΙΠΡΟΣΩΠΟΣ ΑΝΑΔΟΧΟΥ (ΣΥΜΒΑΣΗΣ)', 'ΤΗΛΕΦΩΝΟ ΑΝΤΙΠΡΟΣΩΠΟΥ', 'EMAIL ΑΝΤΙΠΡΟΣΩΠΟΥ' );
+		$cmap = array();
+		foreach ( RL_DB::list_records( 'contractors' ) as $cr ) {
+			$cmap[ $cr['id'] ] = $cr['data'];
+		}
 		$rows = array();
 		foreach ( $items as $it ) {
 			$d   = $it['data'];
@@ -170,9 +214,17 @@ class RL_Export {
 			$row[]  = self::budget( $d );
 			$row[]  = self::milestones( $d );
 			$row[]  = self::status_contract( $d );
-			foreach ( array( 'contractorVat', 'contractorAddress', 'contractorContact', 'contractorPhone', 'contractorEmail' ) as $k ) {
-				$row[] = self::g( $d, $k );
+			$cid = self::g( $d, 'contractorId' );
+			if ( '' !== $cid && isset( $cmap[ $cid ] ) ) {
+				$c = $cmap[ $cid ];
+				$addr = trim( implode( ', ', array_filter( array( self::g( $c, 'address' ), self::g( $c, 'address2' ), trim( self::g( $c, 'postal' ) . ' ' . self::g( $c, 'city' ) ), self::g( $c, 'region' ), self::g( $c, 'country' ) ) ) ) );
+				array_push( $row, self::g( $c, 'vat' ), $addr, self::g( $c, 'contact' ), self::g( $c, 'phone' ), self::g( $c, 'email' ) );
+			} else {
+				foreach ( array( 'contractorVat', 'contractorAddress', 'contractorContact', 'contractorPhone', 'contractorEmail' ) as $k ) {
+					$row[] = self::g( $d, $k );
+				}
 			}
+			array_push( $row, self::g( $d, 'repName' ), self::g( $d, 'repPhone' ), self::g( $d, 'repEmail' ) );
 			$rows[] = $row;
 		}
 		return array( $head, $rows );

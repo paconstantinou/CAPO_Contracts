@@ -59,3 +59,13 @@ Fourth collection `tenders` with its own Application Management module `tenders`
 
 ## Budget articles (v3.6.0)
 `PUT /rl/v1/articles` body `{articles:[{code,desc,cat,catDesc,split}]}` → `{articles, kept}`. Permissions come from the Application Management module `articles` (by default only Administrator roles hold them): adding a code needs `create`, changing a row needs `edit`, removing a code needs `delete`; the request is refused with 403 if any needed one is missing (anonymous 401/403). `view` has no effect: everybody who can open PROCURE360 sees the list. Articles that records still use are kept (`kept`), blank/duplicate codes are dropped, `|` and line breaks in values are replaced by spaces. The list is read-only for everybody else (embedded in `RL_CFG.articles`). Logged as `articles_saved`.
+
+## Contractors (Ανάδοχοι, 3.9.0)
+
+Fifth collection `contractors` with its own Application Management module `contractors` (actions view/create/edit/delete/export/manage + `purge`). Same REST routes as the other collections (`/records/contractors`, `/export/contractors`).
+
+* Fields: `name` (required), `vat`, `address`, `address2`, `postal`, `city`, `region`, `country`, `contact`, `phone`, `email`.
+* Name and VAT are unique among live contractors (case-, space- and accent-insensitive): `PUT`/restore answer `409 rl_duplicate_contractor`.
+* A contractor that live contracts reference cannot be trashed: `DELETE` answers `409 rl_contractor_in_use` (with the contract list in `data.contracts`).
+* Contracts get `contractorId` (must be a live contractor, else `400 rl_bad_contractor`) plus `repName`, `repPhone`, `repEmail` (the contractor's representative for that contract). With a `contractorId` the server stores the contractor's name in `contractor` as a copy and clears the older free-text `contractorVat/Address/Contact/Phone/Email`; renaming a contractor refreshes the copy in its contracts.
+* The contractors export adds `ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ` (contracts not yet expired) and `ΔΙΑΓΩΝΙΣΜΟΙ ΕΝΕΡΓΩΝ ΣΥΜΒΑΣΕΩΝ (ΠΛΗΘΟΣ)` (distinct tender numbers of those contracts). The contracts export takes the contractor columns from the registered contractor and appends the representative columns.

@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class RL_REST {
 
-	const COLLECTIONS = array( 'software', 'contracts', 'tenders' );
+	const COLLECTIONS = array( 'software', 'contracts', 'tenders', 'contractors' );
 
 	public static function init() {
 		add_action( 'rest_api_init', array( __CLASS__, 'routes' ) );
@@ -344,14 +344,24 @@ class RL_REST {
 				return new WP_Error( 'rl_duplicate_tender', 'Tender number "' . $data['tender'] . '" is already used by the tender "' . $dup['title'] . '".', array( 'status' => 409 ) );
 			}
 		}
+		if ( 'contractors' === $coll ) {
+			$dup = RL_DB::contractor_duplicate( $data['name'], $data['vat'], $id );
+			if ( $dup ) {
+				$what = 'vat' === $dup['by'] ? 'VAT number "' . $data['vat'] . '"' : 'name "' . $data['name'] . '"';
+				return new WP_Error( 'rl_duplicate_contractor', 'A contractor with the same ' . $what . ' already exists ("' . $dup['name'] . '").', array( 'status' => 409, 'existing' => $dup['id'] ) );
+			}
+		}
 		$res = RL_DB::save_record( $coll, $id, $data, get_current_user_id() );
 		if ( is_wp_error( $res ) ) {
 			return $res;
 		}
+		if ( 'contractors' === $coll && $old && ( ! isset( $old['name'] ) || $old['name'] !== $data['name'] ) ) {
+			RL_DB::refresh_contractor_name( $id, $data['name'], get_current_user_id() );
+		}
 		if ( 'tenders' === $coll && $old && isset( $old['status'] ) && $old['status'] !== $data['status'] ) {
 			self::log( 'ledger.tender_' . $data['status'], $coll, array( 'id' => $id, 'title' => $data['title'] ) );
 		}
-		$title = 'software' === $coll ? $data['name'] : $data['title'];
+		$title = in_array( $coll, array( 'software', 'contractors' ), true ) ? $data['name'] : $data['title'];
 		self::log( $old ? 'ledger.record_edit' : 'ledger.record_create', $coll, array( 'id' => $id, 'title' => $title ) );
 		return rest_ensure_response( array( 'ok' => true ) );
 	}
@@ -360,7 +370,7 @@ class RL_REST {
 		if ( ! is_array( $rec ) ) {
 			return '';
 		}
-		$k = 'software' === $coll ? 'name' : 'title';
+		$k = in_array( $coll, array( 'software', 'contractors' ), true ) ? 'name' : 'title';
 		return isset( $rec[ $k ] ) ? (string) $rec[ $k ] : '';
 	}
 
@@ -383,6 +393,12 @@ class RL_REST {
 			self::log( 'ledger.record_purge', $coll, array( 'id' => $id, 'title' => self::title_of( $coll, $old ) ) );
 			return rest_ensure_response( array( 'ok' => true, 'purged' => true ) );
 		}
+		if ( 'contractors' === $coll ) {
+			$used = RL_DB::contractor_contracts( $id );
+			if ( $used ) {
+				return new WP_Error( 'rl_contractor_in_use', 'This contractor is used by ' . count( $used ) . ' contract(s) and cannot be deleted.', array( 'status' => 409, 'contracts' => $used ) );
+			}
+		}
 		if ( RL_DB::trash_record( $coll, $id, get_current_user_id() ) ) {
 			self::log( 'ledger.record_delete', $coll, array( 'id' => $id, 'title' => self::title_of( $coll, $old ), 'to_trash' => true ) );
 		}
@@ -397,6 +413,13 @@ class RL_REST {
 			$dup = ( $rec && ! empty( $rec['tender'] ) ) ? RL_DB::tender_with_number( $rec['tender'], $id ) : null;
 			if ( $dup ) {
 				return new WP_Error( 'rl_duplicate_tender', 'Tender number "' . $rec['tender'] . '" is already used by the tender "' . $dup['title'] . '".', array( 'status' => 409 ) );
+			}
+		}
+		if ( 'contractors' === $coll ) {
+			$rec = RL_DB::get_record( $coll, $id );
+			$dup = $rec ? RL_DB::contractor_duplicate( isset( $rec['name'] ) ? $rec['name'] : '', isset( $rec['vat'] ) ? $rec['vat'] : '', $id ) : null;
+			if ( $dup ) {
+				return new WP_Error( 'rl_duplicate_contractor', 'A contractor with the same name or VAT number already exists ("' . $dup['name'] . '").', array( 'status' => 409 ) );
 			}
 		}
 		if ( ! RL_DB::restore_record( $coll, $id ) ) {
@@ -422,7 +445,7 @@ class RL_REST {
 			ob_end_clean();
 		}
 		if ( 'xlsx' === $format ) {
-			$path = RL_Export::xlsx( 'software' === $coll ? 'Software' : ( 'tenders' === $coll ? 'Tenders' : 'Contracts' ), $head, $rows );
+			$path = RL_Export::xlsx( 'software' === $coll ? 'Software' : ( 'tenders' === $coll ? 'Tenders' : ( 'contractors' === $coll ? 'Contractors' : 'Contracts' ) ), $head, $rows );
 			if ( $path ) {
 				header( 'Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' );
 				header( 'Content-Disposition: attachment; filename="' . $name . '.xlsx"' );

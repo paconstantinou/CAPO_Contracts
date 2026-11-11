@@ -85,10 +85,10 @@ if (!pass) { console.error('RL_PASS required'); process.exit(2); }
   await p.click('[data-act=tnpromote]'); await W(500);
   ok('promote opens the contract form pre-filled from the tender', (await T('#overlay')).includes('Promote στις Συμβάσεις') && (await p.inputValue('#c_title')) === name && (await p.inputValue('#c_tender')) === 'ΔΙΑΓ-1/2027' && (await p.inputValue('#c_months')) === '24');
   ok('contract-only fields are available to fill in', (await T('#overlay')).includes('ΑΝΑΔΟΧΟΣ') && (await T('#cYears')).includes('Υπενθύμιση'));
-  await p.fill('#c_contractor', 'ACME Α.Ε.'); await p.fill('#c_dateFrom', '2027-05-01'); await p.dispatchEvent('#c_dateFrom', 'change'); await W(300);
+  await p.fill('#c_repName', 'ACME Εκπρόσωπος'); await p.fill('#c_dateFrom', '2027-05-01'); await p.dispatchEvent('#c_dateFrom', 'change'); await W(300);
   await p.click('[data-act=ctsave]'); await W(2000);
   d = await T('#overlay');
-  ok('promote saves the contract and opens it', d.includes(name) && d.includes('ACME Α.Ε.') && d.includes('01/05/2027'));
+  ok('promote saves the contract and opens it', d.includes(name) && d.includes('ACME Εκπρόσωπος') && d.includes('01/05/2027'));
   ok('app switched to the Συμβάσεις tab', (await p.getAttribute('#tabCt', 'aria-selected')) === 'true');
   await p.click('[data-act=close]'); await W(300);
   ok('contract is listed', (await T('#list')).includes(name));

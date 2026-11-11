@@ -1,4 +1,4 @@
-/* Real-browser check (v3.8.0): full-screen forms that do not close by accident, contractor details, e-mail hint,
+/* Real-browser check (v3.8.0, updated for v3.9.0 contractors): full-screen forms that do not close by accident, contractor details, e-mail hint,
    attachments (3+ files, HTML, size limit), duplicate tender numbers.
    WordPress:  RL_URL=http://127.0.0.1:8088 RL_PAGE=/rl/ RL_USER=admin RL_PASS=... node tests/browser/forms-test.js
    HTML build: node tests/browser/forms-test.js path/to/index.html */
@@ -40,18 +40,18 @@ if (!file && !pass) { console.error('RL_PASS required (or pass an HTML file)'); 
   /* 2. contractor details on a contract + e-mail hint */
   await p.click('#tabCt'); await W(500); await p.click('#btnAdd'); await W(300); await p.click('[data-act=ctfull]'); await W(300);
   const ft = await T('#overlay');
-  ok('contract form has the contractor detail fields', ['ΑΦΜ ΑΝΑΔΟΧΟΥ', 'ΔΙΕΥΘΥΝΣΗ ΑΝΑΔΟΧΟΥ', 'ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ ΑΝΑΔΟΧΟΥ', 'ΤΗΛΕΦΩΝΟ ΑΝΑΔΟΧΟΥ', 'EMAIL ΑΝΑΔΟΧΟΥ'].every(x => ft.includes(x)));
+  ok('contract form has a contractor selector and the representative fields', ['ΑΝΑΔΟΧΟΣ', 'ΟΝΟΜΑΤΕΠΩΝΥΜΟ ΑΝΤΙΠΡΟΣΩΠΟΥ', 'ΤΗΛΕΦΩΝΟ ΑΝΤΙΠΡΟΣΩΠΟΥ', 'EMAIL ΑΝΤΙΠΡΟΣΩΠΟΥ'].every(x => ft.includes(x)));
   ok('notification e-mail field explains comma (,) or semicolon (;)', ft.includes('κόμμα (,) ή ερωτηματικό (;)'));
   const cname = 'Σύμβαση-Probe ' + tag;
   await p.fill('#c_title', cname); await p.fill('#c_months', '12'); await p.dispatchEvent('#c_months', 'change'); await p.fill('#c_dateFrom', '2027-01-01'); await p.dispatchEvent('#c_dateFrom', 'change'); await W(300);
-  await p.fill('#c_contractor', 'Ανάδοχος ΑΕ'); await p.fill('#c_contractorPhone', 'abc'); await p.click('[data-act=ctsave]'); await W(500);
+  await p.fill('#c_repName', 'Μαρία Παπά'); await p.fill('#c_repPhone', 'abc'); await p.click('[data-act=ctsave]'); await W(500);
   ok('an invalid phone number is refused', (await T('#werr')).includes('μη έγκυρο τηλέφωνο'));
-  await p.fill('#c_contractorPhone', '+357 22 123456; 99 123456'); await p.fill('#c_contractorEmail', 'bad'); await p.click('[data-act=ctsave]'); await W(500);
-  ok('an invalid contractor e-mail is refused', (await T('#werr')).includes('EMAIL ΑΝΑΔΟΧΟΥ'));
-  await p.fill('#c_contractorEmail', 'a@x.com; b@y.org'); await p.fill('#c_contractorVat', 'CY12345678X'); await p.fill('#c_contractorAddress', 'Οδός 1, Λευκωσία'); await p.fill('#c_contractorContact', 'Μαρία Παπά');
+  await p.fill('#c_repPhone', '+357 22 123456; 99 123456'); await p.fill('#c_repEmail', 'bad'); await p.click('[data-act=ctsave]'); await W(500);
+  ok('an invalid contractor e-mail is refused', (await T('#werr')).includes('EMAIL ΑΝΤΙΠΡΟΣΩΠΟΥ'));
+  await p.fill('#c_repEmail', 'a@x.com; b@y.org');
   await p.fill('#c_cost', '1000'); await p.click('[data-act=ctsave]'); await W(1500);
   let d = await T('#overlay');
-  ok('contract saved and the detail shows the contractor details', d.includes('Ανάδοχος ΑΕ') && d.includes('CY12345678X') && d.includes('Οδός 1, Λευκωσία') && d.includes('Μαρία Παπά') && d.includes('+357 22 123456; 99 123456') && d.includes('a@x.com; b@y.org'));
+  ok('contract saved and the detail shows the representative details', d.includes('Μαρία Παπά') && d.includes('+357 22 123456; 99 123456') && d.includes('a@x.com; b@y.org'));
   /* 3. attachments: more than two, HTML, size limit */
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rlatt-'));
   const mk = (n, c) => { const f = path.join(tmp, n); fs.writeFileSync(f, c); return f; };
