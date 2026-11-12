@@ -17,7 +17,7 @@ Base: `/wp-json/`. Authentication: WordPress cookie + `X-WP-Nonce: <wp_rest nonc
 | `POST /rl/v1/files` (multipart `file`, `coll`) | create or edit |
 | `GET /rl/v1/files/{id}` | view |
 | `DELETE /rl/v1/files/{id}` | edit |
-Uploads: type allow-list (PDF, images, CSV, TXT, Word, Excel, HTML), 20 MB or the smaller PHP limit (`upload_max_filesize` / `post_max_size`, exposed as `RL_CFG.maxUpload`), stored outside direct web access with a random name. HTML files are always served as a download (never inline) and the client never renders them.
+Uploads: type allow-list (PDF, images, CSV, TXT, Word, Excel, PowerPoint, HTML, XML, EML, MSG, LIC, JSON, RTF, ICS, VCF, 7z, RAR, GZ, TAR, certificates CER/CRT/P7M/P7S, TIFF, BMP, DWG, DXF — extended in 3.11.1; executables and scripts stay blocked), 20 MB or the smaller PHP limit (`upload_max_filesize` / `post_max_size`, exposed as `RL_CFG.maxUpload`), stored outside direct web access with a random name. HTML files are always served as a download (never inline) and the client never renders them.
 
 Tender numbers are unique among live tenders (case- and space-insensitive): `PUT records/tenders/{id}` and `POST records/tenders/{id}/restore` answer `409 rl_duplicate_tender` otherwise. Contracts carry `contractorVat`, `contractorAddress`, `contractorContact`, `contractorPhone`, `contractorEmail`.
 

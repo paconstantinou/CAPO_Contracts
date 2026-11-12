@@ -56,9 +56,9 @@ if (!file && !pass) { console.error('RL_PASS required (or pass an HTML file)'); 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rlatt-'));
   const mk = (n, c) => { const f = path.join(tmp, n); fs.writeFileSync(f, c); return f; };
   ok('limit is shown next to the attachments', (await T('#overlay')).includes('μέγιστο μέγεθος αρχείου') && (await T('#overlay')).includes('HTML'));
-  for (const f of [mk('a.txt', 'one'), mk('b.csv', 'x,y\n1,2'), mk('c.html', '<html><script>window.__pwned=1</script><body>hi</body></html>'), mk('d.txt', 'four')]) { await p.setInputFiles('#fileAttach', f); await W(900); }
+  for (const f of [mk('a.txt', 'one'), mk('b.csv', 'x,y\n1,2'), mk('c.html', '<html><script>window.__pwned=1</script><body>hi</body></html>'), mk('d.txt', 'four'), mk('e.xml', '<a/>'), mk('f.eml', 'Subject: x'), mk('g.msg', 'x'), mk('h.lic', 'LICENSE')]) { await p.setInputFiles('#fileAttach', f); await W(900); }
   d = await T('#overlay');
-  ok('four attachments (including an HTML file) are attached', ['a.txt', 'b.csv', 'c.html', 'd.txt'].every(x => d.includes(x)));
+  ok('eight attachments (HTML, XML, EML, MSG, LIC included) are attached', ['a.txt', 'b.csv', 'c.html', 'd.txt', 'e.xml', 'f.eml', 'g.msg', 'h.lic'].every(x => d.includes(x)));
   const dl = p.waitForEvent('download', { timeout: 8000 }).catch(() => null); const pagesBefore = ctx.pages().length;
   await p.click('a[data-blob]:has-text("c.html")'); const dd = await dl; await W(500);
   ok('an HTML attachment is downloaded, not opened or run', !!dd && dd.suggestedFilename() === 'c.html' && ctx.pages().length === pagesBefore && !(await p.evaluate(() => window.__pwned)));

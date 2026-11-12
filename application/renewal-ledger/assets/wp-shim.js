@@ -105,7 +105,7 @@
     return Promise.resolve(null);
   }};
   /* attachments are private: fetch with the login nonce, then open the file */
-  function isHtmlFile(name,type){return /\.html?$/i.test(name||"")||/^text\/html/i.test(type||"")}
+  function isHtmlFile(name,type){return /\.(html?|xml)$/i.test(name||"")||/^(text\/html|application\/xml|text\/xml)/i.test(type||"")}
   function saveAs(b,name){var d=document.createElement("a");d.href=URL.createObjectURL(new Blob([b],{type:"application/octet-stream"}));d.download=name||"file.html";document.body.appendChild(d);d.click();setTimeout(function(){URL.revokeObjectURL(d.href);d.remove()},1500)}
   document.addEventListener("click",function(e){
     var a=e.target.closest&&e.target.closest("a[data-blob]");if(!a)return;
