@@ -19,7 +19,7 @@ if (!pass) { console.error('RL_PASS required'); process.exit(2); }
   ok('form has the services section', (await T('#overlay')).includes('Επιπρόσθετες / Προαιρετικές Υπηρεσίες') && await p.locator('[data-act=exadd]').count() === 1);
   await p.fill('#c_title', tit); await p.fill('#c_tender', 'EXT-1/2027');
   await p.fill('#c_months', '24'); await p.dispatchEvent('#c_months', 'change'); await p.fill('#c_dateFrom', '2027-01-01'); await p.dispatchEvent('#c_dateFrom', 'change'); await W(300);
-  await p.fill('#cy_cost_0', '1000'); await p.fill('#cy_cost_1', '1000'); await p.fill('#c_cost', '2000');
+  await p.fill('#cy_cost_0', '1000'); await p.fill('#cy_cost_1', '1000'); await p.fill('#c_cost', '1');
   await p.click('[data-act=exadd]'); await W(200);
   await p.fill('#ex_desc_0', 'Υπηρεσία Α'); await p.fill('#ex_amt_0', '1200');
   const art = await p.locator('#ex_art_0 option').evaluateAll(o => o.map(x => x.value).filter(Boolean)[0]);
