@@ -111,6 +111,9 @@ class RL_Cron {
 				$title .= ' (' . $d['tender'] . ')';
 			}
 			$end  = self::days_until( isset( $d['dateTo'] ) ? $d['dateTo'] : '' );
+			if ( ! empty( $d['archived'] ) && null !== $end && $end < 0 ) {
+				continue; // archived (expired) contracts send no notifications
+			}
 			$years = ( isset( $d['years'] ) && is_array( $d['years'] ) ) ? $d['years'] : array();
 			if ( null !== $end && $end < 0 && $end >= -30 ) {
 				$items[] = array( 'key' => 'ct:' . $r['id'] . ':exp', 'title' => $title, 'kind' => 'expired', 'days' => $end, 'date' => $d['dateTo'], 'label' => 'Σύμβαση - έληξε', 'cost' => isset( $d['cost'] ) ? $d['cost'] : '' );
@@ -133,6 +136,12 @@ class RL_Cron {
 		foreach ( array( 'software' => 'Λογισμικό', 'contracts' => 'Σύμβαση' ) as $coll => $kind_label ) {
 			foreach ( RL_DB::list_records( $coll ) as $r ) {
 				$d     = $r['data'];
+				if ( 'contracts' === $coll && ! empty( $d['archived'] ) ) {
+					$ae = self::days_until( isset( $d['dateTo'] ) ? $d['dateTo'] : '' );
+					if ( null !== $ae && $ae < 0 ) {
+						continue; // archived contracts: no milestone notifications either
+					}
+				}
 				$title = 'software' === $coll ? ( isset( $d['name'] ) ? (string) $d['name'] : '(χωρίς όνομα)' ) : ( isset( $d['title'] ) ? (string) $d['title'] : '(χωρίς τίτλο)' );
 				foreach ( ( isset( $d['milestones'] ) && is_array( $d['milestones'] ) ) ? $d['milestones'] : array() as $m ) {
 					if ( ! is_array( $m ) || ! empty( $m['done'] ) || empty( $m['id'] ) ) {

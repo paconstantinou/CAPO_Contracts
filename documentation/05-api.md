@@ -70,6 +70,10 @@ Fifth collection `contractors` with its own Application Management module `contr
 * Contracts get `contractorId` (must be a live contractor, else `400 rl_bad_contractor`) plus `repName`, `repPhone`, `repEmail` (the contractor's representative for that contract). With a `contractorId` the server stores the contractor's name in `contractor` as a copy and clears the older free-text `contractorVat/Address/Contact/Phone/Email`; renaming a contractor refreshes the copy in its contracts.
 * The contractors export adds `ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ` (contracts not yet expired) and `ΑΡ. ΔΙΑΓΩΝΙΣΜΟΥ ΕΝΕΡΓΩΝ ΣΥΜΒΑΣΕΩΝ` (the distinct tender numbers of those contracts, comma-separated). The contracts export takes the contractor columns from the registered contractor and appends the representative columns.
 
+## Archive of expired contracts (3.11.0)
+
+Contracts get `archived` (bool) and `archivedAt` (date). The server keeps `archived = true` only while the contract is expired (`dateTo` in the past); otherwise it is stored as `false`. Archived contracts are skipped by the e-mail reminders (expiry, year and milestone items), are shown as `Αρχειοθετήθηκε` in the contracts export status column, and remain in the list and exports for reference.
+
 ## Additional / optional services of a contract (3.10.0)
 
 Contracts get `extras`: a list of `{ id, desc, amount, article }` (the former `kind` field was removed in 3.10.1; it is dropped on save). `amount` is the amount for **one contract year** (excl. VAT); only entries with `amount > 0` are stored (max 100). The stored `cost` fields (year and contract) stay the base values; clients and exports add `sum(extras) × number of years` **only to the total contract cost**, never to the cost of each year. The server contracts export adds the columns `ΕΠΙΠΡΟΣΘΕΤΕΣ/ΠΡΟΑΙΡΕΤΙΚΕΣ ΥΠΗΡΕΣΙΕΣ` and `ΕΤΗΣΙΟ ΠΟΣΟ ΥΠΗΡΕΣΙΩΝ`; only the total-cost column includes the services; the e-mail reminders show the plain year cost. Articles used by services count as used (`article_usage`). In the budget sheet every service is spread by month over each contract year (always monthly, VAT added).

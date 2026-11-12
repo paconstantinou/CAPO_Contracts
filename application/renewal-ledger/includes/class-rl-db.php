@@ -660,6 +660,10 @@ class RL_DB {
 				$out[ $k ] = '';
 			}
 		}
+		/* Archive: only an expired contract can be archived; if the contract is no longer expired (dates extended) it silently becomes active again */
+		$end_days = RL_Cron::days_until( $out['dateTo'] );
+		$out['archived']   = ! empty( $d['archived'] ) && null !== $end_days && $end_days < 0;
+		$out['archivedAt'] = $out['archived'] ? self::v_date( $g( 'archivedAt' ) ) : '';
 		if ( '' === $out['title'] ) {
 			return new WP_Error( 'rl_bad_data', 'Contract title is required.', array( 'status' => 400 ) );
 		}

@@ -224,7 +224,7 @@ class RL_Export {
 			$row[]  = self::g( $d, 'emails' );
 			$row[]  = self::budget( $d );
 			$row[]  = self::milestones( $d );
-			$row[]  = self::status_contract( $d );
+			$row[]  = ( ! empty( $d['archived'] ) && 'Έληξε' === self::status_contract( $d ) ) ? 'Αρχειοθετήθηκε' : self::status_contract( $d );
 			$cid = self::g( $d, 'contractorId' );
 			if ( '' !== $cid && isset( $cmap[ $cid ] ) ) {
 				$c = $cmap[ $cid ];
