@@ -31,7 +31,7 @@ const file = require('path').resolve(process.argv[2] || 'index.html');
   ok('negative amount is refused', (await T('#werr')).includes('μεγαλύτερος από 0'));
   await p.fill('#ex_amt_1', '300'); await p.click('[data-act=ctsave]'); await W(1500);
   let d = await T('#overlay'); const dn = d.replace(/\s/g, '');
-  ok('detail lists both services and the cost includes them', d.includes('Υπηρεσία Α') && d.includes('Υπηρεσία Β') && !d.includes('Προαιρετική') && !d.includes('Επιπρόσθετη υπηρεσία') && dn.includes('5,000.00') && d.includes('(με υπηρεσίες)'), d.slice(0, 400));
+  ok('detail lists both services and the cost includes them', d.includes('Υπηρεσία Α') && d.includes('Υπηρεσία Β') && !d.includes('Προαιρετική') && !d.includes('Επιπρόσθετη υπηρεσία') && dn.includes('5,000.00') && !d.includes('(με υπηρεσίες)'), d.slice(0, 400));
   ok('year rows do NOT include the services (1,000.00 and 1,000.00; no 2,500.00)', dn.includes('1,000.00') && !dn.includes('2,500.00'));
   await p.click('#overlay [data-act=close]'); await W(300);
   ok('contracts list shows the total with services', (await p.locator('#list .row', { hasText: tit }).first().innerText()).replace(/\s/g, '').includes('5,000'));
