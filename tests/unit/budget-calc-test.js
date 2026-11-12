@@ -129,7 +129,7 @@ t('EXTRAS: yearly amount is spread by month over every contract year, always mon
   const ct = { id: 'e', title: 'E', tender: 'Δ', months: 24, dateFrom: '2026-07-01', dateTo: '2028-06-30', years: [{ from: '2026-07-01', to: '2027-06-30', cost: 0 }, { from: '2027-07-01', to: '2028-06-30', cost: 0 }], budget: [], extras: [{ id: 'x', kind: 'optional', desc: 'Υπηρεσία Α', amount: 1200, article: 'EXA' }] };
   const r = gross([art], [], [ct], []).byArt['EXA'][0];
   assert.deepStrictEqual(r.by, { 2026: 714, 2027: 1428, 2028: 714 });
-  assert(r.how.join(' ').includes('Προαιρετική υπηρεσία «Υπηρεσία Α»'), r.how.join(' '));
+  assert(r.how.join(' ').includes('υπηρεσία «Υπηρεσία Α»'), r.how.join(' '));
 });
 t('EXTRAS: VAT is added and two services go to their own articles', () => {
   const a1 = { ...arts.find(a => a.code === '03461'), code: 'EX1' }, a2 = { ...arts.find(a => a.code === '03461'), code: 'EX2' };
@@ -137,9 +137,9 @@ t('EXTRAS: VAT is added and two services go to their own articles', () => {
   const B = api.bdBuild !== gross ? gross([a1, a2], [], [ct], [], 0.19) : null;
   assert.strictEqual(B.byArt['EX1'][0].by[2027], 119); assert.strictEqual(B.byArt['EX2'][0].by[2027], 59.5);
 });
-t('EXTRAS: totals helpers (yearly sum, year cost, contract total)', () => {
+t('EXTRAS: totals helpers (yearly sum, year cost stays plain, contract total)', () => {
   const c = { cost: 3000, years: [{ cost: 1000 }, { cost: 1000 }, { cost: 1000 }], extras: [{ amount: 100 }, { amount: 50.5 }, { amount: '' }, { amount: -3 }] };
-  assert.strictEqual(api.exSum(c), 150.5); assert.strictEqual(api.ctYearCost(c, 1), 1150.5); assert.strictEqual(api.ctTotal(c), 3451.5);
+  assert.strictEqual(api.exSum(c), 150.5); assert.strictEqual(api.ctYearCost(c, 1), 1000); assert.strictEqual(api.ctTotal(c), 3451.5);
   assert.strictEqual(api.ctTotal({ cost: 500, years: [{ cost: 500 }] }), 500);
 });
 console.log('\n' + ok + ' passed, ' + bad + ' failed'); process.exit(bad ? 1 : 0);

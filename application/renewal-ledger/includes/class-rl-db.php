@@ -409,7 +409,7 @@ class RL_DB {
 		return $out;
 	}
 
-	/** Additional / optional services of a contract: { id, kind extra|optional, desc, amount (per contract year), article }. */
+	/** Additional / optional services of a contract: { id, desc, amount (per contract year), article }. */
 	private static function v_extras( $list ) {
 		$out = array();
 		if ( ! is_array( $list ) ) {
@@ -422,7 +422,6 @@ class RL_DB {
 			$id    = isset( $e['id'] ) && preg_match( '/^[A-Za-z0-9_-]{1,64}$/', (string) $e['id'] ) ? (string) $e['id'] : substr( md5( uniqid( '', true ) ), 0, 12 );
 			$out[] = array(
 				'id'      => $id,
-				'kind'    => isset( $e['kind'] ) && 'optional' === $e['kind'] ? 'optional' : 'extra',
 				'desc'    => self::v_str( isset( $e['desc'] ) ? $e['desc'] : '', 300 ),
 				'amount'  => round( (float) $e['amount'], 2 ),
 				'article' => self::v_str( isset( $e['article'] ) ? $e['article'] : '', 200 ),
@@ -431,7 +430,7 @@ class RL_DB {
 		return $out;
 	}
 
-	/** Yearly total of a contract's additional / optional services (added to the cost of every contract year). */
+	/** Yearly total of a contract's additional / optional services (added to the total contract cost only, not to each year's cost). */
 	public static function extras_sum( $d ) {
 		$t = 0.0;
 		foreach ( ( isset( $d['extras'] ) && is_array( $d['extras'] ) ) ? $d['extras'] : array() as $e ) {

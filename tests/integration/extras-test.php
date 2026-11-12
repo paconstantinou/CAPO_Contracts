@@ -57,8 +57,8 @@ $r = $c->rl( 'PUT', 'records/contracts/exc1', array( 'data' => $ct ) );
 t( 'PUT contract with extras ok', 200 === $r['code'], $r['body'] );
 $d = $get( $c, 'exc1' ); $e = $d['extras'] ?? array();
 t( 'only valid services are kept (amount > 0)', 2 === count( $e ), json_encode( $e ) );
-t( 'amount rounded to cents, description trimmed, kind validated, unknown keys dropped', 120.56 === (float) $e[0]['amount'] && 'Υπηρεσία Α' === $e[0]['desc'] && 'optional' === $e[0]['kind'] && 'extra' === $e[1]['kind'] && ! isset( $e[0]['evil'] ) && 'a1' === $e[0]['id'] && '' !== $e[1]['id'], json_encode( $e ) );
-t( 'stored year cost and contract cost are untouched (extras are added on top when shown)', 1000 === (int) $d['years'][0]['cost'] && 2000 === (int) $d['cost'] );
+t( 'amount rounded to cents, description trimmed, kind dropped, unknown keys dropped', 120.56 === (float) $e[0]['amount'] && 'Υπηρεσία Α' === $e[0]['desc'] && ! isset( $e[0]['kind'] ) && ! isset( $e[1]['kind'] ) && ! isset( $e[0]['evil'] ) && 'a1' === $e[0]['id'] && '' !== $e[1]['id'], json_encode( $e ) );
+t( 'stored year cost and contract cost are untouched (extras are added only to the total when shown)', 1000 === (int) $d['years'][0]['cost'] && 2000 === (int) $d['cost'] );
 $r = $c->rl( 'PUT', 'records/contracts/exc1', array( 'data' => array_merge( $ct, array( 'extras' => 'nope' ) ) ) );
 t( 'invalid extras value is stored as empty', 200 === $r['code'] && array() === ( $get( $c, 'exc1' )['extras'] ?? null ) );
 $c->rl( 'PUT', 'records/contracts/exc1', array( 'data' => $ct ) );
@@ -68,8 +68,8 @@ $r = $c->req( 'GET', '/?rest_route=/rl/v1/export/contracts&format=csv' );
 t( 'export 200', 200 === $r['code'] );
 $row = null; foreach ( preg_split( '/\r?\n/', trim( $r['body'] ) ) as $ln ) { if ( false !== strpos( $ln, 'Probe υπηρεσίες' ) ) { $row = str_getcsv( $ln ); } }
 t( 'export has the extras columns', false !== strpos( $r['body'], 'ΕΠΙΠΡΟΣΘΕΤΕΣ/ΠΡΟΑΙΡΕΤΙΚΕΣ ΥΠΗΡΕΣΙΕΣ' ) && false !== strpos( $r['body'], 'ΕΤΗΣΙΟ ΠΟΣΟ ΥΠΗΡΕΣΙΩΝ' ) );
-t( 'export row: total = 2000 + 2 x 170.56 and the services are listed', $row && 2341.12 === (float) $row[8] && false !== strpos( implode( '|', $row ), 'Προαιρετική: Υπηρεσία Α (120.56 €/έτος [03461])' ) && '170.56' === end( $row ), json_encode( $row ) );
-t( 'export row: year 1 cost = 1000 + 170.56', $row && 1170.56 === (float) $row[11], json_encode( $row ) );
+t( 'export row: total = 2000 + 2 x 170.56 and the services are listed', $row && 2341.12 === (float) $row[8] && false !== strpos( implode( '|', $row ), 'Υπηρεσία Α (120.56 €/έτος [03461])' ) && '170.56' === end( $row ), json_encode( $row ) );
+t( 'export row: year 1 cost stays 1000 (no services added)', $row && 1000.0 === (float) $row[11], json_encode( $row ) );
 
 $clean( $c );
 echo "\n$pass passed, $fail failed\n";

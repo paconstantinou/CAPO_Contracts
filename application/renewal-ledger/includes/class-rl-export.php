@@ -91,7 +91,7 @@ class RL_Export {
 		$out = array();
 		foreach ( ( isset( $d['extras'] ) && is_array( $d['extras'] ) ) ? $d['extras'] : array() as $e ) {
 			if ( is_array( $e ) && isset( $e['amount'] ) && is_numeric( $e['amount'] ) && (float) $e['amount'] > 0 ) {
-				$out[] = ( isset( $e['kind'] ) && 'optional' === $e['kind'] ? 'Προαιρετική' : 'Επιπρόσθετη' ) . ': ' . ( isset( $e['desc'] ) ? $e['desc'] : '' ) . ' (' . number_format( (float) $e['amount'], 2, '.', '' ) . ' €/έτος' . ( ! empty( $e['article'] ) ? ' [' . $e['article'] . ']' : '' ) . ')';
+				$out[] = ( isset( $e['desc'] ) ? $e['desc'] : '' ) . ' (' . number_format( (float) $e['amount'], 2, '.', '' ) . ' €/έτος' . ( ! empty( $e['article'] ) ? ' [' . $e['article'] . ']' : '' ) . ')';
 			}
 		}
 		return implode( '; ', $out );
@@ -218,7 +218,7 @@ class RL_Export {
 			$ys  = ( isset( $d['years'] ) && is_array( $d['years'] ) ) ? array_values( $d['years'] ) : array();
 			for ( $i = 0; $i < $max; $i++ ) {
 				$y = isset( $ys[ $i ] ) ? $ys[ $i ] : array();
-				array_push( $row, self::g( $y, 'from' ), self::g( $y, 'to' ), ( isset( $y['cost'] ) && is_numeric( $y['cost'] ) ) ? (float) $y['cost'] + $ex : ( $ex > 0 && $i < count( $ys ) ? $ex : '' ), isset( $y['remind'] ) ? (int) $y['remind'] : '' );
+				array_push( $row, self::g( $y, 'from' ), self::g( $y, 'to' ), ( isset( $y['cost'] ) && is_numeric( $y['cost'] ) ) ? (float) $y['cost'] : '', isset( $y['remind'] ) ? (int) $y['remind'] : '' );
 			}
 			$row[]  = self::names( $d );
 			$row[]  = self::g( $d, 'emails' );

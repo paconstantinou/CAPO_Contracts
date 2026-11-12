@@ -125,7 +125,7 @@ class RL_Cron {
 				$remind = ! empty( $y['remind'] ) ? (int) $y['remind'] : 30;
 				if ( null !== $days && $days >= 0 && $days <= $remind ) {
 					$label = ( $i === $n - 1 ) ? 'Σύμβαση - λήξη σύμβασης' : 'Σύμβαση - λήξη έτους ' . ( $i + 1 );
-					$items[] = array( 'key' => 'ct:' . $r['id'] . ':y' . ( $i + 1 ), 'title' => $title, 'kind' => 'due', 'days' => $days, 'date' => $y['to'], 'label' => $label, 'cost' => ( isset( $y['cost'] ) && is_numeric( $y['cost'] ) ) ? (float) $y['cost'] + RL_DB::extras_sum( $d ) : ( RL_DB::extras_sum( $d ) > 0 ? RL_DB::extras_sum( $d ) : '' ) );
+					$items[] = array( 'key' => 'ct:' . $r['id'] . ':y' . ( $i + 1 ), 'title' => $title, 'kind' => 'due', 'days' => $days, 'date' => $y['to'], 'label' => $label, 'cost' => ( isset( $y['cost'] ) && is_numeric( $y['cost'] ) ) ? (float) $y['cost'] : '' );
 				}
 			}
 		}
