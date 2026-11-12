@@ -87,6 +87,16 @@ class RL_Export {
 		return implode( '; ', $out );
 	}
 
+	private static function extras_text( $d ) {
+		$out = array();
+		foreach ( ( isset( $d['extras'] ) && is_array( $d['extras'] ) ) ? $d['extras'] : array() as $e ) {
+			if ( is_array( $e ) && isset( $e['amount'] ) && is_numeric( $e['amount'] ) && (float) $e['amount'] > 0 ) {
+				$out[] = ( isset( $e['kind'] ) && 'optional' === $e['kind'] ? 'Προαιρετική' : 'Επιπρόσθετη' ) . ': ' . ( isset( $e['desc'] ) ? $e['desc'] : '' ) . ' (' . number_format( (float) $e['amount'], 2, '.', '' ) . ' €/έτος' . ( ! empty( $e['article'] ) ? ' [' . $e['article'] . ']' : '' ) . ')';
+			}
+		}
+		return implode( '; ', $out );
+	}
+
 	private static function budget( $d ) {
 		$out = array();
 		foreach ( ( isset( $d['budget'] ) && is_array( $d['budget'] ) ) ? $d['budget'] : array() as $p ) {
@@ -195,7 +205,7 @@ class RL_Export {
 		for ( $i = 1; $i <= $max; $i++ ) {
 			array_push( $head, "ΕΤΟΣ $i - ΗΜΕΡ.ΕΝΑΡΞΗΣ", "ΕΤΟΣ $i - ΗΜΕΡ.ΛΗΞΗΣ", "ΕΤΟΣ $i - ΚΟΣΤΟΣ", "ΕΤΟΣ $i - ΥΠΕΝΘΥΜΙΣΗ (ΗΜΕΡΕΣ ΠΡΙΝ)" );
 		}
-		array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ', 'ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ', 'MILESTONES', 'ΚΑΤΑΣΤΑΣΗ', 'ΑΦΜ ΑΝΑΔΟΧΟΥ', 'ΔΙΕΥΘΥΝΣΗ ΑΝΑΔΟΧΟΥ', 'ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ ΑΝΑΔΟΧΟΥ', 'ΤΗΛΕΦΩΝΟ ΑΝΑΔΟΧΟΥ', 'EMAIL ΑΝΑΔΟΧΟΥ', 'ΑΝΤΙΠΡΟΣΩΠΟΣ ΑΝΑΔΟΧΟΥ (ΣΥΜΒΑΣΗΣ)', 'ΤΗΛΕΦΩΝΟ ΑΝΤΙΠΡΟΣΩΠΟΥ', 'EMAIL ΑΝΤΙΠΡΟΣΩΠΟΥ' );
+		array_push( $head, 'ΣΥΝΗΜΜΕΝΑ', 'EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ', 'ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ', 'MILESTONES', 'ΚΑΤΑΣΤΑΣΗ', 'ΑΦΜ ΑΝΑΔΟΧΟΥ', 'ΔΙΕΥΘΥΝΣΗ ΑΝΑΔΟΧΟΥ', 'ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ ΑΝΑΔΟΧΟΥ', 'ΤΗΛΕΦΩΝΟ ΑΝΑΔΟΧΟΥ', 'EMAIL ΑΝΑΔΟΧΟΥ', 'ΑΝΤΙΠΡΟΣΩΠΟΣ ΑΝΑΔΟΧΟΥ (ΣΥΜΒΑΣΗΣ)', 'ΤΗΛΕΦΩΝΟ ΑΝΤΙΠΡΟΣΩΠΟΥ', 'EMAIL ΑΝΤΙΠΡΟΣΩΠΟΥ', 'ΕΠΙΠΡΟΣΘΕΤΕΣ/ΠΡΟΑΙΡΕΤΙΚΕΣ ΥΠΗΡΕΣΙΕΣ', 'ΕΤΗΣΙΟ ΠΟΣΟ ΥΠΗΡΕΣΙΩΝ' );
 		$cmap = array();
 		foreach ( RL_DB::list_records( 'contractors' ) as $cr ) {
 			$cmap[ $cr['id'] ] = $cr['data'];
@@ -203,11 +213,12 @@ class RL_Export {
 		$rows = array();
 		foreach ( $items as $it ) {
 			$d   = $it['data'];
-			$row = array( self::g( $d, 'title' ), self::g( $d, 'tender' ), self::g( $d, 'description' ), self::g( $d, 'contractor' ), self::g( $d, 'coordinator' ), isset( $d['months'] ) ? (int) $d['months'] : 0, self::g( $d, 'dateFrom' ), self::g( $d, 'dateTo' ), isset( $d['cost'] ) ? (float) $d['cost'] : 0 );
+			$ex  = RL_DB::extras_sum( $d );
+			$row = array( self::g( $d, 'title' ), self::g( $d, 'tender' ), self::g( $d, 'description' ), self::g( $d, 'contractor' ), self::g( $d, 'coordinator' ), isset( $d['months'] ) ? (int) $d['months'] : 0, self::g( $d, 'dateFrom' ), self::g( $d, 'dateTo' ), ( isset( $d['cost'] ) ? (float) $d['cost'] : 0 ) + $ex * count( ( isset( $d['years'] ) && is_array( $d['years'] ) ) ? $d['years'] : array() ) );
 			$ys  = ( isset( $d['years'] ) && is_array( $d['years'] ) ) ? array_values( $d['years'] ) : array();
 			for ( $i = 0; $i < $max; $i++ ) {
 				$y = isset( $ys[ $i ] ) ? $ys[ $i ] : array();
-				array_push( $row, self::g( $y, 'from' ), self::g( $y, 'to' ), ( isset( $y['cost'] ) && is_numeric( $y['cost'] ) ) ? (float) $y['cost'] : '', isset( $y['remind'] ) ? (int) $y['remind'] : '' );
+				array_push( $row, self::g( $y, 'from' ), self::g( $y, 'to' ), ( isset( $y['cost'] ) && is_numeric( $y['cost'] ) ) ? (float) $y['cost'] + $ex : ( $ex > 0 && $i < count( $ys ) ? $ex : '' ), isset( $y['remind'] ) ? (int) $y['remind'] : '' );
 			}
 			$row[]  = self::names( $d );
 			$row[]  = self::g( $d, 'emails' );
@@ -224,7 +235,7 @@ class RL_Export {
 					$row[] = self::g( $d, $k );
 				}
 			}
-			array_push( $row, self::g( $d, 'repName' ), self::g( $d, 'repPhone' ), self::g( $d, 'repEmail' ) );
+			array_push( $row, self::g( $d, 'repName' ), self::g( $d, 'repPhone' ), self::g( $d, 'repEmail' ), self::extras_text( $d ), $ex > 0 ? $ex : '' );
 			$rows[] = $row;
 		}
 		return array( $head, $rows );

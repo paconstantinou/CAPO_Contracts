@@ -181,7 +181,8 @@ class RL_DB {
 			foreach ( array( false, true ) as $tr ) {
 				foreach ( self::list_records( $c, $tr ) as $r ) {
 					$seen = array();
-					foreach ( ( isset( $r['data']['budget'] ) && is_array( $r['data']['budget'] ) ) ? $r['data']['budget'] : array() as $p ) {
+					$lines = array_merge( ( isset( $r['data']['budget'] ) && is_array( $r['data']['budget'] ) ) ? $r['data']['budget'] : array(), ( isset( $r['data']['extras'] ) && is_array( $r['data']['extras'] ) ) ? $r['data']['extras'] : array() );
+					foreach ( $lines as $p ) {
 						$code = is_array( $p ) && isset( $p['article'] ) ? (string) $p['article'] : '';
 						if ( '' !== $code && ! isset( $seen[ $code ] ) ) {
 							$seen[ $code ] = 1;
@@ -408,6 +409,39 @@ class RL_DB {
 		return $out;
 	}
 
+	/** Additional / optional services of a contract: { id, kind extra|optional, desc, amount (per contract year), article }. */
+	private static function v_extras( $list ) {
+		$out = array();
+		if ( ! is_array( $list ) ) {
+			return $out;
+		}
+		foreach ( array_slice( $list, 0, 100 ) as $e ) {
+			if ( ! is_array( $e ) || ! isset( $e['amount'] ) || '' === $e['amount'] || ! is_numeric( $e['amount'] ) || (float) $e['amount'] <= 0 || (float) $e['amount'] > 1000000000 ) {
+				continue;
+			}
+			$id    = isset( $e['id'] ) && preg_match( '/^[A-Za-z0-9_-]{1,64}$/', (string) $e['id'] ) ? (string) $e['id'] : substr( md5( uniqid( '', true ) ), 0, 12 );
+			$out[] = array(
+				'id'      => $id,
+				'kind'    => isset( $e['kind'] ) && 'optional' === $e['kind'] ? 'optional' : 'extra',
+				'desc'    => self::v_str( isset( $e['desc'] ) ? $e['desc'] : '', 300 ),
+				'amount'  => round( (float) $e['amount'], 2 ),
+				'article' => self::v_str( isset( $e['article'] ) ? $e['article'] : '', 200 ),
+			);
+		}
+		return $out;
+	}
+
+	/** Yearly total of a contract's additional / optional services (added to the cost of every contract year). */
+	public static function extras_sum( $d ) {
+		$t = 0.0;
+		foreach ( ( isset( $d['extras'] ) && is_array( $d['extras'] ) ) ? $d['extras'] : array() as $e ) {
+			if ( is_array( $e ) && isset( $e['amount'] ) && is_numeric( $e['amount'] ) && (float) $e['amount'] > 0 ) {
+				$t += (float) $e['amount'];
+			}
+		}
+		return round( $t, 2 );
+	}
+
 	private static function budget_sum( $parts, $year = null ) {
 		$t = 0.0;
 		foreach ( $parts as $p ) {
@@ -611,6 +645,7 @@ class RL_DB {
 		);
 		$out['emails'] = $emails;
 		$out['budget'] = self::v_budget( $g( 'budget' ) );
+		$out['extras']       = self::v_extras( $g( 'extras' ) );
 		$out['contractorId'] = preg_match( '/^[A-Za-z0-9_-]{1,64}$/', (string) $g( 'contractorId' ) ) ? (string) $g( 'contractorId' ) : '';
 		$out['repName']      = self::v_str( $g( 'repName' ), 200 );
 		$out['repPhone']     = self::v_str( $g( 'repPhone' ), 60 );

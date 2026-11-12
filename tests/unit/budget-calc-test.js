@@ -7,9 +7,10 @@ const code = [
   grab(/var DEFAULT_ARTICLES=/, 'function articles()'),
   grab(/function artFind/, 'function artLabel'),
   grab(/\/\*BD-CALC-START\*\//, '/*BD-CALC-END*/'),
+  grab(/function exOk/, 'function exText'),
   grab(/function tnActive/, 'function tnInfo'),
 ].join('\n');
-const api = new Function(code + '\nreturn {DEFAULT_ARTICLES,parseArtLines,artFind,bdMonths,bdAlloc,bdBuild,bdTotals,bdEur,tnActive,BD_VAT};')();
+const api = new Function(code + '\nreturn {exSum,ctYearCost,ctTotal,DEFAULT_ARTICLES,parseArtLines,artFind,bdMonths,bdAlloc,bdBuild,bdTotals,bdEur,tnActive,BD_VAT};')();
 const gross = api.bdBuild; api.bdBuild = (a, i, c, t, v) => gross(a, i, c, t, v === undefined ? 0 : v); /* older tests are about allocation, so they run net of VAT */
 let ok = 0, bad = 0;
 function t(name, fn) { try { fn(); ok++; console.log('  ok   ' + name); } catch (e) { bad++; console.log('  FAIL ' + name + '\n       ' + e.message); } }
@@ -123,4 +124,22 @@ t('VAT is added before the month split (1200 net -> 1428 gross, 1071 / 357)', ()
   assert.deepStrictEqual(gross([spl], [it], [], []).byArt['SPL'][0].by, { 2027: 1071, 2028: 357 });
 });
 t('Greek money format', () => { assert.strictEqual(api.bdEur(1100), '1.100,00 €'); assert.strictEqual(api.bdEur(0.5), '0,50 €'); });
+t('EXTRAS: yearly amount is spread by month over every contract year, always monthly, incl. 19% VAT, in the service article', () => {
+  const art = { ...arts.find(a => a.code === '03461'), code: 'EXA', split: false };
+  const ct = { id: 'e', title: 'E', tender: 'Δ', months: 24, dateFrom: '2026-07-01', dateTo: '2028-06-30', years: [{ from: '2026-07-01', to: '2027-06-30', cost: 0 }, { from: '2027-07-01', to: '2028-06-30', cost: 0 }], budget: [], extras: [{ id: 'x', kind: 'optional', desc: 'Υπηρεσία Α', amount: 1200, article: 'EXA' }] };
+  const r = gross([art], [], [ct], []).byArt['EXA'][0];
+  assert.deepStrictEqual(r.by, { 2026: 714, 2027: 1428, 2028: 714 });
+  assert(r.how.join(' ').includes('Προαιρετική υπηρεσία «Υπηρεσία Α»'), r.how.join(' '));
+});
+t('EXTRAS: VAT is added and two services go to their own articles', () => {
+  const a1 = { ...arts.find(a => a.code === '03461'), code: 'EX1' }, a2 = { ...arts.find(a => a.code === '03461'), code: 'EX2' };
+  const ct = { id: 'e2', title: 'E2', tender: '', months: 12, dateFrom: '2027-01-01', dateTo: '2027-12-31', years: [{ from: '2027-01-01', to: '2027-12-31', cost: 1000 }], budget: [], extras: [{ id: 'a', kind: 'extra', desc: 'A', amount: 100, article: 'EX1' }, { id: 'b', kind: 'extra', desc: 'B', amount: 50, article: 'EX2' }, { id: 'c', kind: 'extra', desc: 'zero', amount: 0, article: 'EX2' }] };
+  const B = api.bdBuild !== gross ? gross([a1, a2], [], [ct], [], 0.19) : null;
+  assert.strictEqual(B.byArt['EX1'][0].by[2027], 119); assert.strictEqual(B.byArt['EX2'][0].by[2027], 59.5);
+});
+t('EXTRAS: totals helpers (yearly sum, year cost, contract total)', () => {
+  const c = { cost: 3000, years: [{ cost: 1000 }, { cost: 1000 }, { cost: 1000 }], extras: [{ amount: 100 }, { amount: 50.5 }, { amount: '' }, { amount: -3 }] };
+  assert.strictEqual(api.exSum(c), 150.5); assert.strictEqual(api.ctYearCost(c, 1), 1150.5); assert.strictEqual(api.ctTotal(c), 3451.5);
+  assert.strictEqual(api.ctTotal({ cost: 500, years: [{ cost: 500 }] }), 500);
+});
 console.log('\n' + ok + ' passed, ' + bad + ' failed'); process.exit(bad ? 1 : 0);
