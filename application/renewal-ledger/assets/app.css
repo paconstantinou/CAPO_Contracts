@@ -82,6 +82,9 @@
 #rl-app .overlay[data-kind=wiz]{background:var(--surface);justify-content:center}
 #rl-app .overlay[data-kind=wiz] .panel{width:100%;max-width:none;box-shadow:none;align-items:center;padding-top:24px}
 #rl-app .overlay[data-kind=wiz] .panel>*{width:min(1040px,100%)}
+#rl-app .overlay[data-kind=detail]{background:var(--surface);justify-content:center}
+#rl-app .overlay[data-kind=detail] .panel{width:100%;max-width:none;box-shadow:none;align-items:center;padding-top:24px}
+#rl-app .overlay[data-kind=detail] .panel>*{width:min(1040px,100%)}
 #rl-app .overlay[data-kind=wiz] .panel>div[style*="display:grid"]{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
 #rl-app .overlay[data-kind=wiz] .panel>div[style*="display:grid"] label.f:has(textarea){grid-column:1/-1}
 #rl-app .overlay[data-kind=wiz] .panel>div[style*="display:grid"] label.f{align-content:start}
