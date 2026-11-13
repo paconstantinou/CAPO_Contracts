@@ -7,6 +7,7 @@ const code = [
   grab(/var DEFAULT_ARTICLES=/, 'function articles()'),
   grab(/function artFind/, 'function artLabel'),
   grab(/\/\*BD-CALC-START\*\//, '/*BD-CALC-END*/'),
+  'function bdVat(){return BD_VAT}', /* the real one reads the VAT rate from the settings (tested in the browser) */
   grab(/function exOk/, 'function exText'),
   grab(/function tnActive/, 'function tnInfo'),
 ].join('\n');

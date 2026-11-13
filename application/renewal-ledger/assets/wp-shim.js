@@ -14,6 +14,7 @@
     });
   }
   window.RL_SAVE_ARTICLES=function(list){return api("PUT","articles",{articles:list})};
+  window.RL_SAVE_SETTINGS=function(obj){return api("PUT","settings",{settings:obj})};
   var perms=cfg.perms||{};
   function curColl(){
     var t=document.getElementById("tabCt"),n=document.getElementById("tabTn"),k=document.getElementById("tabCo");
@@ -21,6 +22,7 @@
     return n&&n.getAttribute("aria-selected")==="true"?"tenders":t&&t.getAttribute("aria-selected")==="true"?"contracts":"software";
   }
   function onBd(){var t=document.getElementById("tabBd");return !!t&&t.getAttribute("aria-selected")==="true"}
+  function onSt(){var t=document.getElementById("tabSt");return !!t&&t.getAttribute("aria-selected")==="true"}
   function onAr(){var t=document.getElementById("tabAr");return !!t&&t.getAttribute("aria-selected")==="true"}
   function P(c,a){return !!(perms[c]&&perms[c][a])}
   var cache={},subs=[],loaded={};
@@ -75,9 +77,10 @@
     var seen={};subs.forEach(function(l){if(!seen[l.name]){seen[l.name]=1;refresh(l.name,false)}});
   },60000);
   var assets={
-    upload:function(blob){
+    read:function(id){return fetch(cfg.rest+"files/"+id,{credentials:"same-origin",headers:{"X-WP-Nonce":cfg.nonce||""}}).then(function(r){if(!r.ok)throw new Error(r.status);return r.blob()})},
+    upload:function(blob,opts){
       if(!(blob instanceof Blob)||!blob.size)return Promise.reject({code:"invalid_request",message:"empty file"});
-      var fd=new FormData();fd.append("file",blob,blob.name||"file");fd.append("coll",curColl());
+      var fd=new FormData();fd.append("file",blob,blob.name||"file");fd.append("coll",(opts&&opts.coll)||curColl());
       return api("POST","files",fd,true).then(function(r){return {id:r.id,url:"#",sizeBytes:r.size,contentType:r.type}},function(e){
         var m={rl_too_large:"too_large",rl_bad_type:"unsupported_type"};
         /* PHP drops a request bigger than post_max_size before WordPress sees it, so the server then only reports a missing field */
@@ -134,6 +137,8 @@
       var anyView=P("software","view")||P("contracts","view")||P("tenders","view")||P("contractors","view");
       if(bdt)bdt.style.display=anyView?"":"none";
       var art=document.getElementById("tabAr");if(art)art.style.display=anyView?"":"none";
+      var stt=document.getElementById("tabSt");if(stt)stt.style.display=cfg.canManage?"":"none";
+      if(onSt()){hide("#btnAdd,#emAdd,#btnImport,#emImp,#btnExport",root,true);return}
       if(onAr()){
         /* the article list is reference data for everyone who can view something; editing happens in the WordPress settings */
         hide("#btnAdd,#emAdd,#btnImport,#emImp,#btnExport",root,true);

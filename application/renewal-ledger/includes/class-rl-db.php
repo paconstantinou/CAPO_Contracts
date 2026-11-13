@@ -530,7 +530,44 @@ class RL_DB {
 	 * Keep only the fields the application knows, with safe types and lengths.
 	 * @return array|WP_Error
 	 */
+	/** Validates a record and adds its custom-field values (only fields defined in the settings; wrong types are dropped). */
 	public static function sanitize_record( $collection, $d ) {
+		$out = self::sanitize_record_base( $collection, $d );
+		if ( is_array( $out ) ) {
+			$out['custom'] = self::v_custom( $collection, is_array( $d ) && isset( $d['custom'] ) ? $d['custom'] : array() );
+		}
+		return $out;
+	}
+
+	/** @return array field id => value; only non-empty values of fields that exist in the settings for this collection */
+	private static function v_custom( $collection, $in ) {
+		$out = array();
+		if ( ! is_array( $in ) ) {
+			return $out;
+		}
+		foreach ( RL_Settings::custom_fields( $collection ) as $f ) {
+			if ( ! isset( $in[ $f['id'] ] ) ) {
+				continue;
+			}
+			$v = $in[ $f['id'] ];
+			if ( 'number' === $f['type'] ) {
+				$v = ( is_numeric( $v ) && '' !== $v ) ? round( (float) $v, 4 ) : '';
+			} elseif ( 'date' === $f['type'] ) {
+				$v = self::v_date( $v );
+			} elseif ( 'select' === $f['type'] ) {
+				$v = self::v_str( $v, 100 );
+				$v = in_array( $v, $f['options'], true ) ? $v : '';
+			} else {
+				$v = self::v_str( $v, 2000 );
+			}
+			if ( '' !== $v ) {
+				$out[ $f['id'] ] = $v;
+			}
+		}
+		return $out;
+	}
+
+	private static function sanitize_record_base( $collection, $d ) {
 		if ( ! is_array( $d ) ) {
 			return new WP_Error( 'rl_bad_data', 'Invalid data', array( 'status' => 400 ) );
 		}

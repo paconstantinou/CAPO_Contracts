@@ -3,7 +3,7 @@
 const fs = require('fs'), path = require('path'), assert = require('assert');
 const src = fs.readFileSync(path.join(__dirname, '../../application/renewal-ledger/assets/app.js'), 'utf8');
 const g = (a, b) => { const i = src.search(a); return src.slice(i, src.indexOf(b, i)); };
-const code = [g(/var DEFAULT_ARTICLES=/, 'function articles()'), g(/function artFind/, 'function artLabel'), g(/\/\*BD-CALC-START\*\//, '/*BD-CALC-END*/'), g(/function bdExport\(\)/, '/* =============== CONTRACTS'), g(/function tnActive/, 'function tnInfo')].join('\n');
+const code = ['function bdVat(){return BD_VAT}', g(/var DEFAULT_ARTICLES=/, 'function articles()'), g(/function artFind/, 'function artLabel'), g(/\/\*BD-CALC-START\*\//, '/*BD-CALC-END*/'), g(/function bdExport\(\)/, '/* =============== CONTRACTS'), g(/function tnActive/, 'function tnInfo')].join('\n');
 const book = { sheets: [] };
 const XLSX = { utils: { book_new: () => book, book_append_sheet: (wb, ws, n) => wb.sheets.push({ n, ws }), aoa_to_sheet: aoa => ({ aoa }),
   encode_col: i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; } }, write: () => new Uint8Array(1) };

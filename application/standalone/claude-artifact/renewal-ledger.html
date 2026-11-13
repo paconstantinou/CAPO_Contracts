@@ -69,6 +69,15 @@ textarea{resize:vertical;min-height:70px}
 .pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}
 .pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.bad{background:var(--bad-bg);color:var(--bad)}
 .pill.mute{background:rgba(127,127,127,.18);color:inherit}
+.stcard{border:1px solid var(--line);border-radius:12px;padding:16px;margin:0 0 16px;background:var(--surface,transparent)}
+.stcard h3{margin:0 0 8px}
+.stgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.cfgrp{margin:12px 0;padding-top:8px;border-top:1px dashed var(--line)}
+.cfgrp h4{margin:0 0 6px}
+.cfrow{display:grid;grid-template-columns:2fr 1.4fr 2.4fr auto;gap:10px;align-items:end;margin:8px 0}
+.cfrow .cfopt[hidden]{display:none}
+.chk{display:inline-flex;gap:6px;align-items:center;margin:6px 14px 6px 0}
+@media(max-width:720px){.cfrow{grid-template-columns:1fr}}
 .guide h3{margin:22px 0 6px;font-size:1.05rem}
 .guide p,.guide li{line-height:1.5;max-width:75ch}
 .guide ul{padding-left:20px;margin:6px 0}
@@ -229,6 +238,7 @@ table.art td:nth-child(2) input,table.art td:nth-child(4) input{min-width:200px}
     <button class="tab" role="tab" id="tabCo" type="button" data-act="gocat" data-cat="co">Ανάδοχοι<span class="cnt" id="cntCo"></span></button>
     <button class="tab" role="tab" id="tabBd" type="button" data-act="gocat" data-cat="bd">Προϋπολογισμός</button>
 <button class="tab" role="tab" id="tabAr" type="button" data-act="gocat" data-cat="ar">Άρθρα<span class="cnt" id="cntAr"></span></button>
+<button class="tab" role="tab" id="tabSt" type="button" data-act="gocat" data-cat="st">⚙ Ρυθμίσεις</button>
   </nav>
   <div class="alerts" id="alerts" aria-live="polite"></div>
   <section class="stats" id="stats"></section>
@@ -297,9 +307,403 @@ function norm(o){
   return {name:String(o.name||"").trim(),description:String(o.description||"").trim(),vendor:String(o.vendor||"").trim(),
     website:String(o.website||"").trim(),username:String(o.username||"").trim(),emails:String(o.emails||"").trim(),
     dateFrom:o.dateFrom||"",dateTo:o.dateTo||"",cost:o.cost===""||o.cost==null?0:Number(o.cost),
-    remindDays:+o.remindDays||30,attachments:o.attachments||[],history:o.history||[],milestones:o.milestones||[],budget:o.budget||[],createdAt:o.createdAt||Date.now(),sample:!!o.sample};
+    remindDays:+o.remindDays||30,attachments:o.attachments||[],history:o.history||[],milestones:o.milestones||[],budget:o.budget||[],custom:o.custom||{},createdAt:o.createdAt||Date.now(),sample:!!o.sample};
 }
 function uid(){return "s"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+
+/* ---------- Ρυθμίσεις: general settings, custom fields, backup / restore (3.12.0) ---------- */
+var ST_COLLS=["software","contracts","tenders","contractors"];
+var ST_CAT={sw:"software",ct:"contracts",tn:"tenders",co:"contractors"};
+var ST_NAMES={software:"Online Renewals",contracts:"Συμβάσεις",tenders:"Διαγωνισμοί",contractors:"Ανάδοχοι"};
+var CF_TYPES={text:"Κείμενο",number:"Αριθμός / Ποσό",date:"Ημερομηνία",select:"Λίστα επιλογών (drop-down)"};
+var ST_CACHE=null;
+function stNorm(s){
+  s=s&&typeof s==="object"?s:{};
+  var vat=Number(s.vat);vat=s.vat===""||s.vat==null||!isFinite(vat)?19:Math.max(0,Math.min(100,vat));
+  var rd=Math.round(Number(s.remindDays));rd=isFinite(rd)&&rd>=1?Math.min(365,rd):30;
+  var cf={},cfs=s.customFields&&typeof s.customFields==="object"?s.customFields:{};
+  ST_COLLS.forEach(function(c){
+    var seen={};cf[c]=(Array.isArray(cfs[c])?cfs[c]:[]).filter(function(f){
+      if(!f||!/^[A-Za-z0-9_-]{1,40}$/.test(String(f.id||""))||!String(f.label||"").trim()||seen[f.id])return false;seen[f.id]=1;return true;
+    }).slice(0,30).map(function(f){
+      var t=CF_TYPES[f.type]?f.type:"text";
+      return {id:String(f.id),label:String(f.label).trim().slice(0,80),type:t,options:t==="select"&&Array.isArray(f.options)?f.options.map(function(o){return String(o).trim().slice(0,100)}).filter(function(o,i,a){return o&&a.indexOf(o)===i}).slice(0,50):[]};
+    });
+  });
+  return {vat:vat,remindDays:rd,customFields:cf};
+}
+function stGet(){
+  if(ST_CACHE)return ST_CACHE;
+  var s=null;
+  if(window.RL_CFG&&window.RL_CFG.settings)s=window.RL_CFG.settings;
+  else{try{s=JSON.parse(localStorage.getItem("rl.settings")||"null")}catch(e){}}
+  return (ST_CACHE=stNorm(s));
+}
+async function stSave(obj){
+  obj=stNorm(obj);
+  if(window.RL_SAVE_SETTINGS){
+    try{var res=await window.RL_SAVE_SETTINGS(obj);window.RL_CFG.settings=res.settings||obj}
+    catch(e){toast(e&&e.status===403?"Μόνο οι διαχειριστές μπορούν να αλλάξουν τις ρυθμίσεις":"Αποτυχία αποθήκευσης ρυθμίσεων: "+((e&&e.message)||""));return false}
+  }else{try{localStorage.setItem("rl.settings",JSON.stringify(obj))}catch(e){toast("Δεν ήταν δυνατή η αποθήκευση των ρυθμίσεων σε αυτόν τον browser");return false}}
+  ST_CACHE=null;return true;
+}
+function bdVat(){return stGet().vat/100}
+function defRemind(){return stGet().remindDays}
+
+/* custom fields: descriptors that plug into the existing forms (keys are "cf_<id>") */
+function cfDescs(coll){
+  return stGet().customFields[coll].map(function(f){
+    return {k:"cf_"+f.id,l:f.label,q:f.label+";",cf:1,id:f.id,num:f.type==="number",date:f.type==="date",opts:f.type==="select"?f.options:null};
+  });
+}
+function cfInput(f,v,id){
+  v=v==null?"":v;
+  if(f.opts){
+    var o=f.opts.slice();if(v!==""&&o.indexOf(String(v))<0)o.push(String(v));
+    return '<select id="'+id+'"><option value="">—</option>'+o.map(function(x){return '<option value="'+esc(x)+'"'+(String(v)===x?" selected":"")+'>'+esc(x)+'</option>'}).join("")+'</select>';
+  }
+  if(f.date)return '<input id="'+id+'" type="date" value="'+esc(v)+'">';
+  if(f.num)return '<input id="'+id+'" type="number" step="any" inputmode="decimal" value="'+esc(v)+'" autocomplete="off">';
+  return '<input id="'+id+'" type="text" value="'+esc(v)+'" autocomplete="off">';
+}
+function cfErr(f,v){
+  if(v==null||String(v).trim()==="")return "";
+  if(f.num&&!isFinite(Number(v)))return f.l+": πρέπει να είναι αριθμός.";
+  if(f.date&&!parseIso(v))return f.l+": μη έγκυρη ημερομηνία.";
+  return "";
+}
+function cfLoad(d,coll){
+  cfDescs(coll).forEach(function(f){if(d[f.k]===undefined)d[f.k]=d.custom&&d.custom[f.id]!=null?d.custom[f.id]:""});
+}
+function cfApply(rec,d,coll){
+  var c={};
+  cfDescs(coll).forEach(function(f){
+    var v=d[f.k];if(v===""||v==null)return;
+    c[f.id]=f.num?Number(v):String(v).trim();
+  });
+  Object.keys(rec).forEach(function(k){if(/^cf_/.test(k))delete rec[k]});
+  rec.custom=c;return rec;
+}
+function cfShow(f,v){
+  if(v===""||v==null)return "—";
+  if(f.type==="date")return fmtDate(v);
+  if(f.type==="number")return Number(v).toLocaleString("en-GB",{maximumFractionDigits:4});
+  return String(v);
+}
+function cfDetail(rec,coll){
+  var defs=stGet().customFields[coll];if(!defs.length)return "";
+  var c=rec.custom||{};
+  return '<div class="sec"><h3>Πρόσθετα πεδία</h3><dl class="kv wl">'+defs.map(function(f){return '<dt>'+esc(f.label)+'</dt><dd'+(f.type==="number"?' class="num"':'')+'>'+esc(cfShow(f,c[f.id]))+'</dd>'}).join("")+'</dl></div>';
+}
+function cfCols(cat){
+  var coll=ST_CAT[cat];if(!coll)return [];
+  return stGet().customFields[coll].map(function(f){
+    var val=function(it){var v=(it.custom||{})[f.id];return v==null?"":v};
+    return cdef("cf_"+f.id,f.label,0,"1fr",{
+      v:function(it){var v=val(it);return f.type==="number"&&v!==""?'<span class="num">'+esc(cfShow(f,v))+'</span>':'<span class="sub">'+esc(cfShow(f,v))+'</span>'},
+      s:function(it){var v=val(it);return f.type==="number"&&v!==""?Number(v):v}
+    });
+  });
+}
+function swF(){return FIELDS.concat(cfDescs("software"))}
+function coF(){return CO_BASE.concat(cfDescs("contractors"))}
+function colsAll(cat){return COLS[cat].concat(cfCols(cat))}
+/* export columns (Excel / CSV): one column per custom field, rows in the same order as the base export */
+function cfHead(coll){return stGet().customFields[coll].map(function(f){return f.label})}
+function cfRow(coll,rec){var c=rec.custom||{};return stGet().customFields[coll].map(function(f){var v=c[f.id];return v==null?"":f.type==="number"&&v!==""?Number(v):v})}
+function ctHead(n){return ctHead0(n).concat(cfHead("contracts"))}
+function ctRowsOut(n){var l=S.contracts.slice().sort(function(a,b){return (a.dateTo||"").localeCompare(b.dateTo||"")});return ctRowsOut0(n).map(function(r,i){return r.concat(cfRow("contracts",l[i]))})}
+function tnHead(n){return tnHead0(n).concat(cfHead("tenders"))}
+function tnRowsOut(n){var l=S.tenders.slice().sort(function(a,b){return (a.dateFrom||"").localeCompare(b.dateFrom||"")});return tnRowsOut0(n).map(function(r,i){return r.concat(cfRow("tenders",l[i]))})}
+function coHead(){return coHead0().concat(cfHead("contractors"))}
+function coRowsOut(){var l=(S.contractors||[]).slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name),"el",{sensitivity:"base"})});return coRowsOut0().map(function(r,i){return r.concat(cfRow("contractors",l[i]))})}
+function swHead(){return HEAD.concat(cfHead("software"))}
+function swRowsOut(){var l=S.items.slice().sort(function(a,b){return (a.dateTo||"").localeCompare(b.dateTo||"")});return rowsOut().map(function(r,i){return r.concat(cfRow("software",l[i]))})}
+
+/* ---------- minimal ZIP (stored) writer / reader for the backup ---------- */
+var CRC_T=null;
+function crc32(u8){
+  if(!CRC_T){CRC_T=new Int32Array(256);for(var n=0;n<256;n++){var c=n;for(var k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;CRC_T[n]=c}}
+  var c2=-1;for(var i=0;i<u8.length;i++)c2=CRC_T[(c2^u8[i])&255]^(c2>>>8);
+  return (c2^-1)>>>0;
+}
+function u8cat(parts){var n=0;parts.forEach(function(p){n+=p.length});var o=new Uint8Array(n),k=0;parts.forEach(function(p){o.set(p,k);k+=p.length});return o}
+function zipBuild(entries){
+  var enc=new TextEncoder(),parts=[],cen=[],off=0;
+  entries.forEach(function(e){
+    var nm=enc.encode(e.name),crc=crc32(e.data),sz=e.data.length;
+    var lh=new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);lh.setUint16(12,0x21,true);lh.setUint32(14,crc,true);lh.setUint32(18,sz,true);lh.setUint32(22,sz,true);lh.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(lh.buffer),nm,e.data);
+    var ch=new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);ch.setUint16(14,0x21,true);ch.setUint32(16,crc,true);ch.setUint32(20,sz,true);ch.setUint32(24,sz,true);ch.setUint16(28,nm.length,true);ch.setUint32(42,off,true);
+    cen.push(new Uint8Array(ch.buffer),nm);
+    off+=30+nm.length+sz;
+  });
+  var cs=0;cen.forEach(function(p){cs+=p.length});
+  var eo=new DataView(new ArrayBuffer(22));
+  eo.setUint32(0,0x06054b50,true);eo.setUint16(8,entries.length,true);eo.setUint16(10,entries.length,true);eo.setUint32(12,cs,true);eo.setUint32(16,off,true);
+  return u8cat(parts.concat(cen,[new Uint8Array(eo.buffer)]));
+}
+async function zipRead(buf){
+  var u8=new Uint8Array(buf),dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength),dec=new TextDecoder("utf-8"),eo=-1,i;
+  for(i=u8.length-22;i>=Math.max(0,u8.length-65557);i--){if(dv.getUint32(i,true)===0x06054b50){eo=i;break}}
+  if(eo<0)throw new Error("Το αρχείο δεν είναι έγκυρο ZIP.");
+  var n=dv.getUint16(eo+10,true),p=dv.getUint32(eo+16,true),out={};
+  for(i=0;i<n;i++){
+    if(dv.getUint32(p,true)!==0x02014b50)throw new Error("Αλλοιωμένο αρχείο ZIP.");
+    var method=dv.getUint16(p+10,true),crc=dv.getUint32(p+16,true),csz=dv.getUint32(p+20,true),nl=dv.getUint16(p+28,true),el=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true),lho=dv.getUint32(p+42,true);
+    var name=dec.decode(u8.subarray(p+46,p+46+nl));p+=46+nl+el+cl;
+    var st=lho+30+dv.getUint16(lho+26,true)+dv.getUint16(lho+28,true),raw=u8.subarray(st,st+csz),data;
+    if(method===0)data=raw;
+    else if(method===8&&typeof DecompressionStream!=="undefined"){data=new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer())}
+    else throw new Error("Μη υποστηριζόμενη συμπίεση ZIP. Χρησιμοποίησε ένα backup που δημιούργησε το PROCURE360.");
+    if(crc32(data)!==crc)throw new Error("Το αρχείο «"+name+"» είναι αλλοιωμένο (αποτυχία ελέγχου CRC).");
+    out[name]=data;
+  }
+  return out;
+}
+
+/* ---------- backup ---------- */
+function bkAtts(rec){
+  var a=(rec.attachments||[]).slice();
+  (rec.milestones||[]).forEach(function(m){(m.attachments||[]).forEach(function(x){a.push(x)})});
+  return a;
+}
+function bkData(){return {software:S.items,contracts:S.contracts,tenders:S.tenders,contractors:S.contractors}}
+async function bkCreate(){
+  var enc=new TextEncoder(),st=$("#bkMsg"),say=function(t){if(st)st.textContent=t};
+  var data=bkData(),entries=[],counts={},files={},missing=[],canRead=!!(S.assets&&S.assets.read);
+  say("Συλλογή δεδομένων…");
+  ST_COLLS.forEach(function(c){
+    var list=(data[c]||[]).map(function(x){return Object.assign({},x)});counts[c]=list.length;
+    entries.push({name:"data/"+c+".json",data:enc.encode(JSON.stringify(list))});
+  });
+  var seen={};
+  for(var ci=0;ci<ST_COLLS.length;ci++){
+    var list=data[ST_COLLS[ci]]||[];
+    for(var i=0;i<list.length;i++){
+      var at=bkAtts(list[i]);
+      for(var j=0;j<at.length;j++){
+        var a=at[j];if(!a||!a.id||seen[a.id])continue;seen[a.id]=1;
+        if(!canRead){missing.push(a.name||a.id);continue}
+        say("Συνημμένα: "+(a.name||a.id)+"…");
+        try{var b=await S.assets.read(a.id);if(!b)throw new Error("empty");
+          var bytes=new Uint8Array(await b.arrayBuffer());
+          entries.push({name:"files/"+a.id,data:bytes});files[a.id]={name:a.name||a.id,size:bytes.length}}
+        catch(e){missing.push(a.name||a.id)}
+      }
+    }
+  }
+  entries.push({name:"settings.json",data:enc.encode(JSON.stringify(stGet()))});
+  entries.push({name:"articles.json",data:enc.encode(JSON.stringify(articles()))});
+  entries.unshift({name:"manifest.json",data:enc.encode(JSON.stringify({app:"PROCURE360",format:1,createdAt:new Date().toISOString(),counts:counts,files:files,missingFiles:missing}))});
+  say("Δημιουργία αρχείου…");
+  var zip=zipBuild(entries),name="PROCURE360-backup-"+todayIso()+".zip";
+  var ok=false;
+  if(!S.dl){say("Οι λήψεις δεν είναι διαθέσιμες σε αυτό το περιβάλλον.");return}
+  try{await S.dl.save({filename:name,data:zip});ok=true}catch(e){if(e&&e.code==="declined"){say("");return}say("Δεν ήταν δυνατή η αποθήκευση του αρχείου.");return}
+  try{localStorage.setItem("rl.lastBackup",new Date().toISOString())}catch(e){}
+  var tot=0;ST_COLLS.forEach(function(c){tot+=counts[c]});
+  say("Το backup αποθηκεύτηκε: "+name+" ("+tot+" εγγραφές, "+Object.keys(files).length+" συνημμένα"+(missing.length?", δεν συμπεριλήφθηκαν "+missing.length+" συνημμένα: "+missing.slice(0,5).join(", ")+(missing.length>5?"…":""):"")+").");
+  if(ok)stFreshInfo();
+}
+/* ---------- restore ---------- */
+function bkPick(){
+  var inp=document.createElement("input");inp.type="file";inp.accept=".zip,application/zip";
+  inp.onchange=function(){if(inp.files&&inp.files[0])bkLoad(inp.files[0])};inp.click();
+}
+async function bkLoad(f){
+  S.bkResult="";var box=$("#bkRestore");if(!box)return;
+  box.innerHTML='<p class="hint">Ανάγνωση «'+esc(f.name)+'»…</p>';
+  try{
+    var z=await zipRead(await f.arrayBuffer()),dec=new TextDecoder("utf-8");
+    var man=z["manifest.json"]?JSON.parse(dec.decode(z["manifest.json"])):null;
+    if(!man||man.app!=="PROCURE360")throw new Error("Αυτό δεν είναι backup του PROCURE360.");
+    if(man.format!==1)throw new Error("Μη υποστηριζόμενη έκδοση backup ("+man.format+").");
+    var data={};
+    ST_COLLS.forEach(function(c){var e=z["data/"+c+".json"];var l=e?JSON.parse(dec.decode(e)):[];data[c]=Array.isArray(l)?l.filter(function(x){return x&&/^[A-Za-z0-9_-]{1,64}$/.test(String(x.id||""))}):[]});
+    S.bk={zip:z,man:man,data:data,settings:z["settings.json"]?JSON.parse(dec.decode(z["settings.json"])):null,articles:z["articles.json"]?JSON.parse(dec.decode(z["articles.json"])):null};
+    bkPreview();
+  }catch(e){S.bk=null;box.innerHTML='<p class="err">'+esc(e&&e.message||"Αποτυχία ανάγνωσης του backup")+'</p>'}
+}
+function bkExisting(c){var m={};(bkData()[c]||[]).forEach(function(x){m[x.id]=x});return m}
+function bkPreview(){
+  var b=S.bk,box=$("#bkRestore");if(!b||!box)return;
+  var rows=ST_COLLS.map(function(c){
+    var ex=bkExisting(c),nw=0,up=0;b.data[c].forEach(function(r){ex[r.id]?up++:nw++});
+    return '<tr><td>'+esc(ST_NAMES[c])+'</td><td class="num">'+b.data[c].length+'</td><td class="num">'+nw+'</td><td class="num">'+up+'</td></tr>';
+  }).join("");
+  var nf=Object.keys(b.man.files||{}).length,miss=(b.man.missingFiles||[]).length;
+  box.innerHTML='<div class="sec"><h3>Προεπισκόπηση restore</h3><p class="hint">Backup από '+esc(String(b.man.createdAt||"").replace("T"," ").slice(0,16))+' · '+nf+' συνημμένα'+(miss?' · '+miss+' συνημμένα δεν είχαν συμπεριληφθεί στο backup':'')+'</p>'+
+   '<div class="tbl"><table><thead><tr><th>Καρτέλα</th><th class="num">Στο backup</th><th class="num">Νέες</th><th class="num">Θα αντικατασταθούν</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+   '<p class="hint">Οι εγγραφές με το ίδιο αναγνωριστικό αντικαθίστανται από την έκδοση του backup. <b>Δεν διαγράφεται τίποτα</b>: ό,τι υπάρχει τώρα και δεν υπάρχει στο backup μένει όπως είναι.</p>'+
+   '<label class="chk"><input type="checkbox" id="bkSet"'+(b.settings?' checked':' disabled')+'> Επαναφορά ρυθμίσεων και custom fields</label> '+
+   '<label class="chk"><input type="checkbox" id="bkArt"'+(b.articles?' checked':' disabled')+'> Επαναφορά άρθρων προϋπολογισμού</label>'+
+   '<div class="actions"><button class="btn primary" type="button" data-act="bkgo">Επαναφορά τώρα</button><button class="btn" type="button" data-act="bkcancel">Άκυρο</button></div></div>';
+}
+async function bkRun(){
+  var b=S.bk,box=$("#bkRestore");if(!b||!box||S.bkBusy)return;
+  var wantSet=!!($("#bkSet")&&$("#bkSet").checked),wantArt=!!($("#bkArt")&&$("#bkArt").checked);
+  if(!window.confirm("Να γίνει επαναφορά από το backup; Οι εγγραφές με το ίδιο αναγνωριστικό θα αντικατασταθούν."))return;
+  S.bkBusy=true;
+  var lines=[],errs=[],log=function(t){box.innerHTML='<p class="hint">'+esc(t)+'</p>'};
+  try{
+    if(wantSet&&b.settings){log("Επαναφορά ρυθμίσεων…");if(await stSave(b.settings))lines.push("Ρυθμίσεις: επαναφέρθηκαν");else errs.push("Ρυθμίσεις: δεν αποθηκεύτηκαν")}
+    if(wantArt&&b.articles){
+      log("Επαναφορά άρθρων…");
+      try{
+        var al=(b.articles||[]).filter(function(a){return a&&a.code});
+        if(window.RL_SAVE_ARTICLES){var rr=await window.RL_SAVE_ARTICLES(al);window.RL_CFG.articles=rr.articles}
+        else{localStorage.setItem("rl.articles",JSON.stringify(al))}
+        lines.push("Άρθρα: "+al.length)
+      }catch(e){errs.push("Άρθρα: "+((e&&e.message)||"αποτυχία"))}
+    }
+    var order=["contractors","tenders","contracts","software"],cat={software:"sw",contracts:"ct",tenders:"tn",contractors:"co"},map={};
+    for(var oi=0;oi<order.length;oi++){
+      var c=order[oi],ok=0,bad=0,ex=bkExisting(c);
+      for(var i=0;i<b.data[c].length;i++){
+        var r=Object.assign({},b.data[c][i]),id=r.id;delete r.id;
+        log(ST_NAMES[c]+": "+(i+1)+" / "+b.data[c].length+"…");
+        try{
+          if(window.RL_TRASH&&!ex[id]){try{await window.RL_TRASH.restore(collName(cat[c]),id)}catch(e){}}/* WordPress: a record in the trash must be taken out of it before it can be written again */
+          await bkFiles(r,ex[id],c,b);
+          if(await save(id,r,cat[c]))ok++;else{bad++;if(errs.length<12)errs.push(ST_NAMES[c]+" «"+(r.title||r.name||id)+"»: δεν αποθηκεύτηκε")}
+        }catch(e){bad++;if(errs.length<12)errs.push(ST_NAMES[c]+" «"+(r.title||r.name||id)+"»: "+((e&&e.message)||"σφάλμα"))}
+      }
+      lines.push(ST_NAMES[c]+": "+ok+" επαναφέρθηκαν"+(bad?", "+bad+" απέτυχαν":""));
+    }
+  }finally{S.bkBusy=false;S.bk=null}
+  ST_CACHE=null;render();
+  S.bkResult='<div class="sec"><h3>Ολοκληρώθηκε η επαναφορά</h3><ul class="files">'+lines.map(function(x){return '<li>'+esc(x)+'</li>'}).join("")+'</ul>'+(errs.length?'<p class="err">Προβλήματα:<br>'+errs.map(esc).join("<br>")+'</p>':'')+'</div>';
+  var again=$("#bkRestore");if(again)again.innerHTML=S.bkResult;
+}
+/* attachments of a restored record: reuse a file the record already has (same name and size), otherwise upload it from the backup */
+async function bkFiles(rec,existing,coll,b){
+  var cache=bkFiles.cache||(bkFiles.cache={});
+  var fix=async function(list){
+    var out=[];
+    for(var i=0;i<(list||[]).length;i++){
+      var a=list[i];if(!a||!a.id)continue;
+      var have=existing&&bkAtts(existing).filter(function(x){return x.name===a.name&&Number(x.size)===Number(a.size)})[0];
+      if(have){out.push(Object.assign({},a,{id:have.id}));continue}
+      var bytes=b.zip["files/"+a.id];
+      if(!bytes||!S.assets||!S.assets.upload)continue;
+      if(cache[b.man.createdAt+a.id]){out.push(Object.assign({},a,{id:cache[b.man.createdAt+a.id]}));continue}
+      var ext=(String(a.name||"").split(".").pop()||"").toLowerCase(),type=MIME[ext]||"application/octet-stream";
+      var f=new File([bytes],a.name||"file",{type:type});
+      var r=await S.assets.upload(f,{type:type,coll:coll});
+      cache[b.man.createdAt+a.id]=r.id;out.push({id:r.id,name:a.name,size:r.sizeBytes||a.size});
+    }
+    return out;
+  };
+  if(rec.attachments)rec.attachments=await fix(rec.attachments);
+  if(Array.isArray(rec.milestones))for(var m=0;m<rec.milestones.length;m++){if(rec.milestones[m]&&rec.milestones[m].attachments)rec.milestones[m].attachments=await fix(rec.milestones[m].attachments)}
+}
+
+/* ---------- the Ρυθμίσεις page ---------- */
+function stCanEdit(){return !window.RL_CFG||window.RL_CFG.canManage!==false}
+function stLast(){var v="";try{v=localStorage.getItem("rl.lastBackup")||""}catch(e){}return v}
+function stFreshInfo(){var e=$("#bkLast");if(e)e.innerHTML=stLastHtml()}
+function stLastHtml(){
+  var v=stLast();if(!v)return '<span class="err">Δεν έχει γίνει backup από αυτόν τον browser.</span>';
+  var d=Math.floor((Date.now()-Date.parse(v))/864e5);
+  return 'Τελευταίο backup από αυτόν τον browser: <b>'+esc(v.replace("T"," ").slice(0,16))+'</b>'+(d>=30?' <span class="err">(πριν από '+d+' ημέρες — κάνε νέο backup)</span>':'');
+}
+function stFieldRow(coll,f,i,isNew){
+  return '<div class="cfrow" data-coll="'+coll+'" data-i="'+i+'" data-id="'+esc(f.id)+'" data-new="'+(isNew?1:0)+'">'+
+   '<label class="f">Όνομα πεδίου<input type="text" data-cf="label" maxlength="80" value="'+esc(f.label)+'" placeholder="π.χ. Κωδικός CPV"></label>'+
+   '<label class="f">Τύπος'+(isNew?'<select data-cf="type">'+Object.keys(CF_TYPES).map(function(t){return '<option value="'+t+'"'+(f.type===t?" selected":"")+'>'+CF_TYPES[t]+'</option>'}).join("")+'</select>':'<input type="text" disabled value="'+esc(CF_TYPES[f.type])+'"><input type="hidden" data-cf="type" value="'+f.type+'">')+'</label>'+
+   '<label class="f cfopt"'+(f.type==="select"?'':' hidden')+'>Επιλογές (μία ανά γραμμή)<textarea data-cf="options" rows="3">'+esc((f.options||[]).join("\n"))+'</textarea></label>'+
+   '<button type="button" class="btn small danger" data-act="cfdel" data-coll="'+coll+'" data-i="'+i+'">Διαγραφή</button></div>';
+}
+function stCollect(){
+  var root=$("#stRoot");if(!root)return null;
+  var s={vat:($("#stVat")||{}).value,remindDays:($("#stRem")||{}).value,customFields:{}};
+  ST_COLLS.forEach(function(c){s.customFields[c]=[]});
+  [].forEach.call(root.querySelectorAll(".cfrow"),function(r){
+    var g=function(k){var n=r.querySelector('[data-cf="'+k+'"]');return n?n.value:""};
+    var t=g("type");
+    s.customFields[r.dataset.coll].push({id:r.dataset.id,label:g("label"),type:t,options:t==="select"?g("options").split(/\r?\n/):[],_new:r.dataset.new==="1"});
+  });
+  return s;
+}
+function stRaw(){return S.stDraft||stGet()}
+function renderStPage(){
+  var tabs=document.querySelectorAll(".tabs .tab");[].forEach.call(tabs,function(t){t.setAttribute("aria-selected",String(t.id==="tabSt"))});
+  ["#btnAdd","#btnImport","#btnExport","#q"].forEach(function(s){var n=$(s);if(n)n.style.display="none"});
+  $("#stats").innerHTML="";$("#alerts").innerHTML="";$("#chips").innerHTML="";$("#stats").setAttribute("lang","el");
+  $("#note").textContent="Ρυθμίσεις της εφαρμογής: backup και restore, custom fields και γενικές ρυθμίσεις.";
+  var st=stRaw(),can=stCanEdit();
+  var cfHtml=ST_COLLS.map(function(c){
+    var l=st.customFields[c]||[],ex=stGet().customFields[c].map(function(f){return f.id});
+    return '<div class="cfgrp"><h4>'+esc(ST_NAMES[c])+'</h4>'+(l.length?l.map(function(f,i){return stFieldRow(c,f,i,ex.indexOf(f.id)<0)}).join(""):'<p class="hint">Δεν υπάρχουν πρόσθετα πεδία.</p>')+
+     '<div><button type="button" class="btn small" data-act="cfadd" data-coll="'+c+'">+ Νέο πεδίο</button></div></div>';
+  }).join("");
+  var n=0;ST_COLLS.forEach(function(c){n+=(bkData()[c]||[]).length});
+  var h='<div id="stRoot" lang="el">'+
+   '<div class="stcard"><h3>Backup &amp; Restore</h3>'+
+   '<p class="hint">Το backup είναι ένα αρχείο .zip με <b>όλες τις εγγραφές</b> (Online Renewals, Συμβάσεις, Διαγωνισμοί, Ανάδοχοι), τα <b>συνημμένα</b>, τις <b>ρυθμίσεις/custom fields</b> και τα άρθρα προϋπολογισμού. Δεν περιλαμβάνει τον κάδο. Περιέχει πραγματικά δεδομένα (και usernames): φύλαξέ το σε ασφαλές μέρος.</p>'+
+   '<p class="hint" id="bkLast">'+stLastHtml()+'</p>'+
+   '<div class="actions"><button type="button" class="btn primary" data-act="bkdo">⬇ Λήψη backup ('+n+' εγγραφές)</button>'+(can?'<button type="button" class="btn" data-act="bkpick">⬆ Restore από αρχείο…</button>':'')+'</div>'+
+   '<p class="hint" id="bkMsg"></p><div id="bkRestore"></div></div>'+
+   '<div class="stcard"><h3>Γενικές ρυθμίσεις</h3><div class="stgrid">'+
+   '<label class="f">Ποσοστό ΦΠΑ Προϋπολογισμού (%)<small>Τα ποσά των εγγραφών είναι χωρίς ΦΠΑ· ο Προϋπολογισμός τα εμφανίζει με ΦΠΑ.</small><input id="stVat" type="number" step="0.01" min="0" max="100" value="'+esc(st.vat)+'"'+(can?'':' disabled')+'></label>'+
+   '<label class="f">Προεπιλεγμένη υπενθύμιση ετών σύμβασης (ημέρες πριν τη λήξη)<small>Ισχύει για τα νέα έτη σύμβασης· κάθε έτος αλλάζει ξεχωριστά.</small><input id="stRem" type="number" step="1" min="1" max="365" value="'+esc(st.remindDays)+'"'+(can?'':' disabled')+'></label></div></div>'+
+   '<div class="stcard"><h3>Custom fields</h3><p class="hint">Πρόσθετα πεδία για κάθε καρτέλα. Εμφανίζονται στη φόρμα, στις λεπτομέρειες, στις στήλες της λίστας (⚙ Στήλες) και στο Excel/CSV. Ο τύπος ενός πεδίου δεν αλλάζει αφού αποθηκευτεί. Αν διαγράψεις ένα πεδίο, οι τιμές του δεν εμφανίζονται πια και αφαιρούνται από κάθε εγγραφή όταν αυτή αποθηκευτεί ξανά.</p>'+cfHtml+'</div>'+
+   (can?'<div class="actions"><button type="button" class="btn primary" data-act="stsave">Αποθήκευση ρυθμίσεων</button></div><div class="err" id="stErr"></div>':'<p class="hint">Μόνο οι διαχειριστές αλλάζουν τις ρυθμίσεις.</p>')+
+   '<div class="stcard"><h3>Πληροφορίες</h3><p class="hint">'+(window.RL_CFG?'Τα δεδομένα αποθηκεύονται στη βάση του WordPress.':'Τα δεδομένα αποθηκεύονται <b>μόνο σε αυτόν τον browser</b> (όχι στο cloud). Κάνε backup τακτικά και πριν καθαρίσεις τα δεδομένα του browser.')+'</p>'+
+   '<p class="hint">Εγγραφές: '+n+' · Άρθρα προϋπολογισμού: '+articles().length+'</p></div></div>';
+  $("#list").innerHTML=h;
+  if(S.bk)bkPreview();else if(S.bkResult){var br=$("#bkRestore");if(br)br.innerHTML=S.bkResult}
+}
+async function stSaveClick(){
+  var s=stCollect();if(!s)return;var e="",err=$("#stErr");
+  var vat=Number(s.vat),rd=Number(s.remindDays);
+  if(s.vat===""||!isFinite(vat)||vat<0||vat>100)e="ΦΠΑ: δώσε αριθμό από 0 έως 100.";
+  else if(s.remindDays===""||!isFinite(rd)||rd<1||rd>365||Math.floor(rd)!==rd)e="Υπενθύμιση: δώσε ακέραιο αριθμό ημερών από 1 έως 365.";
+  ST_COLLS.forEach(function(c){
+    if(e)return;var seen={};
+    s.customFields[c].forEach(function(f){
+      if(e)return;var lab=String(f.label||"").trim();
+      if(!lab)e=ST_NAMES[c]+": κάθε custom field χρειάζεται όνομα.";
+      else if(seen[lab.toLowerCase()])e=ST_NAMES[c]+": το πεδίο «"+lab+"» υπάρχει δύο φορές.";
+      else if(f.type==="select"&&!f.options.some(function(o){return o.trim()}))e=ST_NAMES[c]+": το πεδίο «"+lab+"» χρειάζεται τουλάχιστον μία επιλογή.";
+      seen[lab.toLowerCase()]=1;
+    });
+  });
+  if(e){if(err)err.textContent=e;return}
+  if(await stSave(s)){S.stDirty=false;S.stDraft=null;toast("Οι ρυθμίσεις αποθηκεύτηκαν");render()}
+}
+function stAction(act,b){
+  switch(act){
+    case "stsave":stSaveClick();return true;
+    case "cfadd":{var s=stNorm2(stCollect()||stGet());s.customFields[b.dataset.coll].push({id:"f"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),label:"",type:"text",options:[]});S.stDraft=s;S.stDirty=true;renderStPage();return true}
+    case "cfdel":{var s2=stCollect();if(!s2)return true;var l=s2.customFields[b.dataset.coll],i=+b.dataset.i,f=l[i];
+      if(f&&!f._new){var used=(bkData()[b.dataset.coll]||[]).filter(function(r){return r.custom&&r.custom[f.id]!=null}).length;
+        if(!window.confirm("Να διαγραφεί το πεδίο «"+(f.label||"")+"»;"+(used?" "+used+" εγγραφές έχουν τιμή σε αυτό· δεν θα εμφανίζεται πια.":"")))return true}
+      l.splice(i,1);S.stDraft=stNorm2(s2);S.stDirty=true;renderStPage();return true}
+    case "bkdo":bkCreate();return true;
+    case "bkpick":bkPick();return true;
+    case "bkgo":bkRun();return true;
+    case "bkcancel":S.bk=null;S.bkResult="";{var bx=$("#bkRestore");if(bx)bx.innerHTML=""}return true;
+  }
+  return false;
+}
+/* keeps unsaved rows (also with empty names) while the page is edited, unlike stNorm which drops them */
+function stNorm2(s){
+  var o={vat:s.vat,remindDays:s.remindDays,customFields:{}};
+  ST_COLLS.forEach(function(c){o.customFields[c]=(s.customFields[c]||[]).map(function(f){return {id:f.id,label:f.label||"",type:CF_TYPES[f.type]?f.type:"text",options:Array.isArray(f.options)?f.options:[]}})});
+  return o;
+}
+document.addEventListener("input",function(e){
+  if(S.cat!=="st"||!e.target||!e.target.closest||!e.target.closest("#stRoot"))return;
+  S.stDirty=true;
+});
+document.addEventListener("change",function(e){
+  var t=e.target;if(S.cat!=="st"||!t||!t.matches||!t.matches('[data-cf="type"]'))return;
+  var row=t.closest(".cfrow"),o=row&&row.querySelector(".cfopt");if(o)o.hidden=t.value!=="select";
+});
 
 /* ---------- storage ---------- */
 function col(n){return S.db.doc("data/users/"+S.uid+"/app").collection(n||"software")}
@@ -459,13 +863,14 @@ function showDetail(id){
    bpDetail(it,0)+msSection("sw",it)+
    '<div class="sec"><h3>Renewal</h3><div><button class="btn primary" type="button" data-act="renew">Renew…</button></div>'+
    (hist?'<div class="tbl"><table><thead><tr><th>Previous period</th><th>Cost excl. VAT</th></tr></thead><tbody>'+hist+'</tbody></table></div>':'')+'</div>'+
-   '<div class="sec"><div class="actions"><button class="btn" type="button" data-act="edit">Edit details</button><button class="btn danger" type="button" data-act="del">Delete</button></div><div id="delbox"></div></div>'
+   cfDetail(it,"software")+'<div class="sec"><div class="actions"><button class="btn" type="button" data-act="edit">Edit details</button><button class="btn danger" type="button" data-act="del">Delete</button></div><div id="delbox"></div></div>'
   ,"detail");
 }
 
 /* ---------- add / edit (guided prompt or full form) ---------- */
 function inputHtml(f,val,pre){
   var id=pre+f.k,v=val==null?"":val;
+  if(f.cf)return cfInput(f,v,id);
   if(f.ta)return '<textarea id="'+id+'" placeholder="'+esc(f.ph||"")+'">'+esc(v)+'</textarea>';
   var t=f.date?"date":f.num?"number":f.k==="website"?"url":"text";
   return '<input id="'+id+'" type="'+t+'"'+(f.num?' step="0.01" min="0" inputmode="decimal"':'')+' value="'+esc(v)+'" placeholder="'+esc(f.ph||"")+'" autocomplete="off">';
@@ -478,7 +883,7 @@ function startWizard(id){
 }
 function collect(){
   var w=S.wiz;
-  FIELDS.forEach(function(f){var el=$("#w_"+f.k);if(el)w.data[f.k]=el.value});
+  swF().forEach(function(f){var el=$("#w_"+f.k);if(el)w.data[f.k]=el.value});
   var r=$("#w_remind");if(r)w.data.remindDays=+r.value;
   bpCollect(w.data);
   if(bpHas(w.data))w.data.cost=bpSum(w.data.budget);
@@ -486,8 +891,9 @@ function collect(){
 function validate(keys){
   var d=S.wiz.data;
   for(var i=0;i<keys.length;i++){
-    var f=FIELDS.filter(function(x){return x.k===keys[i]})[0];if(!f)continue;
+    var f=swF().filter(function(x){return x.k===keys[i]})[0];if(!f)continue;
     var v=d[f.k];
+    if(f.cf){var ce=cfErr(f,v);if(ce)return ce}
     if(f.req&&(v==null||String(v).trim()===""))return f.l+" is required.";
     if(f.date&&v&&!parseIso(v))return f.l+" is not a valid date.";
     if(f.email&&v&&emailsErr(v))return emailsErr(v);
@@ -499,19 +905,19 @@ function validate(keys){
 }
 function bpSec(d){return '<div class="sec"><h3>Cost breakdown (optional)</h3><p class="hint">Split the cost into partial amounts per year, each with its budget article. When you add partial amounts, the cost is their sum.</p>'+bpBlock(d,null,0,msYears("sw",d))+'</div>'}
 function drawWizard(){
-  var w=S.wiz,d=w.data,h;
+  var w=S.wiz,d=w.data,h;cfLoad(d,"software");
   var head='<div class="ph"><h2>'+(w.id?"Edit software":"Add software")+'</h2><button class="btn small" type="button" data-act="close">Cancel</button></div>';
   if(w.mode==="full"){
-    h=head+'<div style="display:grid;gap:12px">'+FIELDS.map(function(f){
+    h=head+'<div style="display:grid;gap:12px">'+swF().map(function(f){
       var ih=inputHtml(f,d[f.k],"w_");if(f.k==="cost"&&bpHas(d))ih=ih.replace("<input","<input readonly");
       return '<label class="f">'+f.l+(f.req?' *':'')+(f.hint?'<small>'+esc(f.hint)+'</small>':'')+ih+'</label>'+(f.k==="cost"?'</div>'+bpSec(d)+'<div style="display:grid;gap:12px">':'');
     }).join("")+'<label class="f">Reminder<small>Alert me before expiry</small>'+remindSel(d.remindDays||30,"w_remind")+'</label></div>'+
     '<div class="err" id="werr">'+esc(w.err)+'</div>'+
     '<div class="actions"><button class="btn primary" type="button" data-act="wsave">Save</button>'+(w.id?'':'<button class="btn" type="button" data-act="wstep">Guided mode</button>')+'</div>';
   }else{
-    var total=FIELDS.length+1,i=w.i,last=i===total-1;
+    var total=swF().length+1,i=w.i,last=i===total-1;
     var body;
-    if(i<FIELDS.length){var f=FIELDS[i];body='<label class="f"><span class="big-q">'+f.q+(f.req?'':' <small>(optional)</small>')+'</span>'+inputHtml(f,d[f.k],"w_")+'</label>'}
+    if(i<swF().length){var f=swF()[i];body='<label class="f"><span class="big-q">'+f.q+(f.req?'':' <small>(optional)</small>')+'</span>'+inputHtml(f,d[f.k],"w_")+'</label>'}
     else body='<label class="f"><span class="big-q">When should we alert you before it expires?</span>'+remindSel(d.remindDays||30,"w_remind")+'</label>'+bpSec(d);
     h=head+'<div class="steps" aria-hidden="true"><i style="width:'+Math.round((i+1)/total*100)+'%"></i></div><div class="hint">Step '+(i+1)+' of '+total+'</div>'+body+
     '<div class="err" id="werr">'+esc(w.err)+'</div>'+
@@ -523,16 +929,16 @@ function drawWizard(){
 }
 async function wizSave(){
   collect();var w=S.wiz;
-  var e=validate(FIELDS.map(function(f){return f.k}));
+  var e=validate(swF().map(function(f){return f.k}));
   if(e){w.err=e;var x=$("#werr");if(x)x.textContent=e;return}
   var base=w.id?byId(w.id):{};
-  var rec=norm(Object.assign({},base,w.data));
+  var rec=norm(Object.assign({},base,w.data));cfApply(rec,w.data,"software");
   rec.budget=bpClean(w.data);if(rec.budget.length)rec.cost=bpSum(rec.budget);
   var id=w.id||uid();
   if(await save(id,rec)){closePanel();toast(w.id?"Saved":"Added "+rec.name);if(!w.id)showDetail(id)}
 }
 function wizNext(){
-  collect();var w=S.wiz,f=FIELDS[w.i];
+  collect();var w=S.wiz,f=swF()[w.i];
   var e=validate([f.k]);
   if(e){w.err=e;var x=$("#werr");if(x)x.textContent=e;return}
   if(f.k==="dateFrom"&&!w.data.dateTo)w.data.dateTo=addYear(w.data.dateFrom);
@@ -832,16 +1238,16 @@ function loadPrefs(){
   var d={cols:{sw:[],ct:[],tn:[],co:[]},sort:{sw:{k:"dateTo",dir:1},ct:{k:"dateTo",dir:1},tn:{k:"dateFrom",dir:1},co:{k:"name",dir:1}}},p=null;
   try{p=JSON.parse(localStorage.getItem("rl.listprefs")||"null")}catch(e){}
   ["sw","ct","tn","co"].forEach(function(c){
-    var keys=COLS[c].map(function(x){return x.k}),sel=p&&p.cols&&Array.isArray(p.cols[c])?p.cols[c].filter(function(k){return keys.indexOf(k)>=0}):null;
-    d.cols[c]=sel&&sel.length?sel:COLS[c].filter(function(x){return x.d}).map(function(x){return x.k});
+    var keys=colsAll(c).map(function(x){return x.k}),sel=p&&p.cols&&Array.isArray(p.cols[c])?p.cols[c].filter(function(k){return keys.indexOf(k)>=0}):null;
+    d.cols[c]=sel&&sel.length?sel:colsAll(c).filter(function(x){return x.d}).map(function(x){return x.k});
     var so=p&&p.sort&&p.sort[c];if(so&&keys.indexOf(so.k)>=0)d.sort[c]={k:so.k,dir:so.dir===-1?-1:1};
   });
   return d;
 }
 function savePrefs(){try{localStorage.setItem("rl.listprefs",JSON.stringify({cols:S.cols,sort:S.sort}))}catch(e){}}
-function colsOf(cat){var sel=S.cols[cat];return COLS[cat].filter(function(c){return sel.indexOf(c.k)>=0})}
+function colsOf(cat){var sel=S.cols[cat];return colsAll(cat).filter(function(c){return sel.indexOf(c.k)>=0})}
 function sortList(cat,list){
-  var so=S.sort[cat],c=COLS[cat].filter(function(x){return x.k===so.k})[0]||COLS[cat].filter(function(x){return x.k==="dateTo"})[0];
+  var so=S.sort[cat],c=colsAll(cat).filter(function(x){return x.k===so.k})[0]||colsAll(cat).filter(function(x){return x.k==="dateTo"})[0];
   return list.slice().sort(function(a,b){
     var x=c.s(a),y=c.s(b),xe=x===""||x==null,ye=y===""||y==null;
     if(xe||ye)return xe&&ye?0:xe?1:-1; /* empty values always last */
@@ -876,7 +1282,7 @@ function showCols(){
   var cat=S.cat,el=cat!=="sw",sel=S.cols[cat];
   var h='<div class="ph"><h2>'+(el?"Στήλες λίστας":"List columns")+'</h2><button class="btn small" type="button" data-act="close">'+(el?"Κλείσιμο":"Close")+'</button></div>'+
    '<p class="hint">'+(el?"Επίλεξε ποιες στήλες θα εμφανίζονται στην αρχική σελίδα. Μπορείς να ταξινομήσεις οποιαδήποτε στήλη πατώντας στην επικεφαλίδα της.":"Choose which columns are shown on the main page. Click any column heading to sort it ascending or descending.")+'</p>'+
-   '<div class="colpick">'+COLS[cat].map(function(c){return '<label><input type="checkbox" data-col="'+c.k+'"'+(sel.indexOf(c.k)>=0?' checked':'')+'> '+esc(c.l)+'</label>'}).join("")+'</div>'+
+   '<div class="colpick">'+colsAll(cat).map(function(c){return '<label><input type="checkbox" data-col="'+c.k+'"'+(sel.indexOf(c.k)>=0?' checked':'')+'> '+esc(c.l)+'</label>'}).join("")+'</div>'+
    '<div class="actions"><button class="btn" type="button" data-act="colsreset">'+(el?"Προεπιλογή":"Reset to default")+'</button></div>';
   openPanel(h,"cols");
 }
@@ -886,7 +1292,7 @@ function toggleCol(k,on){
   if(!sel.length){showCols();return}
   S.cols[cat]=sel;savePrefs();render();
 }
-function resetCols(){S.cols[S.cat]=COLS[S.cat].filter(function(x){return x.d}).map(function(x){return x.k});S.sort[S.cat]={k:S.cat==="tn"?"dateFrom":S.cat==="co"?"name":"dateTo",dir:1};savePrefs();render();showCols()}
+function resetCols(){S.cols[S.cat]=colsAll(S.cat).filter(function(x){return x.d}).map(function(x){return x.k});S.sort[S.cat]={k:S.cat==="tn"?"dateFrom":S.cat==="co"?"name":"dateTo",dir:1};savePrefs();render();showCols()}
 var PREFS=loadPrefs();S.cols=PREFS.cols;S.sort=PREFS.sort;
 
 /* ---------- budget breakdown: partial amounts per year, each with a budget article ---------- */
@@ -1081,7 +1487,7 @@ function bdAlloc(amount,from,to,split){
 /* rows: one per record and article; amounts per calendar year */
 var BD_VAT=0.19; /* amounts in the records are net of VAT; the budget sheet shows them including 19% VAT */
 function bdBuild(arts,items,contracts,tenders,vat){
-  vat=vat==null?BD_VAT:vat;
+  vat=vat==null?bdVat():vat;
   var rows={},order=[],warn=[];
   function rowFor(code,kind,id,desc,head){var k=code+"|"+kind+"|"+id;if(!rows[k]){rows[k]={code:code,kind:kind,id:id,desc:desc,how:head.slice(),by:{}};order.push(k)}return rows[k]}
   function seg(kind,id,desc,head,label,from,to,parts,cost,force){
@@ -1252,7 +1658,7 @@ function ctField(f,d,step){
   if(step)return '<label class="f"><span class="big-q">'+f.q+(f.req?'':' <small>(προαιρετικό)</small>')+'</span>'+ctInput(f,d[f.k],"c_"+f.k)+'</label>';
   return '<label class="f">'+f.l+(f.req?' *':'')+(f.hint?'<small>'+esc(f.hint)+'</small>':'')+ctInput(f,d[f.k],"c_"+f.k)+'</label>';
 }
-function cwBase(){return S.cw&&S.cw.kind==="tn"?TN_BASE:CT_BASE}
+function cwBase(){var tn=S.cw&&S.cw.kind==="tn";return (tn?TN_BASE:CT_BASE).concat(cfDescs(tn?"tenders":"contracts"))}
 function mc(v){return v===""||v==null?"—":money(v)}
 function dayTextEl(d){if(d==null)return "";if(d<0){var n=-d;return "πριν από "+n+(n==1?" ημέρα":" ημέρες")}if(d==0)return "σήμερα";return "σε "+d+(d==1?" ημέρα":" ημέρες")}
 function addMonths(s,k){var d=parseIso(s);if(!d)return "";var day=d.getDate();d=new Date(d.getFullYear(),d.getMonth()+k,1);var dim=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();d.setDate(Math.min(day,dim));return iso(d)}
@@ -1264,7 +1670,7 @@ function buildYears(from,months,old){
   var n=Math.max(1,Math.floor(m/12)),first=m<12?m:12+(m%12),out=[],s=from;
   for(var i=0;i<n;i++){
     var len=i===0?first:12,e=addDays(addMonths(s,len),-1),o=old&&old[i];
-    out.push({from:s,to:e,cost:o&&o.cost!=null?o.cost:"",remind:o&&o.remind?+o.remind:30});
+    out.push({from:s,to:e,cost:o&&o.cost!=null?o.cost:"",remind:o&&o.remind?+o.remind:defRemind()});
     s=addDays(e,1);
   }
   var fin=ctEnd(from,m);if(fin>=out[out.length-1].from)out[out.length-1].to=fin;
@@ -1397,7 +1803,7 @@ function showCtDetail(id){
    '<span class="hint">Η υπενθύμιση κάθε έτους εμφανίζεται στην κορυφή και στο παράθυρο ειδοποιήσεων από την επιλεγμένη ημερομηνία μέχρι τη λήξη του έτους.</span></div>'+
    '<div class="sec"><h3>Συνημμένα</h3>'+(files?'<ul class="files">'+files+'</ul>':'<span class="hint">Δεν υπάρχουν συνημμένα (συμβάσεις, τιμολόγια, αποδείξεις).</span>')+
    '<div><button class="btn" type="button" data-act="attach"'+(S.assets?'':' disabled')+'>+ Προσθήκη αρχείων</button> <span class="hint">'+(S.assets?'PDF, εικόνες, CSV, κείμενο, Word, Excel, PowerPoint, HTML, XML, email (eml/msg), άδειες (lic), συμπιεσμένα (zip/7z/rar) κ.ά. · μέγιστο μέγεθος αρχείου '+attMB()+' MB. Τα αρχεία HTML κατεβαίνουν, δεν ανοίγουν μέσα στην εφαρμογή.':'Η μεταφόρτωση δεν είναι διαθέσιμη εδώ.')+'</span></div></div>'+
-   bpDetail(c,1)+exDetail(c)+msSection("ct",c)+
+   bpDetail(c,1)+exDetail(c)+cfDetail(c,"contracts")+msSection("ct",c)+
    '<div class="sec"><div class="actions"><button class="btn" type="button" data-act="edit">Επεξεργασία</button>'+ctArchBtn(c)+'<button class="btn danger" type="button" data-act="ctdel">Διαγραφή</button></div><div id="delbox"></div></div>'
   ,"detail",true);
 }
@@ -1405,6 +1811,7 @@ function showCtDetail(id){
 /* ---------- add / edit ---------- */
 function ctInput(f,v,id){
   v=v==null?"":v;
+  if(f.cf)return cfInput(f,v,id);
   if(f.ta)return '<textarea id="'+id+'" placeholder="'+esc(f.ph||"")+'">'+esc(v)+'</textarea>';
   var t=f.date?"date":f.num?"number":"text";
   var ex=f.k==="months"?' step="1" min="1" inputmode="numeric"':f.num?' step="0.01" min="0" inputmode="decimal"':'';
@@ -1481,7 +1888,7 @@ function ctYearsTable(){
    }).join("")+'</tbody></table></div><p class="hint">Άθροισμα κόστους ετών: <b id="cSum">'+mc(ctSum(ys))+'</b></p>';
 }
 function ctDraw(){
-  var w=S.cw,d=w.d,tn=w.kind==="tn",B=cwBase(),h;
+  var w=S.cw,d=w.d,tn=w.kind==="tn",B=cwBase(),h;cfLoad(d,tn?"tenders":"contracts");
   var ttl=w.promoteFrom?"Promote στις Συμβάσεις":tn?(w.id?"Επεξεργασία διαγωνισμού":"Νέος διαγωνισμός"):(w.id?"Επεξεργασία σύμβασης":"Νέα σύμβαση");
   var head='<div class="ph"><h2>'+ttl+'</h2><button class="btn small" type="button" data-act="close">Άκυρο</button></div>'+
     (w.promoteFrom?'<p class="hint">Τα πεδία μεταφέρθηκαν από τον διαγωνισμό «'+esc(w.promoteTitle||"")+'». Έλεγξε και διόρθωσέ τα (π.χ. συμπλήρωσε ανάδοχο και συντονιστή, υπενθυμίσεις, email) πριν την αποθήκευση. Τα συνημμένα του διαγωνισμού αντιγράφονται στη σύμβαση. Η συμπερίληψη του διαγωνισμού στον Προϋπολογισμό θα αφαιρεθεί, γιατί θα γίνεται πλέον μέσω της νέας σύμβασης.</p>':'');
@@ -1507,6 +1914,7 @@ function ctValidateBase(keys){
   for(var i=0;i<keys.length;i++){
     var f=cwBase().filter(function(x){return x.k===keys[i]})[0];if(!f)continue;
     var v=d[f.k],blank=v==null||String(v).trim()==="";
+    if(f.cf){var ce=cfErr(f,v);if(ce)return ce}
     if(f.req&&blank)return f.l+": υποχρεωτικό πεδίο.";
     if(f.k==="months"&&!blank){var m=Number(v);if(!isFinite(m)||m<1||Math.floor(m)!==m)return "Η διάρκεια πρέπει να είναι ακέραιος αριθμός μηνών, π.χ. 62."}
     if(f.date&&!blank&&!parseIso(v))return f.l+": μη έγκυρη ημερομηνία.";
@@ -1531,10 +1939,10 @@ function ctRecord(d,kind){
   var ys=(d.years||[]).map(function(y){var o={from:y.from,to:y.to,cost:(y.cost===""||y.cost==null)?"":Number(y.cost)};if(!tn)o.remind=+y.remind||30;return o});
   var blank=d.cost==null||String(d.cost).trim()==="";
   var base={title:String(d.title||"").trim(),tender:String(d.tender||"").trim(),description:String(d.description||"").trim(),months:Number(d.months),dateFrom:d.dateFrom,dateTo:d.dateTo,cost:blank?ctSum(ys):Number(d.cost),years:ys,budget:bpClean(d),attachments:d.attachments||[],createdAt:d.createdAt||Date.now(),sample:!!d.sample};
-  if(tn){base.status=d.status||"active";base.statusAt=d.statusAt||"";base.promotedTo=d.promotedTo||"";return base}
+  if(tn){base.status=d.status||"active";base.statusAt=d.statusAt||"";base.promotedTo=d.promotedTo||"";cfApply(base,d,"tenders");return base}
   base.extras=exClean(d);base.archived=!!d.archived;base.archivedAt=d.archived?(d.archivedAt||""):"";
   var cr=coById(d.contractorId);base.contractorId=String(d.contractorId||"");base.contractor=cr?cr.name:String(d.contractor||"").trim();["contractorVat","contractorAddress","contractorContact","contractorPhone","contractorEmail"].forEach(function(k){base[k]=base.contractorId?"":String(d[k]||"").trim()});["repName","repPhone","repEmail"].forEach(function(k){base[k]=String(d[k]||"").trim()});base.coordinator=String(d.coordinator||"").trim();base.emails=String(d.emails||"").trim();base.milestones=d.milestones||[];
-  return base;
+  cfApply(base,d,"contracts");return base;
 }
 async function ctSave(){
   ctCollect();var w=S.cw,d=w.d;
@@ -1676,7 +2084,7 @@ function showTnDetail(id){
    '<div class="sec"><h3>Έτη</h3><div class="tbl"><table><thead><tr><th>Έτος</th><th>ΗΜΕΡ. ΕΝΑΡΞΗΣ</th><th>ΗΜΕΡ. ΛΗΞΗΣ</th><th>ΚΟΣΤΟΣ</th></tr></thead><tbody>'+yr+'</tbody></table></div></div>'+
    '<div class="sec"><h3>Συνημμένα</h3>'+(files?'<ul class="files">'+files+'</ul>':'<span class="hint">Δεν υπάρχουν συνημμένα (προδιαγραφές, μελέτες, προσφορές).</span>')+
    '<div><button class="btn" type="button" data-act="attach"'+(S.assets?'':' disabled')+'>+ Προσθήκη αρχείων</button> <span class="hint">'+(S.assets?'PDF, εικόνες, CSV, κείμενο, Word, Excel, PowerPoint, HTML, XML, email (eml/msg), άδειες (lic), συμπιεσμένα (zip/7z/rar) κ.ά. · μέγιστο μέγεθος αρχείου '+attMB()+' MB. Τα αρχεία HTML κατεβαίνουν, δεν ανοίγουν μέσα στην εφαρμογή.':'Η μεταφόρτωση δεν είναι διαθέσιμη εδώ.')+'</span></div></div>'+
-   bpDetail(c,1)+
+   bpDetail(c,1)+cfDetail(c,"tenders")+
    '<div class="sec"><div class="actions">'+act+'<button class="btn" type="button" data-act="edit">Επεξεργασία</button><button class="btn danger" type="button" data-act="tndel">Διαγραφή</button></div><div id="delbox"></div></div>'
   ,"detail",true);
 }
@@ -1763,7 +2171,7 @@ function showCoDetail(id){
    '<dt>EMAIL</dt><dd>'+esc(c.email||"—")+'</dd>'+
    '<dt>ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ</dt><dd class="num">'+st.n+'</dd>'+
    '<dt>ΑΡ. ΔΙΑΓΩΝΙΣΜΟΥ ΕΝΕΡΓΩΝ ΣΥΜΒΑΣΕΩΝ</dt><dd>'+(st.tenders.length?esc(st.tenders.join(", ")):"—")+'</dd></dl>'+
-   '<div class="sec"><h3>Συμβάσεις του αναδόχου</h3>'+(rows?'<div class="tbl"><table><thead><tr><th>ΣΥΜΒΑΣΗ</th><th>ΑΡ. ΔΙΑΓΩΝΙΣΜΟΥ</th><th>ΚΑΤΑΣΤΑΣΗ</th><th>ΛΗΞΗ</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div><span class="hint">Ενεργές είναι οι συμβάσεις που δεν έχουν λήξει.</span>':'<span class="hint">Καμία σύμβαση δεν χρησιμοποιεί ακόμα αυτόν τον ανάδοχο.</span>')+'</div>'+
+   cfDetail(c,"contractors")+'<div class="sec"><h3>Συμβάσεις του αναδόχου</h3>'+(rows?'<div class="tbl"><table><thead><tr><th>ΣΥΜΒΑΣΗ</th><th>ΑΡ. ΔΙΑΓΩΝΙΣΜΟΥ</th><th>ΚΑΤΑΣΤΑΣΗ</th><th>ΛΗΞΗ</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div><span class="hint">Ενεργές είναι οι συμβάσεις που δεν έχουν λήξει.</span>':'<span class="hint">Καμία σύμβαση δεν χρησιμοποιεί ακόμα αυτόν τον ανάδοχο.</span>')+'</div>'+
    '<div class="sec"><div class="actions"><button class="btn" type="button" data-act="edit">Επεξεργασία</button><button class="btn danger" type="button" data-act="codel">Διαγραφή</button></div><div id="delbox"></div></div>'
   ,"detail",true);
 }
@@ -1772,12 +2180,12 @@ function coStart(id,opt){
   S.co={id:id||null,err:"",fromContract:!!opt.fromContract,prevDirty:!!opt.prevDirty,d:c?JSON.parse(JSON.stringify(c)):Object.assign({},opt.prefill||{})};
   coDraw();S.dirty=false;
 }
-function coCollect(){var d=S.co.d;CO_BASE.forEach(function(f){var el=$("#co_"+f.k);if(el)d[f.k]=el.value})}
+function coCollect(){var d=S.co.d;coF().forEach(function(f){var el=$("#co_"+f.k);if(el)d[f.k]=el.value})}
 function coDraw(){
-  var w=S.co,d=w.d;
+  var w=S.co,d=w.d;cfLoad(d,"contractors");
   openPanel('<div class="ph"><h2>'+(w.id?"Επεξεργασία αναδόχου":"Νέος ανάδοχος")+'</h2><button class="btn small" type="button" data-act="cocancel">Άκυρο</button></div>'+
    (w.fromContract?'<p class="hint">Μετά την αποθήκευση επιστρέφεις στη σύμβαση και ο ανάδοχος επιλέγεται αυτόματα. Τα στοιχεία της σύμβασης που έχεις ήδη συμπληρώσει διατηρούνται.</p>':'')+
-   '<div style="display:grid;gap:12px">'+CO_BASE.map(function(f){return '<label class="f">'+f.l+(f.req?' *':'')+(f.hint?'<small>'+esc(f.hint)+'</small>':'')+ctInput(f,d[f.k],"co_"+f.k)+'</label>'}).join("")+'</div>'+
+   '<div style="display:grid;gap:12px">'+coF().map(function(f){return '<label class="f">'+f.l+(f.req?' *':'')+(f.hint?'<small>'+esc(f.hint)+'</small>':'')+ctInput(f,d[f.k],"co_"+f.k)+'</label>'}).join("")+'</div>'+
    '<div class="err" id="werr">'+esc(w.err)+'</div><div class="actions"><button class="btn primary" type="button" data-act="cosave">Αποθήκευση</button></div>',"wiz",true);
 }
 function coCancel(){
@@ -1790,13 +2198,14 @@ function coCancel(){
 async function coSave(){
   coCollect();var w=S.co,d=w.d,e="",name=String(d.name||"").trim();
   if(!name)e="ΟΝΟΜΑ: υποχρεωτικό πεδίο.";
-  CO_BASE.forEach(function(f){var v=d[f.k];if(e||v==null||String(v).trim()==="")return;
+  coF().forEach(function(f){var v=d[f.k];if(e||v==null||String(v).trim()==="")return;
+    if(f.cf){var ce=cfErr(f,v);if(ce){e=ce;return}}
     if(f.email&&emailsErr(v,1))e=f.l+": "+emailsErr(v,1);
     if(f.phone&&!/^\+?[0-9][0-9 ()\-./,;]{4,}$/.test(String(v).trim()))e=f.l+": μη έγκυρο τηλέφωνο (ψηφία, κενά, + ( ) - . ; ,).";
   });
   if(!e){var dp=coDup(name,"",w.id);if(dp)e="Υπάρχει ήδη ανάδοχος με το όνομα «"+dp.name+"». Επίλεξέ τον από τη λίστα αντί να τον προσθέσεις ξανά."}
   if(e){w.err=e;var x=$("#werr");if(x)x.textContent=e;return}
-  var rec={};CO_BASE.forEach(function(f){rec[f.k]=String(d[f.k]==null?"":d[f.k]).trim()});rec.createdAt=d.createdAt||Date.now();rec.sample=!!d.sample;
+  var rec={};CO_BASE.forEach(function(f){rec[f.k]=String(d[f.k]==null?"":d[f.k]).trim()});rec.createdAt=d.createdAt||Date.now();rec.sample=!!d.sample;cfApply(rec,d,"contractors");
   var id=w.id||uid();
   if(await save(id,rec,"co")){
     var back=w.fromContract&&S.cw;S.co=null;
@@ -1830,8 +2239,8 @@ async function coMigrate(){
   }
   toast("Δημιουργήθηκαν "+made+" ανάδοχοι και συνδέθηκαν "+linked+" συμβάσεις");render();
 }
-function coHead(){return ["ΟΝΟΜΑ","ΔΙΕΥΘΥΝΣΗ","ΔΙΕΥΘΥΝΣΗ (ΣΥΝΕΧΕΙΑ)","Τ.Κ.","ΠΟΛΗ","ΧΩΡΑ","ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ","EMAIL","ΤΗΛΕΦΩΝΟ","ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ","ΑΡ. ΔΙΑΓΩΝΙΣΜΟΥ ΕΝΕΡΓΩΝ ΣΥΜΒΑΣΕΩΝ"]}
-function coRowsOut(){
+function coHead0(){return ["ΟΝΟΜΑ","ΔΙΕΥΘΥΝΣΗ","ΔΙΕΥΘΥΝΣΗ (ΣΥΝΕΧΕΙΑ)","Τ.Κ.","ΠΟΛΗ","ΧΩΡΑ","ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ","EMAIL","ΤΗΛΕΦΩΝΟ","ΕΝΕΡΓΕΣ ΣΥΜΒΑΣΕΙΣ","ΑΡ. ΔΙΑΓΩΝΙΣΜΟΥ ΕΝΕΡΓΩΝ ΣΥΜΒΑΣΕΩΝ"]}
+function coRowsOut0(){
   return (S.contractors||[]).slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name),"el",{sensitivity:"base"})}).map(function(c){
     var s=coStats(c.id);return [c.name,c.address||"",c.address2||"",c.postal||"",c.city||"",c.country||"",c.contact||"",c.email||"",c.phone||"",s.n,s.tenders.join(", ")];
   });
@@ -1878,7 +2287,7 @@ function parseCtSheet(buf){
     if(g.length&&to&&to>=g[g.length-1].from)g[g.length-1].to=to;
     Object.keys(yrs).map(Number).sort(function(x,y){return x-y}).forEach(function(n){
       var y=yrs[n],i=n-1;
-      if(i>=g.length){if(!y.from||!y.to)return;g.push({from:y.from,to:y.to,cost:"",remind:30});i=g.length-1}
+      if(i>=g.length){if(!y.from||!y.to)return;g.push({from:y.from,to:y.to,cost:"",remind:defRemind()});i=g.length-1}
       if(y.from)g[i].from=y.from;if(y.to)g[i].to=y.to;
       if(y.cost!==undefined&&y.cost!=="")g[i].cost=numOf(y.cost);
       var rm=Number(y.remind);if(rm>0)g[i].remind=rm;
@@ -1915,13 +2324,13 @@ function showCtImport(rows){
 }
 
 /* ---------- export ---------- */
-function ctHead(n){
+function ctHead0(n){
   var h=["ΣΥΜΒΑΣΗ","ΑΡΙΘΜΟΣ ΔΙΑΓΩΝΙΣΜΟΥ","ΠΕΡΙΓΡΑΦΗ","ΑΝΑΔΟΧΟΣ","ΣΥΝΤΟΝΙΣΤΗΣ ΣΥΜΒΑΣΗΣ","ΔΙΑΡΚΕΙΑ ΣΥΜΒΑΣΗΣ (ΜΗΝΕΣ)","ΗΜΕΡ. ΕΝΑΡΞΗΣ","ΗΜΕΡ. ΛΗΞΗΣ","ΚΟΣΤΟΣ"];
   for(var i=1;i<=n;i++)h.push("ΕΤΟΣ "+i+" - ΗΜΕΡ.ΕΝΑΡΞΗΣ","ΕΤΟΣ "+i+" - ΗΜΕΡ.ΛΗΞΗΣ","ΕΤΟΣ "+i+" - ΚΟΣΤΟΣ","ΕΤΟΣ "+i+" - ΥΠΕΝΘΥΜΙΣΗ (ΗΜΕΡΕΣ ΠΡΙΝ)");
   h.push("ΣΥΝΗΜΜΕΝΑ","EMAIL ΕΙΔΟΠΟΙΗΣΕΩΝ","ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ","MILESTONES","ΚΑΤΑΣΤΑΣΗ","ΑΦΜ ΑΝΑΔΟΧΟΥ","ΔΙΕΥΘΥΝΣΗ ΑΝΑΔΟΧΟΥ","ΑΤΟΜΟ ΕΠΙΚΟΙΝΩΝΙΑΣ ΑΝΑΔΟΧΟΥ","ΤΗΛΕΦΩΝΟ ΑΝΑΔΟΧΟΥ","EMAIL ΑΝΑΔΟΧΟΥ","ΑΝΤΙΠΡΟΣΩΠΟΣ ΑΝΑΔΟΧΟΥ (ΣΥΜΒΑΣΗΣ)","ΤΗΛΕΦΩΝΟ ΑΝΤΙΠΡΟΣΩΠΟΥ","EMAIL ΑΝΤΙΠΡΟΣΩΠΟΥ","ΕΠΙΠΡΟΣΘΕΤΕΣ/ΠΡΟΑΙΡΕΤΙΚΕΣ ΥΠΗΡΕΣΙΕΣ","ΕΤΗΣΙΟ ΠΟΣΟ ΥΠΗΡΕΣΙΩΝ");return h;
 }
 function ctMaxYears(){return S.contracts.reduce(function(a,c){return Math.max(a,(c.years||[]).length)},1)}
-function ctRowsOut(n){
+function ctRowsOut0(n){
   return S.contracts.slice().sort(function(a,b){return (a.dateTo||"").localeCompare(b.dateTo||"")}).map(function(c){
     var o=ctrOf(c),r=[c.title,c.tender,c.description,o.name,c.coordinator,c.months,c.dateFrom,c.dateTo,ctTotal(c)],ys=c.years||[];
     for(var i=0;i<n;i++){var y=ys[i]||{};r.push(y.from||"",y.to||"",i<ys.length?ctYearCost(c,i):"",y.remind||"")}
@@ -1942,12 +2351,12 @@ function ctExportCsv(){
   offer("contracts-"+todayIso()+".csv","﻿"+[ctHead(n)].concat(ctRowsOut(n)).map(function(r){return r.map(q).join(",")}).join("\r\n"));
 }
 function tnMaxYears(){return S.tenders.reduce(function(a,c){return Math.max(a,(c.years||[]).length)},1)}
-function tnHead(n){
+function tnHead0(n){
   var h=["ΟΝΟΜΑ ΔΙΑΓΩΝΙΣΜΟΥ","ΑΡΙΘΜΟΣ ΔΙΑΓΩΝΙΣΜΟΥ","ΠΕΡΙΓΡΑΦΗ","ΔΙΑΡΚΕΙΑ (ΜΗΝΕΣ)","ΕΚΤΙΜ. ΗΜΕΡ. ΕΝΑΡΞΗΣ","ΕΚΤΙΜ. ΗΜΕΡ. ΛΗΞΗΣ","ΕΚΤΙΜΩΜΕΝΟ ΚΟΣΤΟΣ"];
   for(var i=1;i<=n;i++)h.push("ΕΤΟΣ "+i+" - ΗΜΕΡ.ΕΝΑΡΞΗΣ","ΕΤΟΣ "+i+" - ΗΜΕΡ.ΛΗΞΗΣ","ΕΤΟΣ "+i+" - ΚΟΣΤΟΣ");
   h.push("ΣΥΝΗΜΜΕΝΑ","ΕΠΙΜΕΡΟΥΣ ΠΟΣΑ","ΚΑΤΑΣΤΑΣΗ");return h;
 }
-function tnRowsOut(n){
+function tnRowsOut0(n){
   return S.tenders.slice().sort(function(a,b){return (a.dateFrom||"").localeCompare(b.dateFrom||"")}).map(function(c){
     var r=[c.title,c.tender,c.description,c.months,c.dateFrom,c.dateTo,c.cost],ys=c.years||[];
     for(var i=0;i<n;i++){var y=ys[i]||{};r.push(y.from||"",y.to||"",y.cost===undefined?"":y.cost)}
@@ -1988,7 +2397,7 @@ async function ctSample(){
 }
 
 /* ---------- on-open reminder popup (both categories) ---------- */
-/*GUIDE-START*/var GUIDE_HTML="<p class=\"hint\">Οδηγός χρήσης του PROCURE360 · ισχύει για την έκδοση 3.11.1. Πάτησε σε ένα θέμα για να πας κατευθείαν σε αυτό.<\/p>\n<div class=\"gtoc\">\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"intro\">Επισκόπηση<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"start\">Πρώτα βήματα<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"sw\">Online Renewals<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"ct\">Συμβάσεις<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"tn\">Διαγωνισμοί<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"bd\">Προϋπολογισμός<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"ar\">Άρθρα<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"co\">Ανάδοχοι<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"ms\">Milestones<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"att\">Συνημμένα<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"trash\">Κάδος και αναίρεση<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"rem\">Υπενθυμίσεις<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"xl\">Excel<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"set\">Ρυθμίσεις και δικαιώματα<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"data\">Δεδομένα και αντίγραφα<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"faq\">Συχνές ερωτήσεις<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"new\">Τι νέο υπάρχει<\/button>\n<\/div>\n\n<h3 id=\"g-intro\">Επισκόπηση<\/h3>\n<p>Το PROCURE360 συνδέει σε ένα σημείο τις αγορές λογισμικού, τις συμβάσεις, τους μελλοντικούς διαγωνισμούς και τον προγραμματισμό του προϋπολογισμού. Έχει πέντε καρτέλες:<\/p>\n<ul>\n<li><b>Online Renewals:<\/b> συνδρομές λογισμικού με ημερομηνία λήξης και ανανέωση.<\/li>\n<li><b>Συμβάσεις:<\/b> συμβάσεις πολλών ετών, με κόστος και υπενθύμιση ανά έτος και milestones.<\/li>\n<li><b>Ανάδοχοι:<\/b> η λίστα των αναδόχων, από την οποία επιλέγονται στις Συμβάσεις.<\/li>\n<li><b>Διαγωνισμοί:<\/b> νέοι διαγωνισμοί που προτίθεται να διενεργήσει ο Οργανισμός, με εκτιμώμενα ποσά.<\/li>\n<li><b>Προϋπολογισμός:<\/b> πίνακες ανά άρθρο, που συμπληρώνονται αυτόματα από τα ποσά των τριών προηγούμενων καρτελών.<\/li>\n<li><b>Άρθρα:<\/b> η λίστα των άρθρων προϋπολογισμού του Οργανισμού.<\/li>\n<\/ul>\n<p>Οι εγγραφές των τριών πρώτων καρτελών κρατούν ποσά <b>χωρίς ΦΠΑ<\/b>. Ο Προϋπολογισμός προσθέτει ΦΠΑ 19%.<\/p>\n\n<h3 id=\"g-start\">Πρώτα βήματα<\/h3>\n<ul>\n<li>Διάλεξε καρτέλα και πάτησε το πράσινο κουμπί πάνω δεξιά («+ Add software», «+ Νέα σύμβαση», «+ Νέος διαγωνισμός»).<\/li>\n<li>Η φόρμα ανοίγει <b>βήμα-βήμα<\/b> (μία ερώτηση κάθε φορά). Με το «Πλήρης φόρμα» βλέπεις όλα τα πεδία μαζί.<\/li>\n<li>Οι φόρμες (Online Renewals, Συμβάσεις, Διαγωνισμοί) ανοίγουν σε <b>πλήρη οθόνη<\/b> και <b>δεν κλείνουν κατά λάθος<\/b>: ούτε με κλικ έξω από τη φόρμα ούτε με το Backspace. Το Esc και το «Άκυρο» ρωτούν πρώτα αν θέλεις να χάσεις ό,τι έχεις γράψει. Αν δοκιμάσεις να φύγεις από τη σελίδα με μισοσυμπληρωμένη φόρμα, ο browser ζητά επιβεβαίωση.<\/li>\n<li>Η αναζήτηση πάνω από τη λίστα φιλτράρει με ό,τι πληκτρολογείς. Τα κουμπιά φίλτρου (chips) περιορίζουν ανά κατάσταση.<\/li>\n<li>Με το «⚙ Στήλες» διαλέγεις ποιες στήλες φαίνονται, με ποια σειρά και ποια ταξινομεί τη λίστα.<\/li>\n<li>Στο WordPress βλέπεις μόνο τις καρτέλες και τις ενέργειες που σου επιτρέπει ο ρόλος σου. Αν λείπει κάποιο κουμπί, ζήτα το δικαίωμα από τον διαχειριστή.<\/li>\n<\/ul>\n\n<h3 id=\"g-sw\">Online Renewals<\/h3>\n<p><b>Πεδία:<\/b> Software Name, Description, Vendor, Website, Username, Date From, Date To, Cost excl. VAT (€), Notification emails (για περισσότερα από ένα χρησιμοποίησε κόμμα (,) ή ερωτηματικό (;)) και η υπενθύμιση (7, 14, 30, 60 ή 90 ημέρες πριν τη λήξη). Δεν αποθηκεύονται κωδικοί πρόσβασης.<\/p>\n<p><b>Κατάσταση:<\/b> «Active», «Due soon» (μέσα στις ημέρες υπενθύμισης) ή «Expired».<\/p>\n<p><b>Ανανέωση:<\/b> άνοιξε την εγγραφή και πάτησε «Renew…». Δίνεις νέες ημερομηνίες και κόστος, και η προηγούμενη περίοδος κρατιέται στο ιστορικό ανανεώσεων.<\/p>\n<p><b>Επιμέρους ποσά και άρθρα:<\/b> στην ενότητα «Cost breakdown» της εγγραφής πατάς «+ Add partial amount» και χωρίζεις το κόστος σε μέρη, διαλέγοντας για κάθε μέρος το άρθρο προϋπολογισμού. Έτσι περνά στον Προϋπολογισμό. Αν δεν δώσεις επιμέρους ποσά, μπαίνει ολόκληρο το κόστος χωρίς άρθρο.<\/p>\n\n<h3 id=\"g-ct\">Συμβάσεις<\/h3>\n<p><b>Πεδία:<\/b> Σύμβαση, Αριθμός διαγωνισμού, Περιγραφή, Ανάδοχος, Συντονιστής, Διάρκεια (μήνες), Ημερομηνία έναρξης και λήξης, Κόστος, Emails ειδοποιήσεων (για περισσότερα από ένα χρησιμοποίησε κόμμα (,) ή ερωτηματικό (;)).<\/p>\n<p><b>Ανάδοχος:<\/b> επιλέγεται από λίστα (drop-down) με τους αναδόχους της καρτέλας «Ανάδοχοι». Αν ο ανάδοχος δεν υπάρχει, πατάς «+ Νέος ανάδοχος»: ανοίγει η φόρμα αναδόχου και μετά την αποθήκευση επιστρέφεις στη σύμβαση με τον ανάδοχο επιλεγμένο, χωρίς να χαθεί ό,τι είχες συμπληρώσει. Τα στοιχεία του αναδόχου (διεύθυνση, άτομο επικοινωνίας, τηλέφωνο, email) εμφανίζονται στη σύμβαση <b>μόνο για ανάγνωση<\/b>· αλλάζουν αποκλειστικά από την καρτέλα «Ανάδοχοι».<\/p>\n<p><b>Αντιπρόσωπος αναδόχου για τη σύμβαση:<\/b> επειδή το άτομο επικοινωνίας μπορεί να διαφέρει ανά σύμβαση, κάθε σύμβαση έχει δικά της πεδία Ονοματεπώνυμο, Τηλέφωνο και Email αντιπροσώπου (προαιρετικά· τηλέφωνο και email μπορεί να είναι περισσότερα, χωρισμένα με κόμμα ή ερωτηματικό). Περιλαμβάνονται στην αναζήτηση και στο Excel (εξαγωγή και εισαγωγή). Το email είναι πληροφοριακό: οι ειδοποιήσεις στέλνονται μόνο στα «Email ειδοποιήσεων».<\/p>\n<p><b>Παλιές συμβάσεις:<\/b> συμβάσεις που είχαν ανάδοχο ως ελεύθερο κείμενο διατηρούν τα παλιά τους στοιχεία μέχρι να επιλέξεις ανάδοχο. Στην καρτέλα «Ανάδοχοι» το κουμπί «Δημιουργία αναδόχων από τις συμβάσεις» τους δημιουργεί αυτόματα (ίδιο όνομα = ένας ανάδοχος) και συνδέει τις συμβάσεις.<\/p>\n<p><b>Έτη σύμβασης:<\/b> δημιουργούνται αυτόματα από τη διάρκεια και την ημερομηνία έναρξης. Οι επιπλέον μήνες πέρα από τα πλήρη έτη προστίθενται στο 1ο έτος. Για κάθε έτος βάζεις κόστος και υπενθύμιση (14, 30, 60, 90, 120 ή 180 ημέρες πριν τη λήξη του έτους).<\/p>\n<p><b>Επιμέρους ποσά:<\/b> κάτω από κάθε έτος πατάς «+ Επιμέρους ποσό», επιλέγεις άρθρο προϋπολογισμού και γράφεις το ποσό. Το κόστος του έτους γίνεται το άθροισμα των ποσών. Δες την ενότητα «Προϋπολογισμός» για το πώς περνούν.<\/p>\n<p><b>Αρχειοθέτηση (Archive):<\/b> όταν μια σύμβαση έχει λήξει, στο κάτω μέρος των λεπτομερειών της εμφανίζεται το κουμπί «Αρχειοθέτηση» (είναι ανενεργό όσο η σύμβαση δεν έχει λήξει). Η αρχειοθετημένη σύμβαση <b>δεν στέλνει πλέον καμία ειδοποίηση<\/b> (ούτε email λήξης, ούτε υπενθυμίσεις ετών/milestones, ούτε εμφανίζεται στο «Needs your attention» και στις ειδοποιήσεις της κορυφής) και δεν μετράει στους μετρητές «Έληξαν». Παραμένει στις Συμβάσεις για αναφορά: τη βρίσκεις στο φίλτρο «Αρχείο» και στο «Όλες», με κατάσταση «Αρχειοθετήθηκε». Με το κουμπί «Επαναφορά από το Αρχείο» γυρίζει στην κανονική της κατάσταση. Αν παρατείνεις τη λήξη μιας αρχειοθετημένης σύμβασης, γίνεται αυτόματα ξανά ενεργή.<\/p>\n<p><b>Κόστος σύμβασης:<\/b> σε κάθε αποθήκευση το ΚΟΣΤΟΣ της σύμβασης συμπληρώνεται αυτόματα από το άθροισμα των ετών (όπως το κουμπί «Συμπλήρωση ΚΟΣΤΟΥΣ από το άθροισμα ετών», που μπορείς να πατήσεις και χειροκίνητα). Αν κανένα έτος δεν έχει κόστος, το ΚΟΣΤΟΣ μένει όπως το έγραψες.<\/p>\n<p><b>Επιπρόσθετες / Προαιρετικές Υπηρεσίες:<\/b> στη φόρμα της σύμβασης, κάτω από τα έτη, πατάς «+ Υπηρεσία» για κάθε επιπρόσθετη ή προαιρετική υπηρεσία που περιλαμβάνεται στη σύμβαση (όσες χρειάζονται). Για κάθε μία γράφεις περιγραφή, το <b>ποσό που αφορά ένα έτος της σύμβασης<\/b> (χωρίς ΦΠΑ) και το άρθρο προϋπολογισμού. Το ποσό <b>προστίθεται μόνο στο συνολικό κόστος<\/b> της σύμβασης (π.χ. 2 έτη × 1.500 € υπηρεσίες = +3.000 €), όχι στο κόστος κάθε έτους· η φόρμα δείχνει ζωντανά το ετήσιο σύνολο των υπηρεσιών και το συνολικό κόστος με τις υπηρεσίες. Τα ποσά των ετών δεν αλλάζουν.<\/p>\n<p><b>Στον Προϋπολογισμό:<\/b> κάθε υπηρεσία περνά στο άρθρο που όρισες, για κάθε έτος της σύμβασης, <b>κατανεμημένη ανά μήνα<\/b> στα ημερολογιακά έτη που καλύπτει (π.χ. 1.200 € για 01/07–30/06: 6 μήνες στο πρώτο ημερολογιακό έτος και 6 στο επόμενο), πάντα με ΦΠΑ όπως τα υπόλοιπα ποσά, ανεξάρτητα από την επιλογή «Ανάλυση ανά έτος» του άρθρου. Στη στήλη «Πώς προκύπτει» φαίνεται η περιγραφή της υπηρεσίας και το έτος της σύμβασης. Ένα άρθρο που χρησιμοποιείται σε υπηρεσίες μετράει στη χρήση του και δεν διαγράφεται εύκολα. Οι υπηρεσίες εμφανίζονται και στο Excel των συμβάσεων (δύο νέες στήλες· το ΚΟΣΤΟΣ περιλαμβάνει τις υπηρεσίες) και δεν περιλαμβάνονται στην εισαγωγή από Excel.<\/p>\n<p><b>Κατάσταση:<\/b> «Δεν ξεκίνησε», «Ενεργή», «Λήγει σύντομα» (λήξη έτους ή σύμβασης μέσα στις ημέρες υπενθύμισης) ή «Έληξε».<\/p>\n\n<h3 id=\"g-tn\">Διαγωνισμοί<\/h3>\n<p>Εδώ καταγράφονται οι νέοι διαγωνισμοί που σκοπεύει να διενεργήσει ο Οργανισμός.<\/p>\n<p><b>Πεδία:<\/b> Όνομα διαγωνισμού, Αριθμός διαγωνισμού (<b>μοναδικός<\/b>: δεν μπορούν δύο διαγωνισμοί να έχουν τον ίδιο αριθμό, ανεξάρτητα από κεφαλαία/πεζά και κενά, π.χ. «12 / 2027» = «12/2027»· αριθμός διαγωνισμού που βρίσκεται μόνο στον Κάδο μπορεί να ξαναχρησιμοποιηθεί, αλλά τότε η επαναφορά του από τον Κάδο απορρίπτεται όσο ο αριθμός χρησιμοποιείται), Περιγραφή, Διάρκεια (μήνες), Εκτιμώμενη ημερομηνία έναρξης και λήξης, Εκτιμώμενο κόστος. Τα <b>Έτη<\/b> δημιουργούνται αυτόματα από τη διάρκεια, όπως στις Συμβάσεις, αλλά χωρίς υπενθύμιση. Σε κάθε έτος βάζεις επιμέρους ποσά με το σχετικό άρθρο. Τα συνημμένα προστίθενται στο παράθυρο της εγγραφής.<\/p>\n<p><b>Προϋπολογισμός:<\/b> όσο ο διαγωνισμός είναι <b>ενεργός<\/b>, τα ποσά του περιλαμβάνονται στον Προϋπολογισμό με σημείωση «Εκτιμώμενος διαγωνισμός».<\/p>\n<p><b>Δύο επιλογές μέσα στον διαγωνισμό:<\/b><\/p>\n<ul>\n<li><b>Ακύρωση και αποθήκευση για αναφορά:<\/b> ο διαγωνισμός μένει στη λίστα ως «Ακυρώθηκε» και αφαιρείται από τον Προϋπολογισμό. Μπορείς να τον επανενεργοποιήσεις με το «Επανενεργοποίηση».<\/li>\n<li><b>Promote στις Συμβάσεις και αποθήκευση για αναφορά:<\/b> ανοίγει η φόρμα Σύμβασης προσυμπληρωμένη από τον διαγωνισμό. Συμπληρώνεις τα υπόλοιπα (π.χ. ανάδοχος, συντονιστής, υπενθυμίσεις) και διορθώνεις ό,τι χρειάζεται, και η σύμβαση δημιουργείται μόνο όταν πατήσεις την αποθήκευση. Ο διαγωνισμός μένει ως «Προωθήθηκε σε Σύμβαση», με σύνδεσμο προς τη σύμβαση, και αφαιρείται από τον Προϋπολογισμό. Από εδώ και πέρα τα ποσά μπαίνουν στον Προϋπολογισμό μέσω της σύμβασης. Τα συνημμένα του διαγωνισμού αντιγράφονται στη σύμβαση.<\/li>\n<\/ul>\n<p>Ένας ακυρωμένος ή προωθημένος διαγωνισμός δεν προωθείται ξανά. Στο WordPress το Promote απαιτεί δικαίωμα επεξεργασίας διαγωνισμών και δημιουργίας συμβάσεων.<\/p>\n\n<h3 id=\"g-bd\">Προϋπολογισμός<\/h3>\n<p>Η καρτέλα δεν έχει δικά της δεδομένα. Συμπληρώνεται αυτόματα από τα επιμέρους ποσά των Online Renewals, των Συμβάσεων και των <b>ενεργών<\/b> Διαγωνισμών.<\/p>\n<ul>\n<li>Πάνω φαίνεται το σύνολο κάθε έτους, με το έτος τονισμένο.<\/li>\n<li><b>Χρώματα γραμμών:<\/b> κάθε γραμμή χρωματίζεται με ανοιχτή απόχρωση του χρώματος της καρτέλας από την οποία προέρχεται: τιρκουάζ για Online Renewals, μπλε για Συμβάσεις, μωβ για Διαγωνισμούς. Το υπόμνημα είναι πάνω από τους πίνακες.<\/li>\n<li>Επιπλέον: Με το «Άρθρο» διαλέγεις ένα άρθρο ή όλα. Κάθε άρθρο έχει δικό του πίνακα με στήλες Α/Α, Λεπτομέρειες Δαπάνης (το όνομα της σύμβασης, του διαγωνισμού ή του λογισμικού), Τρόπος Υπολογισμού και ένα ποσό ανά έτος.<\/li>\n<li><b>ΦΠΑ:<\/b> στις εγγραφές τα ποσά είναι χωρίς ΦΠΑ. Ο Προϋπολογισμός προσθέτει ΦΠΑ 19% (στήλες «€ με ΦΠΑ»). Ο Τρόπος Υπολογισμού δείχνει καθαρό ποσό + ΦΠΑ = σύνολο.<\/li>\n<li><b>Ανάλυση ανά έτος = ΝΑΙ:<\/b> το ποσό μοιράζεται ανά μήνα στα ημερολογιακά έτη της περιόδου (ένας μερικός μήνας μετράει ανάλογα με τις ημέρες). Παράδειγμα: 1.200 € καθαρά με περίοδο από 1/4 για 12 μήνες γίνονται 1.428 € με ΦΠΑ, δηλαδή 1.071 € στο πρώτο έτος και 357 € στο επόμενο.<\/li>\n<li><b>Ανάλυση ανά έτος = ΌΧΙ:<\/b> ολόκληρο το ποσό μπαίνει στο έτος έναρξης.<\/li>\n<li>Ποσά χωρίς άρθρο εμφανίζονται στον πίνακα «Χωρίς άρθρο». Αν μια εγγραφή δεν έχει ημερομηνία έναρξης, εμφανίζεται προειδοποίηση ότι δεν περιλαμβάνεται.<\/li>\n<li><b>Εξαγωγή Excel:<\/b> δημιουργεί φύλλο σύνοψης και ένα φύλλο ανά άρθρο, με τύπους αθροίσματος.<\/li>\n<li>Εγγραφές στον Κάδο, ακυρωμένοι και προωθημένοι διαγωνισμοί δεν υπολογίζονται.<\/li>\n<\/ul>\n<p><b>Άρθρα προϋπολογισμού:<\/b> δες και την καρτέλα «Άρθρα». Η λίστα (Κωδικός, Περιγραφή, Κατηγορία, Περιγραφή κατηγορίας, Ανάλυση ανά έτος ΝΑΙ/ΌΧΙ) είναι πίνακας με «+ Προσθήκη νέου άρθρου» και «Διαγραφή». Η επεξεργασία γίνεται μέσα στην ίδια την εφαρμογή, από το κουμπί «Επεξεργασία άρθρων» της καρτέλας «Άρθρα» (ή «Άρθρα προϋπολογισμού» στον Προϋπολογισμό), σε όλες τις εκδόσεις. Άρθρο που χρησιμοποιείται σε εγγραφές δεν διαγράφεται και δεν αλλάζει κωδικό.<\/p>\n\n<h3 id=\"g-ar\">Άρθρα<\/h3>\n<p>Η καρτέλα «Άρθρα» εμφανίζει τα άρθρα προϋπολογισμού του Οργανισμού: Κωδικός, Περιγραφή άρθρου, Κατηγορία, Περιγραφή κατηγορίας, Ανάλυση ανά έτος (ΝΑΙ/ΌΧΙ) και πόσες εγγραφές χρησιμοποιούν κάθε άρθρο. Η αναζήτηση φιλτράρει τη λίστα.<\/p>\n<ul>\n<li>Τη βλέπει όποιος μπορεί να δει τουλάχιστον μία από τις ενότητες (Online Renewals, Συμβάσεις, Διαγωνισμοί). Δεν έχει δικά της δικαιώματα.<\/li>\n<li><b>Αλλαγή άρθρων:<\/b> από το κουμπί «Επεξεργασία άρθρων» της ίδιας καρτέλας, μέσα στην εφαρμογή. Στο WordPress τα δικαιώματα ορίζονται στο PROCURE360 → Application Management, στην ενότητα «Budget Articles (Άρθρα)»: <b>create<\/b> = προσθήκη νέων άρθρων, <b>edit<\/b> = αλλαγή υπαρχόντων, <b>delete<\/b> = διαγραφή. Δίνονται ανά ρόλο ή ανά χρήστη· από προεπιλογή μόνο ο Administrator τα έχει. Όποιος δεν έχει κανένα βλέπει μόνο τη λίστα, και όποιος έχει μερικά βλέπει τα υπόλοιπα κουμπιά απενεργοποιημένα. Η αποθήκευση γίνεται στον server και ισχύει για όλους.\n<\/ul>\n\n<h3 id=\"g-co\">Ανάδοχοι<\/h3>\n<p><b>Τι είναι:<\/b> η κεντρική λίστα των αναδόχων. Κάθε ανάδοχος καταχωρείται μία φορά και επιλέγεται από τις Συμβάσεις.<\/p>\n<p><b>Πεδία:<\/b> Όνομα (υποχρεωτικό), Διεύθυνση (οδός/αριθμός και συνέχεια), Τ.Κ., Πόλη, Χώρα, Άτομο επικοινωνίας, Τηλέφωνο, Email (για περισσότερα από ένα τηλέφωνο ή email χρησιμοποίησε κόμμα (,) ή ερωτηματικό (;)).<\/p>\n<p><b>Στήλες της λίστας:<\/b> εκτός από τα στοιχεία, η λίστα δείχνει <b>πόσες ενεργές συμβάσεις<\/b> έχει ο ανάδοχος και <b>ποιοι αριθμοί διαγωνισμού<\/b> (π.χ. ΟΑΠ/ΠΜΕ/01/21/01) αφορούν τις ενεργές συμβάσεις του (ο ίδιος αριθμός σε δύο συμβάσεις εμφανίζεται μία φορά). Ενεργή είναι κάθε σύμβαση που δεν έχει λήξει (σε ισχύ, λήγει σύντομα ή δεν έχει ξεκινήσει). Στο παράθυρο του αναδόχου φαίνονται όλες οι συμβάσεις του, με σύνδεσμο για άνοιγμα.<\/p>\n<p><b>Κανόνες:<\/b> δεν επιτρέπονται δύο ανάδοχοι με το ίδιο όνομα (χωρίς διάκριση πεζών/κεφαλαίων και τόνων). Ανάδοχος που χρησιμοποιείται σε σύμβαση δεν διαγράφεται· πρώτα αλλάζεις τον ανάδοχο στις συμβάσεις. Αν μετονομάσεις έναν ανάδοχο, η αλλαγή φαίνεται αυτόματα σε όλες τις συμβάσεις του.<\/p>\n<p><b>Κάδος, Excel:<\/b> η διαγραφή πηγαίνει στον Κάδο (με επαναφορά). Η εξαγωγή Excel/CSV περιλαμβάνει τις ενεργές συμβάσεις και τους αριθμούς διαγωνισμού. Δεν υπάρχει εισαγωγή αναδόχων από Excel· κατά την εισαγωγή συμβάσεων ο ανάδοχος συνδέεται αυτόματα αν το όνομά του υπάρχει στη λίστα.<\/p>\n<p><b>Δικαιώματα (WordPress):<\/b> η ενότητα «Contractors (Ανάδοχοι)» στο Application Management έχει δικά της δικαιώματα προβολής, δημιουργίας, επεξεργασίας, διαγραφής και εξαγωγής.<\/p>\n\n<h3 id=\"g-ms\">Milestones<\/h3>\n<p>Σε μια εγγραφή (Online Renewal ή Σύμβαση) πρόσθεσε milestones ανά έτος με «+ Προσθήκη milestone»: περιγραφή, ημερομηνία παράδοσης, ειδοποίηση (30 ή 60 ημέρες πριν), σχόλια και συνημμένα. Η ειδοποίηση εμφανίζεται στην οθόνη και στέλνεται με email.<\/p>\n\n<h3 id=\"g-att\">Συνημμένα<\/h3>\n<p>Στο παράθυρο μιας εγγραφής πάτα «+ Προσθήκη αρχείων» (PDF, εικόνες, CSV, κείμενο, Word, Excel, PowerPoint, HTML, XML, email (eml/msg), άδειες (lic), συμπιεσμένα (zip/7z/rar), JSON, RTF, ics/vcf, πιστοποιητικά (cer/crt/p7m/p7s), dwg/dxf κ.ά., <b>έως 20 MB το καθένα<\/b>· δεν υπάρχει όριο στον αριθμό των αρχείων). Για άνοιγμα πάτα στο όνομα του αρχείου. Τα αρχεία <b>HTML<\/b> δεν ανοίγουν μέσα στην εφαρμογή (για λόγους ασφαλείας, γιατί θα μπορούσαν να εκτελέσουν κώδικα): κατεβαίνουν στον υπολογιστή σου και τα ανοίγεις από εκεί. Στο WordPress ο server μπορεί να έχει μικρότερο όριο (ρυθμίσεις PHP <code>upload_max_filesize<\/code> και <code>post_max_size<\/code>)· τότε η εφαρμογή δείχνει το πραγματικό όριο δίπλα στο κουμπί και, για μεγαλύτερο αρχείο, ζητά από τον διαχειριστή του hosting να τα αυξήσει σε τουλάχιστον 20M. Το «Αφαίρεση» σβήνει το αρχείο (με αναίρεση για λίγα δευτερόλεπτα). Τα συνημμένα εμφανίζονται ως στήλη «Αρχεία» στη λίστα και ως όνομα στην εξαγωγή.<\/p>\n\n<h3 id=\"g-trash\">Κάδος και αναίρεση<\/h3>\n<ul>\n<li><b>Αναίρεση:<\/b> μετά από διαγραφή εγγραφής, milestone ή συνημμένου εμφανίζεται για 8 δευτερόλεπτα κουμπί «Αναίρεση».<\/li>\n<li><b>Κάδος:<\/b> η διαγραφή μεταφέρει την εγγραφή στον Κάδο (κουμπί «🗑 Κάδος» δίπλα στα φίλτρα). Εκεί γίνεται <b>Επαναφορά<\/b>. Οι εγγραφές του κάδου δεν υπολογίζονται, δεν στέλνουν υπενθυμίσεις και δεν μπαίνουν στις εξαγωγές.<\/li>\n<li><b>Οριστική διαγραφή:<\/b> γίνεται μόνο από τον Κάδο (στο WordPress με ξεχωριστό δικαίωμα) και αυτόματα μετά από 30 ημέρες (ρυθμίζεται στο WordPress: Ρυθμίσεις → PROCURE360 → Παραμονή στον Κάδο· 0 = ποτέ).<\/li>\n<\/ul>\n\n<h3 id=\"g-rem\">Υπενθυμίσεις<\/h3>\n<ul>\n<li>Στο άνοιγμα της εφαρμογής εμφανίζεται παράθυρο «Needs your attention» με ό,τι έληξε ή λήγει σύντομα. Σε κάθε καρτέλα φαίνονται και ειδοποιήσεις για την άλλη καρτέλα.<\/li>\n<li><b>WordPress:<\/b> στέλνονται και email, αυτόματα μία φορά την ημέρα. Παραλήπτες είναι τα email της εγγραφής και οι γενικοί παραλήπτες των Ρυθμίσεων· το email επαναλαμβάνεται κάθε Ν ημέρες όσο η εγγραφή χρειάζεται ενέργεια. Οι Διαγωνισμοί δεν έχουν υπενθυμίσεις.<\/li>\n<li>Στις εκδόσεις HTML και Windows δεν στέλνονται email, μόνο το παράθυρο στο άνοιγμα. Η έκδοση Windows μπορεί να ανοίγει με την εκκίνηση των Windows.<\/li>\n<\/ul>\n\n<h3 id=\"g-xl\">Excel: εισαγωγή και εξαγωγή<\/h3>\n<ul>\n<li><b>Εισαγωγή:<\/b> κουμπί «Import Excel» (Online Renewals και Συμβάσεις). Οι στήλες αναγνωρίζονται από τους τίτλους τους, ελληνικούς ή αγγλικούς. Υπάρχει και πρότυπο αρχείου για λήψη. Οι Διαγωνισμοί δεν έχουν εισαγωγή από Excel.<\/li>\n<li><b>Εξαγωγή:<\/b> κουμπί «Export» / «Εξαγωγή» σε Excel ή CSV, με όλα τα πεδία και τα επιμέρους ποσά. Στους Διαγωνισμούς περιλαμβάνεται και η κατάσταση.<\/li>\n<li>Στο WordPress η εξαγωγή χρειάζεται δικαίωμα «export».<\/li>\n<\/ul>\n\n<h3 id=\"g-set\">Ρυθμίσεις και δικαιώματα (WordPress)<\/h3>\n<ul>\n<li><b>Μενού PROCURE360 (στο WordPress admin):<\/b> όλα βρίσκονται κάτω από ένα μενού. «Ρυθμίσεις»: γενικοί παραλήπτες υπενθυμίσεων, κάθε πόσες ημέρες επαναλαμβάνεται το email, παραμονή στον Κάδο και κουμπί αποστολής υπενθυμίσεων τώρα. Τα άρθρα δεν είναι πια εκεί· επεξεργάζονται μέσα στην εφαρμογή.<\/li>\n<li><b>PROCURE360 → Application Management:<\/b> εκεί ορίζεται ποιος έχει πρόσβαση και με ποιον ρόλο. Κάθε ενότητα (Software, Contracts, Tenders, Contractors, Budget Articles) έχει δικαιώματα προβολής, δημιουργίας, επεξεργασίας, διαγραφής και εξαγωγής. Επιπλέον υπάρχει το «purge» για οριστική διαγραφή από τον Κάδο. Το δικαίωμα προσαρμόζεται και ανά χρήστη.<\/li>\n<li>Ό,τι γίνεται καταγράφεται στο αρχείο δραστηριότητας του Application Management.<\/li>\n<\/ul>\n\n<h3 id=\"g-data\">Δεδομένα και αντίγραφα ασφαλείας<\/h3>\n<ul>\n<li><b>WordPress:<\/b> τα δεδομένα είναι στη βάση του WordPress και είναι κοινά για όλους τους χρήστες. Τα αντίγραφα γίνονται με το αντίγραφο της βάσης και του φακέλου uploads του site σου. Πριν από αναβάθμιση plugin κάνε αντίγραφο.<\/li>\n<li><b>HTML και Windows:<\/b> τα δεδομένα αποθηκεύονται στον browser του συγκεκριμένου υπολογιστή και δεν μοιράζονται με άλλους. Στα Windows το Backup.bat φτιάχνει zip στα Έγγραφα. Μην καθαρίσεις τα δεδομένα του browser. Εξαγωγή Excel όποτε θες επιπλέον αντίγραφο.<\/li>\n<\/ul>\n\n<h3 id=\"g-faq\">Συχνές ερωτήσεις<\/h3>\n<ul>\n<li><b>Γιατί ο Προϋπολογισμός δείχνει μεγαλύτερο ποσό από αυτό που έγραψα;<\/b> Γιατί προσθέτει ΦΠΑ 19%. Οι εγγραφές κρατούν ποσά χωρίς ΦΠΑ.<\/li>\n<li><b>Ο διαγωνισμός δεν φαίνεται στον Προϋπολογισμό.<\/b> Ελέγχεται η κατάστασή του (πρέπει να είναι «Ενεργός») και αν έχει επιμέρους ποσά ή κόστος και ημερομηνία έναρξης.<\/li>\n<li><b>Έσβησα κάτι κατά λάθος.<\/b> Πάτα «Αναίρεση» αμέσως, αλλιώς πήγαινε στον Κάδο και πάτα Επαναφορά.<\/li>\n<li><b>Δεν μπορώ να διαγράψω ένα άρθρο.<\/b> Χρησιμοποιείται σε εγγραφές (live ή στον Κάδο). Άλλαξε πρώτα το άρθρο σε αυτές τις εγγραφές.<\/li>\n<li><b>Δεν βλέπω μια καρτέλα ή ένα κουμπί (WordPress).<\/b> Ο ρόλος σου δεν έχει το σχετικό δικαίωμα· ζήτα το από τον διαχειριστή.<\/li>\n<li><b>Η σελίδα φαίνεται ίδια μετά από αναβάθμιση.<\/b> Κάνε ανανέωση με Ctrl+F5.<\/li>\n<\/ul>\n\n<h3 id=\"g-new\">Τι νέο υπάρχει<\/h3>\n<ul>\n<li><b>3.11.1:<\/b> Συνημμένα: δέχονται πλέον και άλλους τύπους αρχείων, όπως XML, EML, MSG, LIC, JSON, RTF, 7z/RAR/GZ/TAR, ICS/VCF, πιστοποιητικά (CER/CRT/P7M/P7S), TIFF/BMP, DWG/DXF. Τα αρχεία HTML και XML κατεβαίνουν, δεν ανοίγουν μέσα στην εφαρμογή (ασφάλεια).<\/li>\n<li><b>3.11.0:<\/b> Συμβάσεις: κουμπί «Αρχειοθέτηση» για συμβάσεις που έχουν λήξει (ενεργό μόνο όταν η σύμβαση έχει λήξει)· οι αρχειοθετημένες δεν στέλνουν ειδοποιήσεις/υπενθυμίσεις, μένουν στη λίστα για αναφορά (φίλτρο «Αρχείο») και μπορούν να επανέλθουν.<\/li>\n<li><b>3.10.3:<\/b> Στις λεπτομέρειες της σύμβασης αφαιρέθηκε η ένδειξη «(με υπηρεσίες)» δίπλα στο ΚΟΣΤΟΣ.<\/li>\n<li><b>3.10.2:<\/b> Με κάθε αποθήκευση σύμβασης (και διαγωνισμού) το ΚΟΣΤΟΣ συμπληρώνεται από το άθροισμα ετών· η ετικέτα έγινε «Συνολικό κόστος σύμβασης με Επιπρόσθετες / Προαιρετικές Υπηρεσίες».<\/li>\n<li><b>3.10.1:<\/b> Επιπρόσθετες / Προαιρετικές Υπηρεσίες: αφαιρέθηκε το πεδίο «είδος»· το ποσό των υπηρεσιών προστίθεται <b>μόνο στο συνολικό κόστος<\/b> της σύμβασης και όχι στο κόστος κάθε έτους (στη λίστα, στις υπενθυμίσεις και στο Excel). Ο Προϋπολογισμός δεν αλλάζει.<\/li>\n<li><b>3.10.0:<\/b> Συμβάσεις: νέα ενότητα «Επιπρόσθετες / Προαιρετικές Υπηρεσίες» (είδος, περιγραφή, ετήσιο ποσό, άρθρο)· το ποσό προστίθεται στο κόστος κάθε έτους και στο συνολικό κόστος και περνά στον Προϋπολογισμό στο άρθρο του, κατανεμημένο ανά μήνα σε όλα τα έτη της σύμβασης· αντίστοιχες στήλες στο Excel συμβάσεων.<\/li>\n<li><b>3.9.0:<\/b> νέα καρτέλα «Ανάδοχοι» με λίστα αναδόχων (όνομα, διεύθυνση, άτομο επικοινωνίας, τηλέφωνο, email), πλήθος ενεργών συμβάσεων και αριθμοί διαγωνισμού των ενεργών συμβάσεων ανά ανάδοχο· στις Συμβάσεις ο ανάδοχος επιλέγεται από λίστα (με κουμπί «+ Νέος ανάδοχος») και τα στοιχεία του φαίνονται μόνο για ανάγνωση· νέα πεδία αντιπροσώπου αναδόχου ανά σύμβαση· δημιουργία αναδόχων από παλιές συμβάσεις· νέα ενότητα δικαιωμάτων «Contractors».<\/li>\n<li><b>3.8.0:<\/b> οι φόρμες ανοίγουν σε πλήρη οθόνη και δεν κλείνουν κατά λάθος· στοιχεία αναδόχου (ΑΦΜ, διεύθυνση, άτομο επικοινωνίας, τηλέφωνο, email)· υπόδειξη «κόμμα (,) ή ερωτηματικό (;)» στα πεδία email· μοναδικός αριθμός διαγωνισμού (έλεγχος διπλότυπων)· συνημμένα HTML, εμφανές όριο μεγέθους (20 MB ή το όριο του server) και σαφή μηνύματα όταν ένα αρχείο το ξεπερνά.<\/li>\n<li><b>3.7.0:<\/b> νέα ενότητα «Budget Articles (Άρθρα)» στο Application Management με ξεχωριστά δικαιώματα create / edit / delete για την προσθήκη, αλλαγή και διαγραφή άρθρων (ανά ρόλο ή ανά χρήστη).<\/li>\n<li><b>3.6.0:<\/b> τα άρθρα επεξεργάζονται μέσα στην ίδια την εφαρμογή (όχι από τις Ρυθμίσεις του WordPress)· οι Ρυθμίσεις και το Application Management μπήκαν κάτω από ένα ενιαίο μενού «PROCURE360» στο WordPress admin.<\/li>\n<li><b>3.5.0:<\/b> νέα καρτέλα «Άρθρα», το έτος στα σύνολα του Προϋπολογισμού τονίζεται και οι γραμμές των πινάκων χρωματίζονται ανάλογα με την προέλευση (Online Renewals, Συμβάσεις, Διαγωνισμοί).<\/li>\n<li><b>3.4.1:<\/b> νέα εμφάνιση των τεσσάρων καρτελών: ανάγλυφα κουμπιά με δικό τους χρώμα η καθεμία (Online Renewals τιρκουάζ, Συμβάσεις μπλε, Διαγωνισμοί μωβ, Προϋπολογισμός πράσινο).<\/li>\n<li><b>3.4.0:<\/b> λογότυπο PROCURE360 στην κεφαλίδα της εφαρμογής και εικονίδιο στον Windows installer και στην καρτέλα του browser.<\/li>\n<li><b>3.3.0:<\/b> ενσωματωμένος οδηγός χρήσης (κουμπί «? Οδηγός»).<\/li>\n<li><b>3.2.0:<\/b> νέο όνομα PROCURE360.<\/li>\n<li><b>3.1.1:<\/b> ο Προϋπολογισμός περιλαμβάνει ΦΠΑ 19%.<\/li>\n<li><b>3.1.0:<\/b> καρτέλα Διαγωνισμοί, με ακύρωση και Promote σε Σύμβαση.<\/li>\n<li><b>3.0.0:<\/b> Κάδος, οριστική διαγραφή με ξεχωριστό δικαίωμα, αναίρεση, προστασία χρησιμοποιούμενων άρθρων.<\/li>\n<li><b>2.5.0:<\/b> άρθρα προϋπολογισμού σε πίνακα, με προσθήκη και διαγραφή.<\/li>\n<li><b>2.4.0:<\/b> καρτέλα Προϋπολογισμός και εξαγωγή Excel.<\/li>\n<li><b>2.3.0:<\/b> επιμέρους ποσά ανά έτος με άρθρο προϋπολογισμού.<\/li>\n<li><b>2.2.0:<\/b> αφαίρεση κωδικού πρόσβασης, πολλά emails, επιλογή και ταξινόμηση στηλών.<\/li>\n<\/ul>";/*GUIDE-END*/
+/*GUIDE-START*/var GUIDE_HTML="<p class=\"hint\">Οδηγός χρήσης του PROCURE360 · ισχύει για την έκδοση 3.12.0. Πάτησε σε ένα θέμα για να πας κατευθείαν σε αυτό.<\/p>\n<div class=\"gtoc\">\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"intro\">Επισκόπηση<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"start\">Πρώτα βήματα<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"sw\">Online Renewals<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"ct\">Συμβάσεις<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"tn\">Διαγωνισμοί<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"bd\">Προϋπολογισμός<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"ar\">Άρθρα<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"co\">Ανάδοχοι<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"ms\">Milestones<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"att\">Συνημμένα<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"trash\">Κάδος και αναίρεση<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"rem\">Υπενθυμίσεις<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"xl\">Excel<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"cfg\">Ρυθμίσεις εφαρμογής<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"set\">Ρυθμίσεις και δικαιώματα<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"data\">Δεδομένα και αντίγραφα<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"faq\">Συχνές ερωτήσεις<\/button>\n<button type=\"button\" class=\"chip\" data-act=\"gsec\" data-id=\"new\">Τι νέο υπάρχει<\/button>\n<\/div>\n\n<h3 id=\"g-intro\">Επισκόπηση<\/h3>\n<p>Το PROCURE360 συνδέει σε ένα σημείο τις αγορές λογισμικού, τις συμβάσεις, τους μελλοντικούς διαγωνισμούς και τον προγραμματισμό του προϋπολογισμού. Έχει πέντε καρτέλες:<\/p>\n<ul>\n<li><b>Online Renewals:<\/b> συνδρομές λογισμικού με ημερομηνία λήξης και ανανέωση.<\/li>\n<li><b>Συμβάσεις:<\/b> συμβάσεις πολλών ετών, με κόστος και υπενθύμιση ανά έτος και milestones.<\/li>\n<li><b>Ανάδοχοι:<\/b> η λίστα των αναδόχων, από την οποία επιλέγονται στις Συμβάσεις.<\/li>\n<li><b>Διαγωνισμοί:<\/b> νέοι διαγωνισμοί που προτίθεται να διενεργήσει ο Οργανισμός, με εκτιμώμενα ποσά.<\/li>\n<li><b>Προϋπολογισμός:<\/b> πίνακες ανά άρθρο, που συμπληρώνονται αυτόματα από τα ποσά των τριών προηγούμενων καρτελών.<\/li>\n<li><b>Άρθρα:<\/b> η λίστα των άρθρων προϋπολογισμού του Οργανισμού.<\/li>\n<\/ul>\n<p>Οι εγγραφές των τριών πρώτων καρτελών κρατούν ποσά <b>χωρίς ΦΠΑ<\/b>. Ο Προϋπολογισμός προσθέτει ΦΠΑ (προεπιλογή 19%, αλλάζει από τις Ρυθμίσεις).<\/p>\n\n<h3 id=\"g-start\">Πρώτα βήματα<\/h3>\n<ul>\n<li>Διάλεξε καρτέλα και πάτησε το πράσινο κουμπί πάνω δεξιά («+ Add software», «+ Νέα σύμβαση», «+ Νέος διαγωνισμός»).<\/li>\n<li>Η φόρμα ανοίγει <b>βήμα-βήμα<\/b> (μία ερώτηση κάθε φορά). Με το «Πλήρης φόρμα» βλέπεις όλα τα πεδία μαζί.<\/li>\n<li>Οι φόρμες (Online Renewals, Συμβάσεις, Διαγωνισμοί) ανοίγουν σε <b>πλήρη οθόνη<\/b> και <b>δεν κλείνουν κατά λάθος<\/b>: ούτε με κλικ έξω από τη φόρμα ούτε με το Backspace. Το Esc και το «Άκυρο» ρωτούν πρώτα αν θέλεις να χάσεις ό,τι έχεις γράψει. Αν δοκιμάσεις να φύγεις από τη σελίδα με μισοσυμπληρωμένη φόρμα, ο browser ζητά επιβεβαίωση.<\/li>\n<li>Η αναζήτηση πάνω από τη λίστα φιλτράρει με ό,τι πληκτρολογείς. Τα κουμπιά φίλτρου (chips) περιορίζουν ανά κατάσταση.<\/li>\n<li>Με το «⚙ Στήλες» διαλέγεις ποιες στήλες φαίνονται, με ποια σειρά και ποια ταξινομεί τη λίστα.<\/li>\n<li>Στο WordPress βλέπεις μόνο τις καρτέλες και τις ενέργειες που σου επιτρέπει ο ρόλος σου. Αν λείπει κάποιο κουμπί, ζήτα το δικαίωμα από τον διαχειριστή.<\/li>\n<\/ul>\n\n<h3 id=\"g-sw\">Online Renewals<\/h3>\n<p><b>Πεδία:<\/b> Software Name, Description, Vendor, Website, Username, Date From, Date To, Cost excl. VAT (€), Notification emails (για περισσότερα από ένα χρησιμοποίησε κόμμα (,) ή ερωτηματικό (;)) και η υπενθύμιση (7, 14, 30, 60 ή 90 ημέρες πριν τη λήξη). Δεν αποθηκεύονται κωδικοί πρόσβασης.<\/p>\n<p><b>Κατάσταση:<\/b> «Active», «Due soon» (μέσα στις ημέρες υπενθύμισης) ή «Expired».<\/p>\n<p><b>Ανανέωση:<\/b> άνοιξε την εγγραφή και πάτησε «Renew…». Δίνεις νέες ημερομηνίες και κόστος, και η προηγούμενη περίοδος κρατιέται στο ιστορικό ανανεώσεων.<\/p>\n<p><b>Επιμέρους ποσά και άρθρα:<\/b> στην ενότητα «Cost breakdown» της εγγραφής πατάς «+ Add partial amount» και χωρίζεις το κόστος σε μέρη, διαλέγοντας για κάθε μέρος το άρθρο προϋπολογισμού. Έτσι περνά στον Προϋπολογισμό. Αν δεν δώσεις επιμέρους ποσά, μπαίνει ολόκληρο το κόστος χωρίς άρθρο.<\/p>\n\n<h3 id=\"g-ct\">Συμβάσεις<\/h3>\n<p><b>Πεδία:<\/b> Σύμβαση, Αριθμός διαγωνισμού, Περιγραφή, Ανάδοχος, Συντονιστής, Διάρκεια (μήνες), Ημερομηνία έναρξης και λήξης, Κόστος, Emails ειδοποιήσεων (για περισσότερα από ένα χρησιμοποίησε κόμμα (,) ή ερωτηματικό (;)).<\/p>\n<p><b>Ανάδοχος:<\/b> επιλέγεται από λίστα (drop-down) με τους αναδόχους της καρτέλας «Ανάδοχοι». Αν ο ανάδοχος δεν υπάρχει, πατάς «+ Νέος ανάδοχος»: ανοίγει η φόρμα αναδόχου και μετά την αποθήκευση επιστρέφεις στη σύμβαση με τον ανάδοχο επιλεγμένο, χωρίς να χαθεί ό,τι είχες συμπληρώσει. Τα στοιχεία του αναδόχου (διεύθυνση, άτομο επικοινωνίας, τηλέφωνο, email) εμφανίζονται στη σύμβαση <b>μόνο για ανάγνωση<\/b>· αλλάζουν αποκλειστικά από την καρτέλα «Ανάδοχοι».<\/p>\n<p><b>Αντιπρόσωπος αναδόχου για τη σύμβαση:<\/b> επειδή το άτομο επικοινωνίας μπορεί να διαφέρει ανά σύμβαση, κάθε σύμβαση έχει δικά της πεδία Ονοματεπώνυμο, Τηλέφωνο και Email αντιπροσώπου (προαιρετικά· τηλέφωνο και email μπορεί να είναι περισσότερα, χωρισμένα με κόμμα ή ερωτηματικό). Περιλαμβάνονται στην αναζήτηση και στο Excel (εξαγωγή και εισαγωγή). Το email είναι πληροφοριακό: οι ειδοποιήσεις στέλνονται μόνο στα «Email ειδοποιήσεων».<\/p>\n<p><b>Παλιές συμβάσεις:<\/b> συμβάσεις που είχαν ανάδοχο ως ελεύθερο κείμενο διατηρούν τα παλιά τους στοιχεία μέχρι να επιλέξεις ανάδοχο. Στην καρτέλα «Ανάδοχοι» το κουμπί «Δημιουργία αναδόχων από τις συμβάσεις» τους δημιουργεί αυτόματα (ίδιο όνομα = ένας ανάδοχος) και συνδέει τις συμβάσεις.<\/p>\n<p><b>Έτη σύμβασης:<\/b> δημιουργούνται αυτόματα από τη διάρκεια και την ημερομηνία έναρξης. Οι επιπλέον μήνες πέρα από τα πλήρη έτη προστίθενται στο 1ο έτος. Για κάθε έτος βάζεις κόστος και υπενθύμιση (14, 30, 60, 90, 120 ή 180 ημέρες πριν τη λήξη του έτους).<\/p>\n<p><b>Επιμέρους ποσά:<\/b> κάτω από κάθε έτος πατάς «+ Επιμέρους ποσό», επιλέγεις άρθρο προϋπολογισμού και γράφεις το ποσό. Το κόστος του έτους γίνεται το άθροισμα των ποσών. Δες την ενότητα «Προϋπολογισμός» για το πώς περνούν.<\/p>\n<p><b>Αρχειοθέτηση (Archive):<\/b> όταν μια σύμβαση έχει λήξει, στο κάτω μέρος των λεπτομερειών της εμφανίζεται το κουμπί «Αρχειοθέτηση» (είναι ανενεργό όσο η σύμβαση δεν έχει λήξει). Η αρχειοθετημένη σύμβαση <b>δεν στέλνει πλέον καμία ειδοποίηση<\/b> (ούτε email λήξης, ούτε υπενθυμίσεις ετών/milestones, ούτε εμφανίζεται στο «Needs your attention» και στις ειδοποιήσεις της κορυφής) και δεν μετράει στους μετρητές «Έληξαν». Παραμένει στις Συμβάσεις για αναφορά: τη βρίσκεις στο φίλτρο «Αρχείο» και στο «Όλες», με κατάσταση «Αρχειοθετήθηκε». Με το κουμπί «Επαναφορά από το Αρχείο» γυρίζει στην κανονική της κατάσταση. Αν παρατείνεις τη λήξη μιας αρχειοθετημένης σύμβασης, γίνεται αυτόματα ξανά ενεργή.<\/p>\n<p><b>Κόστος σύμβασης:<\/b> σε κάθε αποθήκευση το ΚΟΣΤΟΣ της σύμβασης συμπληρώνεται αυτόματα από το άθροισμα των ετών (όπως το κουμπί «Συμπλήρωση ΚΟΣΤΟΥΣ από το άθροισμα ετών», που μπορείς να πατήσεις και χειροκίνητα). Αν κανένα έτος δεν έχει κόστος, το ΚΟΣΤΟΣ μένει όπως το έγραψες.<\/p>\n<p><b>Επιπρόσθετες / Προαιρετικές Υπηρεσίες:<\/b> στη φόρμα της σύμβασης, κάτω από τα έτη, πατάς «+ Υπηρεσία» για κάθε επιπρόσθετη ή προαιρετική υπηρεσία που περιλαμβάνεται στη σύμβαση (όσες χρειάζονται). Για κάθε μία γράφεις περιγραφή, το <b>ποσό που αφορά ένα έτος της σύμβασης<\/b> (χωρίς ΦΠΑ) και το άρθρο προϋπολογισμού. Το ποσό <b>προστίθεται μόνο στο συνολικό κόστος<\/b> της σύμβασης (π.χ. 2 έτη × 1.500 € υπηρεσίες = +3.000 €), όχι στο κόστος κάθε έτους· η φόρμα δείχνει ζωντανά το ετήσιο σύνολο των υπηρεσιών και το συνολικό κόστος με τις υπηρεσίες. Τα ποσά των ετών δεν αλλάζουν.<\/p>\n<p><b>Στον Προϋπολογισμό:<\/b> κάθε υπηρεσία περνά στο άρθρο που όρισες, για κάθε έτος της σύμβασης, <b>κατανεμημένη ανά μήνα<\/b> στα ημερολογιακά έτη που καλύπτει (π.χ. 1.200 € για 01/07–30/06: 6 μήνες στο πρώτο ημερολογιακό έτος και 6 στο επόμενο), πάντα με ΦΠΑ όπως τα υπόλοιπα ποσά, ανεξάρτητα από την επιλογή «Ανάλυση ανά έτος» του άρθρου. Στη στήλη «Πώς προκύπτει» φαίνεται η περιγραφή της υπηρεσίας και το έτος της σύμβασης. Ένα άρθρο που χρησιμοποιείται σε υπηρεσίες μετράει στη χρήση του και δεν διαγράφεται εύκολα. Οι υπηρεσίες εμφανίζονται και στο Excel των συμβάσεων (δύο νέες στήλες· το ΚΟΣΤΟΣ περιλαμβάνει τις υπηρεσίες) και δεν περιλαμβάνονται στην εισαγωγή από Excel.<\/p>\n<p><b>Κατάσταση:<\/b> «Δεν ξεκίνησε», «Ενεργή», «Λήγει σύντομα» (λήξη έτους ή σύμβασης μέσα στις ημέρες υπενθύμισης) ή «Έληξε».<\/p>\n\n<h3 id=\"g-tn\">Διαγωνισμοί<\/h3>\n<p>Εδώ καταγράφονται οι νέοι διαγωνισμοί που σκοπεύει να διενεργήσει ο Οργανισμός.<\/p>\n<p><b>Πεδία:<\/b> Όνομα διαγωνισμού, Αριθμός διαγωνισμού (<b>μοναδικός<\/b>: δεν μπορούν δύο διαγωνισμοί να έχουν τον ίδιο αριθμό, ανεξάρτητα από κεφαλαία/πεζά και κενά, π.χ. «12 / 2027» = «12/2027»· αριθμός διαγωνισμού που βρίσκεται μόνο στον Κάδο μπορεί να ξαναχρησιμοποιηθεί, αλλά τότε η επαναφορά του από τον Κάδο απορρίπτεται όσο ο αριθμός χρησιμοποιείται), Περιγραφή, Διάρκεια (μήνες), Εκτιμώμενη ημερομηνία έναρξης και λήξης, Εκτιμώμενο κόστος. Τα <b>Έτη<\/b> δημιουργούνται αυτόματα από τη διάρκεια, όπως στις Συμβάσεις, αλλά χωρίς υπενθύμιση. Σε κάθε έτος βάζεις επιμέρους ποσά με το σχετικό άρθρο. Τα συνημμένα προστίθενται στο παράθυρο της εγγραφής.<\/p>\n<p><b>Προϋπολογισμός:<\/b> όσο ο διαγωνισμός είναι <b>ενεργός<\/b>, τα ποσά του περιλαμβάνονται στον Προϋπολογισμό με σημείωση «Εκτιμώμενος διαγωνισμός».<\/p>\n<p><b>Δύο επιλογές μέσα στον διαγωνισμό:<\/b><\/p>\n<ul>\n<li><b>Ακύρωση και αποθήκευση για αναφορά:<\/b> ο διαγωνισμός μένει στη λίστα ως «Ακυρώθηκε» και αφαιρείται από τον Προϋπολογισμό. Μπορείς να τον επανενεργοποιήσεις με το «Επανενεργοποίηση».<\/li>\n<li><b>Promote στις Συμβάσεις και αποθήκευση για αναφορά:<\/b> ανοίγει η φόρμα Σύμβασης προσυμπληρωμένη από τον διαγωνισμό. Συμπληρώνεις τα υπόλοιπα (π.χ. ανάδοχος, συντονιστής, υπενθυμίσεις) και διορθώνεις ό,τι χρειάζεται, και η σύμβαση δημιουργείται μόνο όταν πατήσεις την αποθήκευση. Ο διαγωνισμός μένει ως «Προωθήθηκε σε Σύμβαση», με σύνδεσμο προς τη σύμβαση, και αφαιρείται από τον Προϋπολογισμό. Από εδώ και πέρα τα ποσά μπαίνουν στον Προϋπολογισμό μέσω της σύμβασης. Τα συνημμένα του διαγωνισμού αντιγράφονται στη σύμβαση.<\/li>\n<\/ul>\n<p>Ένας ακυρωμένος ή προωθημένος διαγωνισμός δεν προωθείται ξανά. Στο WordPress το Promote απαιτεί δικαίωμα επεξεργασίας διαγωνισμών και δημιουργίας συμβάσεων.<\/p>\n\n<h3 id=\"g-bd\">Προϋπολογισμός<\/h3>\n<p>Η καρτέλα δεν έχει δικά της δεδομένα. Συμπληρώνεται αυτόματα από τα επιμέρους ποσά των Online Renewals, των Συμβάσεων και των <b>ενεργών<\/b> Διαγωνισμών.<\/p>\n<ul>\n<li>Πάνω φαίνεται το σύνολο κάθε έτους, με το έτος τονισμένο.<\/li>\n<li><b>Χρώματα γραμμών:<\/b> κάθε γραμμή χρωματίζεται με ανοιχτή απόχρωση του χρώματος της καρτέλας από την οποία προέρχεται: τιρκουάζ για Online Renewals, μπλε για Συμβάσεις, μωβ για Διαγωνισμούς. Το υπόμνημα είναι πάνω από τους πίνακες.<\/li>\n<li>Επιπλέον: Με το «Άρθρο» διαλέγεις ένα άρθρο ή όλα. Κάθε άρθρο έχει δικό του πίνακα με στήλες Α/Α, Λεπτομέρειες Δαπάνης (το όνομα της σύμβασης, του διαγωνισμού ή του λογισμικού), Τρόπος Υπολογισμού και ένα ποσό ανά έτος.<\/li>\n<li><b>ΦΠΑ:<\/b> στις εγγραφές τα ποσά είναι χωρίς ΦΠΑ. Ο Προϋπολογισμός προσθέτει ΦΠΑ, προεπιλογή 19% (στήλες «€ με ΦΠΑ»). Ο Τρόπος Υπολογισμού δείχνει καθαρό ποσό + ΦΠΑ = σύνολο.<\/li>\n<li><b>Ανάλυση ανά έτος = ΝΑΙ:<\/b> το ποσό μοιράζεται ανά μήνα στα ημερολογιακά έτη της περιόδου (ένας μερικός μήνας μετράει ανάλογα με τις ημέρες). Παράδειγμα: 1.200 € καθαρά με περίοδο από 1/4 για 12 μήνες γίνονται 1.428 € με ΦΠΑ, δηλαδή 1.071 € στο πρώτο έτος και 357 € στο επόμενο.<\/li>\n<li><b>Ανάλυση ανά έτος = ΌΧΙ:<\/b> ολόκληρο το ποσό μπαίνει στο έτος έναρξης.<\/li>\n<li>Ποσά χωρίς άρθρο εμφανίζονται στον πίνακα «Χωρίς άρθρο». Αν μια εγγραφή δεν έχει ημερομηνία έναρξης, εμφανίζεται προειδοποίηση ότι δεν περιλαμβάνεται.<\/li>\n<li><b>Εξαγωγή Excel:<\/b> δημιουργεί φύλλο σύνοψης και ένα φύλλο ανά άρθρο, με τύπους αθροίσματος.<\/li>\n<li>Εγγραφές στον Κάδο, ακυρωμένοι και προωθημένοι διαγωνισμοί δεν υπολογίζονται.<\/li>\n<\/ul>\n<p><b>Άρθρα προϋπολογισμού:<\/b> δες και την καρτέλα «Άρθρα». Η λίστα (Κωδικός, Περιγραφή, Κατηγορία, Περιγραφή κατηγορίας, Ανάλυση ανά έτος ΝΑΙ/ΌΧΙ) είναι πίνακας με «+ Προσθήκη νέου άρθρου» και «Διαγραφή». Η επεξεργασία γίνεται μέσα στην ίδια την εφαρμογή, από το κουμπί «Επεξεργασία άρθρων» της καρτέλας «Άρθρα» (ή «Άρθρα προϋπολογισμού» στον Προϋπολογισμό), σε όλες τις εκδόσεις. Άρθρο που χρησιμοποιείται σε εγγραφές δεν διαγράφεται και δεν αλλάζει κωδικό.<\/p>\n\n<h3 id=\"g-ar\">Άρθρα<\/h3>\n<p>Η καρτέλα «Άρθρα» εμφανίζει τα άρθρα προϋπολογισμού του Οργανισμού: Κωδικός, Περιγραφή άρθρου, Κατηγορία, Περιγραφή κατηγορίας, Ανάλυση ανά έτος (ΝΑΙ/ΌΧΙ) και πόσες εγγραφές χρησιμοποιούν κάθε άρθρο. Η αναζήτηση φιλτράρει τη λίστα.<\/p>\n<ul>\n<li>Τη βλέπει όποιος μπορεί να δει τουλάχιστον μία από τις ενότητες (Online Renewals, Συμβάσεις, Διαγωνισμοί). Δεν έχει δικά της δικαιώματα.<\/li>\n<li><b>Αλλαγή άρθρων:<\/b> από το κουμπί «Επεξεργασία άρθρων» της ίδιας καρτέλας, μέσα στην εφαρμογή. Στο WordPress τα δικαιώματα ορίζονται στο PROCURE360 → Application Management, στην ενότητα «Budget Articles (Άρθρα)»: <b>create<\/b> = προσθήκη νέων άρθρων, <b>edit<\/b> = αλλαγή υπαρχόντων, <b>delete<\/b> = διαγραφή. Δίνονται ανά ρόλο ή ανά χρήστη· από προεπιλογή μόνο ο Administrator τα έχει. Όποιος δεν έχει κανένα βλέπει μόνο τη λίστα, και όποιος έχει μερικά βλέπει τα υπόλοιπα κουμπιά απενεργοποιημένα. Η αποθήκευση γίνεται στον server και ισχύει για όλους.\n<\/ul>\n\n<h3 id=\"g-co\">Ανάδοχοι<\/h3>\n<p><b>Τι είναι:<\/b> η κεντρική λίστα των αναδόχων. Κάθε ανάδοχος καταχωρείται μία φορά και επιλέγεται από τις Συμβάσεις.<\/p>\n<p><b>Πεδία:<\/b> Όνομα (υποχρεωτικό), Διεύθυνση (οδός/αριθμός και συνέχεια), Τ.Κ., Πόλη, Χώρα, Άτομο επικοινωνίας, Τηλέφωνο, Email (για περισσότερα από ένα τηλέφωνο ή email χρησιμοποίησε κόμμα (,) ή ερωτηματικό (;)).<\/p>\n<p><b>Στήλες της λίστας:<\/b> εκτός από τα στοιχεία, η λίστα δείχνει <b>πόσες ενεργές συμβάσεις<\/b> έχει ο ανάδοχος και <b>ποιοι αριθμοί διαγωνισμού<\/b> (π.χ. ΟΑΠ/ΠΜΕ/01/21/01) αφορούν τις ενεργές συμβάσεις του (ο ίδιος αριθμός σε δύο συμβάσεις εμφανίζεται μία φορά). Ενεργή είναι κάθε σύμβαση που δεν έχει λήξει (σε ισχύ, λήγει σύντομα ή δεν έχει ξεκινήσει). Στο παράθυρο του αναδόχου φαίνονται όλες οι συμβάσεις του, με σύνδεσμο για άνοιγμα.<\/p>\n<p><b>Κανόνες:<\/b> δεν επιτρέπονται δύο ανάδοχοι με το ίδιο όνομα (χωρίς διάκριση πεζών/κεφαλαίων και τόνων). Ανάδοχος που χρησιμοποιείται σε σύμβαση δεν διαγράφεται· πρώτα αλλάζεις τον ανάδοχο στις συμβάσεις. Αν μετονομάσεις έναν ανάδοχο, η αλλαγή φαίνεται αυτόματα σε όλες τις συμβάσεις του.<\/p>\n<p><b>Κάδος, Excel:<\/b> η διαγραφή πηγαίνει στον Κάδο (με επαναφορά). Η εξαγωγή Excel/CSV περιλαμβάνει τις ενεργές συμβάσεις και τους αριθμούς διαγωνισμού. Δεν υπάρχει εισαγωγή αναδόχων από Excel· κατά την εισαγωγή συμβάσεων ο ανάδοχος συνδέεται αυτόματα αν το όνομά του υπάρχει στη λίστα.<\/p>\n<p><b>Δικαιώματα (WordPress):<\/b> η ενότητα «Contractors (Ανάδοχοι)» στο Application Management έχει δικά της δικαιώματα προβολής, δημιουργίας, επεξεργασίας, διαγραφής και εξαγωγής.<\/p>\n\n<h3 id=\"g-ms\">Milestones<\/h3>\n<p>Σε μια εγγραφή (Online Renewal ή Σύμβαση) πρόσθεσε milestones ανά έτος με «+ Προσθήκη milestone»: περιγραφή, ημερομηνία παράδοσης, ειδοποίηση (30 ή 60 ημέρες πριν), σχόλια και συνημμένα. Η ειδοποίηση εμφανίζεται στην οθόνη και στέλνεται με email.<\/p>\n\n<h3 id=\"g-att\">Συνημμένα<\/h3>\n<p>Στο παράθυρο μιας εγγραφής πάτα «+ Προσθήκη αρχείων» (PDF, εικόνες, CSV, κείμενο, Word, Excel, PowerPoint, HTML, XML, email (eml/msg), άδειες (lic), συμπιεσμένα (zip/7z/rar), JSON, RTF, ics/vcf, πιστοποιητικά (cer/crt/p7m/p7s), dwg/dxf κ.ά., <b>έως 20 MB το καθένα<\/b>· δεν υπάρχει όριο στον αριθμό των αρχείων). Για άνοιγμα πάτα στο όνομα του αρχείου. Τα αρχεία <b>HTML<\/b> δεν ανοίγουν μέσα στην εφαρμογή (για λόγους ασφαλείας, γιατί θα μπορούσαν να εκτελέσουν κώδικα): κατεβαίνουν στον υπολογιστή σου και τα ανοίγεις από εκεί. Στο WordPress ο server μπορεί να έχει μικρότερο όριο (ρυθμίσεις PHP <code>upload_max_filesize<\/code> και <code>post_max_size<\/code>)· τότε η εφαρμογή δείχνει το πραγματικό όριο δίπλα στο κουμπί και, για μεγαλύτερο αρχείο, ζητά από τον διαχειριστή του hosting να τα αυξήσει σε τουλάχιστον 20M. Το «Αφαίρεση» σβήνει το αρχείο (με αναίρεση για λίγα δευτερόλεπτα). Τα συνημμένα εμφανίζονται ως στήλη «Αρχεία» στη λίστα και ως όνομα στην εξαγωγή.<\/p>\n\n<h3 id=\"g-trash\">Κάδος και αναίρεση<\/h3>\n<ul>\n<li><b>Αναίρεση:<\/b> μετά από διαγραφή εγγραφής, milestone ή συνημμένου εμφανίζεται για 8 δευτερόλεπτα κουμπί «Αναίρεση».<\/li>\n<li><b>Κάδος:<\/b> η διαγραφή μεταφέρει την εγγραφή στον Κάδο (κουμπί «🗑 Κάδος» δίπλα στα φίλτρα). Εκεί γίνεται <b>Επαναφορά<\/b>. Οι εγγραφές του κάδου δεν υπολογίζονται, δεν στέλνουν υπενθυμίσεις και δεν μπαίνουν στις εξαγωγές.<\/li>\n<li><b>Οριστική διαγραφή:<\/b> γίνεται μόνο από τον Κάδο (στο WordPress με ξεχωριστό δικαίωμα) και αυτόματα μετά από 30 ημέρες (ρυθμίζεται στο WordPress: Ρυθμίσεις → PROCURE360 → Παραμονή στον Κάδο· 0 = ποτέ).<\/li>\n<\/ul>\n\n<h3 id=\"g-rem\">Υπενθυμίσεις<\/h3>\n<ul>\n<li>Στο άνοιγμα της εφαρμογής εμφανίζεται παράθυρο «Needs your attention» με ό,τι έληξε ή λήγει σύντομα. Σε κάθε καρτέλα φαίνονται και ειδοποιήσεις για την άλλη καρτέλα.<\/li>\n<li><b>WordPress:<\/b> στέλνονται και email, αυτόματα μία φορά την ημέρα. Παραλήπτες είναι τα email της εγγραφής και οι γενικοί παραλήπτες των Ρυθμίσεων· το email επαναλαμβάνεται κάθε Ν ημέρες όσο η εγγραφή χρειάζεται ενέργεια. Οι Διαγωνισμοί δεν έχουν υπενθυμίσεις.<\/li>\n<li>Στις εκδόσεις HTML και Windows δεν στέλνονται email, μόνο το παράθυρο στο άνοιγμα. Η έκδοση Windows μπορεί να ανοίγει με την εκκίνηση των Windows.<\/li>\n<\/ul>\n\n<h3 id=\"g-xl\">Excel: εισαγωγή και εξαγωγή<\/h3>\n<ul>\n<li><b>Εισαγωγή:<\/b> κουμπί «Import Excel» (Online Renewals και Συμβάσεις). Οι στήλες αναγνωρίζονται από τους τίτλους τους, ελληνικούς ή αγγλικούς. Υπάρχει και πρότυπο αρχείου για λήψη. Οι Διαγωνισμοί δεν έχουν εισαγωγή από Excel.<\/li>\n<li><b>Εξαγωγή:<\/b> κουμπί «Export» / «Εξαγωγή» σε Excel ή CSV, με όλα τα πεδία και τα επιμέρους ποσά. Στους Διαγωνισμούς περιλαμβάνεται και η κατάσταση.<\/li>\n<li>Στο WordPress η εξαγωγή χρειάζεται δικαίωμα «export».<\/li>\n<\/ul>\n\n<h3 id=\"g-cfg\">Ρυθμίσεις εφαρμογής (καρτέλα ⚙ Ρυθμίσεις)<\/h3>\n<ul>\n<li><b>Πού είναι:<\/b> η καρτέλα «⚙ Ρυθμίσεις» δίπλα στα Άρθρα. Στο WordPress φαίνεται και αλλάζει μόνο από διαχειριστή (δικαίωμα διαχείρισης)· στις εκδόσεις HTML και Windows είναι ανοιχτή σε όποιον χρησιμοποιεί τον υπολογιστή.<\/li>\n<li><b>Γενικά:<\/b> το ποσοστό ΦΠΑ του Προϋπολογισμού (προεπιλογή 19%, 0–100) και οι προεπιλεγμένες ημέρες υπενθύμισης για τα νέα έτη συμβάσεων (προεπιλογή 30, 1–365). Η αλλαγή του ΦΠΑ επηρεάζει μόνο την εμφάνιση του Προϋπολογισμού, οι εγγραφές κρατούν ποσά χωρίς ΦΠΑ. Οι προεπιλεγμένες ημέρες ισχύουν για νέα έτη συμβάσεων, όχι για τα υπάρχοντα ούτε για τα Online Renewals.<\/li>\n<li><b>Custom fields (δικά σου πεδία):<\/b> μπορείς να προσθέσεις δικά σου πεδία σε Συμβάσεις, Διαγωνισμούς, Αναδόχους και Online Renewals (έως 30 ανά καρτέλα). Τύποι: Κείμενο, Αριθμός / Ποσό €, Ημερομηνία, Λίστα επιλογών. Τα πεδία εμφανίζονται στις φόρμες, στις λεπτομέρειες, στις στήλες της λίστας (⚙ Στήλες) και στις εξαγωγές Excel/CSV. Ο τύπος ενός αποθηκευμένου πεδίου δεν αλλάζει. Αν διαγράψεις ένα πεδίο, οι τιμές του κρύβονται και χάνονται όταν ξαναγίνει αποθήκευση της εγγραφής.<\/li>\n<li><b>Αντίγραφο ασφαλείας (Backup):<\/b> το κουμπί «Λήψη αντιγράφου» κατεβάζει ένα αρχείο ZIP με όλα τα δεδομένα (Online Renewals, Συμβάσεις, Διαγωνισμοί, Ανάδοχοι), τα Άρθρα, τις Ρυθμίσεις και τα συνημμένα. Ο κάδος δεν περιλαμβάνεται. Το αρχείο περιέχει πραγματικά δεδομένα και ονόματα χρηστών· φύλαξέ το με ασφάλεια.<\/li>\n<li><b>Επαναφορά (Restore):<\/b> διάλεξε το ZIP, δες την προεπισκόπηση (πόσες εγγραφές θα προστεθούν ή θα ενημερωθούν) και επιβεβαίωσε. Η επαναφορά ενημερώνει ή προσθέτει εγγραφές με βάση το αναγνωριστικό τους και <b>δεν διαγράφει<\/b> τίποτα. Μπορείς να επιλέξεις αν θα επαναφερθούν και οι Ρυθμίσεις και τα Άρθρα. Τα συνημμένα που υπάρχουν ήδη (ίδιο όνομα και μέγεθος) δεν ανεβαίνουν ξανά.<\/li>\n<\/ul>\n\n<h3 id=\"g-set\">Ρυθμίσεις και δικαιώματα (WordPress)<\/h3>\n<ul>\n<li><b>Μενού PROCURE360 (στο WordPress admin):<\/b> όλα βρίσκονται κάτω από ένα μενού. «Ρυθμίσεις»: γενικοί παραλήπτες υπενθυμίσεων, κάθε πόσες ημέρες επαναλαμβάνεται το email, παραμονή στον Κάδο και κουμπί αποστολής υπενθυμίσεων τώρα. Τα άρθρα δεν είναι πια εκεί· επεξεργάζονται μέσα στην εφαρμογή.<\/li>\n<li><b>PROCURE360 → Application Management:<\/b> εκεί ορίζεται ποιος έχει πρόσβαση και με ποιον ρόλο. Κάθε ενότητα (Software, Contracts, Tenders, Contractors, Budget Articles) έχει δικαιώματα προβολής, δημιουργίας, επεξεργασίας, διαγραφής και εξαγωγής. Επιπλέον υπάρχει το «purge» για οριστική διαγραφή από τον Κάδο. Το δικαίωμα προσαρμόζεται και ανά χρήστη.<\/li>\n<li>Ό,τι γίνεται καταγράφεται στο αρχείο δραστηριότητας του Application Management.<\/li>\n<\/ul>\n\n<h3 id=\"g-data\">Δεδομένα και αντίγραφα ασφαλείας<\/h3>\n<ul>\n<li><b>WordPress:<\/b> τα δεδομένα είναι στη βάση του WordPress και είναι κοινά για όλους τους χρήστες. Τα αντίγραφα γίνονται με το αντίγραφο της βάσης και του φακέλου uploads του site σου. Πριν από αναβάθμιση plugin κάνε αντίγραφο.<\/li>\n<li><b>HTML και Windows:<\/b> τα δεδομένα αποθηκεύονται στον browser του συγκεκριμένου υπολογιστή και δεν μοιράζονται με άλλους. Στα Windows το Backup.bat φτιάχνει zip στα Έγγραφα. Μην καθαρίσεις τα δεδομένα του browser. Εξαγωγή Excel όποτε θες επιπλέον αντίγραφο.<\/li>\n<\/ul>\n\n<h3 id=\"g-faq\">Συχνές ερωτήσεις<\/h3>\n<ul>\n<li><b>Γιατί ο Προϋπολογισμός δείχνει μεγαλύτερο ποσό από αυτό που έγραψα;<\/b> Γιατί προσθέτει ΦΠΑ 19%. Οι εγγραφές κρατούν ποσά χωρίς ΦΠΑ.<\/li>\n<li><b>Ο διαγωνισμός δεν φαίνεται στον Προϋπολογισμό.<\/b> Ελέγχεται η κατάστασή του (πρέπει να είναι «Ενεργός») και αν έχει επιμέρους ποσά ή κόστος και ημερομηνία έναρξης.<\/li>\n<li><b>Έσβησα κάτι κατά λάθος.<\/b> Πάτα «Αναίρεση» αμέσως, αλλιώς πήγαινε στον Κάδο και πάτα Επαναφορά.<\/li>\n<li><b>Δεν μπορώ να διαγράψω ένα άρθρο.<\/b> Χρησιμοποιείται σε εγγραφές (live ή στον Κάδο). Άλλαξε πρώτα το άρθρο σε αυτές τις εγγραφές.<\/li>\n<li><b>Δεν βλέπω μια καρτέλα ή ένα κουμπί (WordPress).<\/b> Ο ρόλος σου δεν έχει το σχετικό δικαίωμα· ζήτα το από τον διαχειριστή.<\/li>\n<li><b>Η σελίδα φαίνεται ίδια μετά από αναβάθμιση.<\/b> Κάνε ανανέωση με Ctrl+F5.<\/li>\n<\/ul>\n\n<h3 id=\"g-new\">Τι νέο υπάρχει<\/h3>\n<ul>\n<li><b>3.12.0:<\/b> Νέα καρτέλα «⚙ Ρυθμίσεις»: ΦΠΑ και προεπιλεγμένες ημέρες υπενθύμισης, δικά σου πεδία (custom fields: κείμενο, αριθμός, ημερομηνία, λίστα επιλογών) σε Συμβάσεις, Διαγωνισμούς, Αναδόχους και Online Renewals, και Backup / Restore όλων των δεδομένων, των συνημμένων και των ρυθμίσεων σε ένα αρχείο ZIP.<\/li>\n<li><b>3.11.1:<\/b> Συνημμένα: δέχονται πλέον και άλλους τύπους αρχείων, όπως XML, EML, MSG, LIC, JSON, RTF, 7z/RAR/GZ/TAR, ICS/VCF, πιστοποιητικά (CER/CRT/P7M/P7S), TIFF/BMP, DWG/DXF. Τα αρχεία HTML και XML κατεβαίνουν, δεν ανοίγουν μέσα στην εφαρμογή (ασφάλεια).<\/li>\n<li><b>3.11.0:<\/b> Συμβάσεις: κουμπί «Αρχειοθέτηση» για συμβάσεις που έχουν λήξει (ενεργό μόνο όταν η σύμβαση έχει λήξει)· οι αρχειοθετημένες δεν στέλνουν ειδοποιήσεις/υπενθυμίσεις, μένουν στη λίστα για αναφορά (φίλτρο «Αρχείο») και μπορούν να επανέλθουν.<\/li>\n<li><b>3.10.3:<\/b> Στις λεπτομέρειες της σύμβασης αφαιρέθηκε η ένδειξη «(με υπηρεσίες)» δίπλα στο ΚΟΣΤΟΣ.<\/li>\n<li><b>3.10.2:<\/b> Με κάθε αποθήκευση σύμβασης (και διαγωνισμού) το ΚΟΣΤΟΣ συμπληρώνεται από το άθροισμα ετών· η ετικέτα έγινε «Συνολικό κόστος σύμβασης με Επιπρόσθετες / Προαιρετικές Υπηρεσίες».<\/li>\n<li><b>3.10.1:<\/b> Επιπρόσθετες / Προαιρετικές Υπηρεσίες: αφαιρέθηκε το πεδίο «είδος»· το ποσό των υπηρεσιών προστίθεται <b>μόνο στο συνολικό κόστος<\/b> της σύμβασης και όχι στο κόστος κάθε έτους (στη λίστα, στις υπενθυμίσεις και στο Excel). Ο Προϋπολογισμός δεν αλλάζει.<\/li>\n<li><b>3.10.0:<\/b> Συμβάσεις: νέα ενότητα «Επιπρόσθετες / Προαιρετικές Υπηρεσίες» (είδος, περιγραφή, ετήσιο ποσό, άρθρο)· το ποσό προστίθεται στο κόστος κάθε έτους και στο συνολικό κόστος και περνά στον Προϋπολογισμό στο άρθρο του, κατανεμημένο ανά μήνα σε όλα τα έτη της σύμβασης· αντίστοιχες στήλες στο Excel συμβάσεων.<\/li>\n<li><b>3.9.0:<\/b> νέα καρτέλα «Ανάδοχοι» με λίστα αναδόχων (όνομα, διεύθυνση, άτομο επικοινωνίας, τηλέφωνο, email), πλήθος ενεργών συμβάσεων και αριθμοί διαγωνισμού των ενεργών συμβάσεων ανά ανάδοχο· στις Συμβάσεις ο ανάδοχος επιλέγεται από λίστα (με κουμπί «+ Νέος ανάδοχος») και τα στοιχεία του φαίνονται μόνο για ανάγνωση· νέα πεδία αντιπροσώπου αναδόχου ανά σύμβαση· δημιουργία αναδόχων από παλιές συμβάσεις· νέα ενότητα δικαιωμάτων «Contractors».<\/li>\n<li><b>3.8.0:<\/b> οι φόρμες ανοίγουν σε πλήρη οθόνη και δεν κλείνουν κατά λάθος· στοιχεία αναδόχου (ΑΦΜ, διεύθυνση, άτομο επικοινωνίας, τηλέφωνο, email)· υπόδειξη «κόμμα (,) ή ερωτηματικό (;)» στα πεδία email· μοναδικός αριθμός διαγωνισμού (έλεγχος διπλότυπων)· συνημμένα HTML, εμφανές όριο μεγέθους (20 MB ή το όριο του server) και σαφή μηνύματα όταν ένα αρχείο το ξεπερνά.<\/li>\n<li><b>3.7.0:<\/b> νέα ενότητα «Budget Articles (Άρθρα)» στο Application Management με ξεχωριστά δικαιώματα create / edit / delete για την προσθήκη, αλλαγή και διαγραφή άρθρων (ανά ρόλο ή ανά χρήστη).<\/li>\n<li><b>3.6.0:<\/b> τα άρθρα επεξεργάζονται μέσα στην ίδια την εφαρμογή (όχι από τις Ρυθμίσεις του WordPress)· οι Ρυθμίσεις και το Application Management μπήκαν κάτω από ένα ενιαίο μενού «PROCURE360» στο WordPress admin.<\/li>\n<li><b>3.5.0:<\/b> νέα καρτέλα «Άρθρα», το έτος στα σύνολα του Προϋπολογισμού τονίζεται και οι γραμμές των πινάκων χρωματίζονται ανάλογα με την προέλευση (Online Renewals, Συμβάσεις, Διαγωνισμοί).<\/li>\n<li><b>3.4.1:<\/b> νέα εμφάνιση των τεσσάρων καρτελών: ανάγλυφα κουμπιά με δικό τους χρώμα η καθεμία (Online Renewals τιρκουάζ, Συμβάσεις μπλε, Διαγωνισμοί μωβ, Προϋπολογισμός πράσινο).<\/li>\n<li><b>3.4.0:<\/b> λογότυπο PROCURE360 στην κεφαλίδα της εφαρμογής και εικονίδιο στον Windows installer και στην καρτέλα του browser.<\/li>\n<li><b>3.3.0:<\/b> ενσωματωμένος οδηγός χρήσης (κουμπί «? Οδηγός»).<\/li>\n<li><b>3.2.0:<\/b> νέο όνομα PROCURE360.<\/li>\n<li><b>3.1.1:<\/b> ο Προϋπολογισμός περιλαμβάνει ΦΠΑ 19%.<\/li>\n<li><b>3.1.0:<\/b> καρτέλα Διαγωνισμοί, με ακύρωση και Promote σε Σύμβαση.<\/li>\n<li><b>3.0.0:<\/b> Κάδος, οριστική διαγραφή με ξεχωριστό δικαίωμα, αναίρεση, προστασία χρησιμοποιούμενων άρθρων.<\/li>\n<li><b>2.5.0:<\/b> άρθρα προϋπολογισμού σε πίνακα, με προσθήκη και διαγραφή.<\/li>\n<li><b>2.4.0:<\/b> καρτέλα Προϋπολογισμός και εξαγωγή Excel.<\/li>\n<li><b>2.3.0:<\/b> επιμέρους ποσά ανά έτος με άρθρο προϋπολογισμού.<\/li>\n<li><b>2.2.0:<\/b> αφαίρεση κωδικού πρόσβασης, πολλά emails, επιλογή και ταξινόμηση στηλών.<\/li>\n<\/ul>";/*GUIDE-END*/
 function showGuide(sec){
   openPanel('<div class="ph"><h2>Οδηγός χρήσης</h2><button class="btn small" type="button" data-act="close">Κλείσιμο</button></div><div class="guide">'+GUIDE_HTML+'</div>',"guide",true);
   var e=sec&&document.getElementById("g-"+sec);if(e&&e.scrollIntoView)e.scrollIntoView();
@@ -2016,6 +2425,9 @@ function maybeDigest(){
 
 /* ---------- shared render ---------- */
 function render(){
+  var _ts=$("#tabSt");if(_ts)_ts.setAttribute("aria-selected",String(S.cat==="st"));
+  if(S.cat==="st"&&window.RL_CFG&&window.RL_CFG.canManage===false)S.cat="sw";
+  if(S.cat==="st"){if(!(S.stDirty&&$("#stRoot")))renderStPage();return}
   var bd=S.cat==="bd",tn=S.cat==="tn",ct=S.cat==="ct",ar=S.cat==="ar",co=S.cat==="co";
   $("#tabSw").setAttribute("aria-selected",String(!ct&&!bd&&!tn&&!ar&&!co));var ta=$("#tabAr");if(ta)ta.setAttribute("aria-selected",String(ar));$("#tabCt").setAttribute("aria-selected",String(ct));
   var tt=$("#tabTn");if(tt)tt.setAttribute("aria-selected",String(tn));
@@ -2108,17 +2520,18 @@ async function offer(name,data){
   try{await S.dl.save({filename:name,data:data});toast("Saved "+name)}
   catch(e){if(!e||e.code!=="declined")toast("Could not save the file")}
 }
-function wbBuffer(rows,cols){
-  var ws=XLSX.utils.aoa_to_sheet([HEAD].concat(rows));
-  ws["!cols"]=cols||HEAD.map(function(h){return {wch:Math.max(14,h.length+2)}});
+function wbBuffer(rows,cols,head){
+  head=head||HEAD;
+  var ws=XLSX.utils.aoa_to_sheet([head].concat(rows));
+  ws["!cols"]=cols||head.map(function(h){return {wch:Math.max(14,h.length+2)}});
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Software");
   return XLSX.write(wb,{bookType:"xlsx",type:"array"});
 }
-function exportXlsx(){if(needX())return;if(S.cat==="co")return coExportXlsx();if(S.cat==="tn")return tnExportXlsx();if(S.cat==="ct")return ctExportXlsx();if(!S.items.length){toast("Nothing to export yet");return}offer("renewal-ledger-"+todayIso()+".xlsx",wbBuffer(rowsOut()))}
+function exportXlsx(){if(needX())return;if(S.cat==="co")return coExportXlsx();if(S.cat==="tn")return tnExportXlsx();if(S.cat==="ct")return ctExportXlsx();if(!S.items.length){toast("Nothing to export yet");return}offer("renewal-ledger-"+todayIso()+".xlsx",wbBuffer(swRowsOut(),null,swHead()))}
 function exportCsv(){if(S.cat==="co")return coExportCsv();if(S.cat==="tn")return tnExportCsv();if(S.cat==="ct")return ctExportCsv();
   if(!S.items.length){toast("Nothing to export yet");return}
   var q=function(v){v=String(v==null?"":v);return /[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
-  offer("renewal-ledger-"+todayIso()+".csv","﻿"+[HEAD].concat(rowsOut()).map(function(r){return r.map(q).join(",")}).join("\r\n"));
+  offer("renewal-ledger-"+todayIso()+".csv","﻿"+[swHead()].concat(swRowsOut()).map(function(r){return r.map(q).join(",")}).join("\r\n"));
 }
 function templateXlsx(){if(needX())return;if(S.cat==="ct")return ctTemplate();
   offer("renewal-ledger-template.xlsx",wbBuffer([["Example App","Team chat","Example Ltd","https://example.com","admin@example.com","2026-01-01","2026-12-31",120,30,"a@example.com, b@example.com","","","",""]]));
@@ -2136,6 +2549,7 @@ document.addEventListener("click",async function(ev){
   if(t.id==="overlay"){if(!formOpen())closePanel();return}
   var b=t.closest("button,[data-f]");if(!b)return;
   var a=b.dataset.act;
+  if(a&&stAction(a,b))return;
   if(b.dataset.f&&!a){S.filter=b.dataset.f;if(S.filter==="trash")loadTrash(S.cat);render();return}
   if(b.dataset.sort)return setSort(b.dataset.sort);
   if(b.id==="btnAdd"||b.id==="emAdd")return S.cat==="co"?coStart():S.cat==="tn"?tnStart():S.cat==="ct"?ctStart():startWizard();
@@ -2222,7 +2636,7 @@ document.addEventListener("click",async function(ev){
 });
 document.addEventListener("keydown",function(ev){
   if(ev.key==="Enter"&&S.cw&&!S.co&&S.cw.mode==="step"&&ev.target.tagName==="INPUT"){ev.preventDefault();S.cw.i===cwBase().length?ctSave():ctNext()}
-  if(ev.key==="Enter"&&S.wiz&&S.wiz.mode==="step"&&ev.target.tagName==="INPUT"){ev.preventDefault();var l=S.wiz.i===FIELDS.length;l?wizSave():wizNext()}
+  if(ev.key==="Enter"&&S.wiz&&S.wiz.mode==="step"&&ev.target.tagName==="INPUT"){ev.preventDefault();var l=S.wiz.i===swF().length;l?wizSave():wizNext()}
 });
 document.addEventListener("input",function(ev){var t=ev.target;if(t&&t.closest&&t.closest("#overlay")&&formOpen())S.dirty=true;if(t&&t.id&&t.id.indexOf("bp_amt_")===0)bpLive();else if(t&&t.id&&t.id.indexOf("ex_amt_")===0)exTotals()});
 document.addEventListener("change",async function(ev){
@@ -2255,7 +2669,7 @@ async function loadSample(){
 
 /* ---------- start ---------- */
 async function start(){
-  try{var rc=localStorage.getItem("rl.cat");if(rc==="ct"||rc==="bd"||rc==="tn"||rc==="ar"||rc==="co")S.cat=rc}catch(e){}
+  try{var rc=localStorage.getItem("rl.cat");if(rc==="ct"||rc==="bd"||rc==="tn"||rc==="ar"||rc==="co"||rc==="st")S.cat=rc}catch(e){}
   render();
   var c=window.claude;if(!c||!c.use)return;
   try{S.assets=await c.use("assets")}catch(e){}

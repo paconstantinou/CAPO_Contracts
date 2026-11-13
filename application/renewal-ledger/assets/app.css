@@ -56,6 +56,15 @@
 #rl-app .pill.warn{background:var(--warn-bg);color:var(--warn)}
 #rl-app .pill.bad{background:var(--bad-bg);color:var(--bad)}
 #rl-app .pill.mute{background:rgba(127,127,127,.18);color:inherit}
+#rl-app .stcard{border:1px solid var(--line);border-radius:12px;padding:16px;margin:0 0 16px;background:var(--surface,transparent)}
+#rl-app .stcard h3{margin:0 0 8px}
+#rl-app .stgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+#rl-app .cfgrp{margin:12px 0;padding-top:8px;border-top:1px dashed var(--line)}
+#rl-app .cfgrp h4{margin:0 0 6px}
+#rl-app .cfrow{display:grid;grid-template-columns:2fr 1.4fr 2.4fr auto;gap:10px;align-items:end;margin:8px 0}
+#rl-app .cfrow .cfopt[hidden]{display:none}
+#rl-app .chk{display:inline-flex;gap:6px;align-items:center;margin:6px 14px 6px 0}
+@media(max-width:720px){#rl-app .cfrow{grid-template-columns:1fr}}
 #rl-app .guide h3{margin:22px 0 6px;font-size:1.05rem}
 #rl-app .guide p,#rl-app .guide li{line-height:1.5;max-width:75ch}
 #rl-app .guide ul{padding-left:20px;margin:6px 0}

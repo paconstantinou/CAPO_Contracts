@@ -21,6 +21,12 @@ Uploads: type allow-list (PDF, images, CSV, TXT, Word, Excel, PowerPoint, HTML, 
 
 Tender numbers are unique among live tenders (case- and space-insensitive): `PUT records/tenders/{id}` and `POST records/tenders/{id}/restore` answer `409 rl_duplicate_tender` otherwise. Contracts carry `contractorVat`, `contractorAddress`, `contractorContact`, `contractorPhone`, `contractorEmail`.
 
+## Settings and custom fields (3.12.0)
+
+* `GET /rl/v1/settings` (logged in) returns `{vat, remindDays, customFields:{software|contracts|tenders|contractors:[{id,label,type,options}]}}`; `PUT /rl/v1/settings` needs `manage_options` (otherwise `403 am_forbidden`) and is normalised server-side (VAT 0–100, remindDays 1–365, ≤30 fields per collection, id `^[A-Za-z0-9_-]{1,40}$`, types `text|number|date|select`). Stored in option `rl_app_settings`; also delivered in `RL_CFG.settings`.
+* Records carry `custom:{fieldId:value}`. `RL_DB::sanitize_record` drops values for undefined fields, selects outside the options, non-numeric numbers and invalid dates. Excel/CSV exports append one column per custom field.
+* Backup (client-side ZIP, `format: 1`): `manifest.json`, `data/{software,contracts,tenders,contractors}.json`, `settings.json`, `articles.json`, `files/<attachmentId>`. Restore upserts by id (contractors, tenders, contracts, software), never deletes, and re-uploads attachments not already present (same name and size). Trash is not part of a backup.
+
 ## Milestones
 Each record (software or contract) may carry `milestones`: `[{id, year, description, due, remind (30|60), comments, done, attachments[]}]`, saved with the record through `PUT /rl/v1/records/{coll}/{id}` and therefore governed by **create/edit**. Server-side: ids must be unique `[A-Za-z0-9_-]`, description required (max 1000), `year` 1–60, `remind` forced to 30 or 60, dates validated, attachments must be existing files of the same module; max 300 per record. Deleting a record deletes the milestone attachments. Open (not done) milestones are included in the daily reminder e-mail: from 30/60 days before the due date, and for 30 days after it is overdue.
 

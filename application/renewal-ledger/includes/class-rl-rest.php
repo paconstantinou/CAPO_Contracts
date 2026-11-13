@@ -73,6 +73,27 @@ class RL_REST {
 				),
 			),
 			array(
+				'route' => '/settings',
+				'args'  => array(
+					array(
+						'methods'             => 'GET',
+						'callback'            => function () {
+							return array( 'settings' => RL_Settings::app_settings() );
+						},
+						'permission_callback' => function () {
+							return is_user_logged_in();
+						},
+					),
+					array(
+						'methods'             => 'PUT',
+						'callback'            => array( __CLASS__, 'save_app_settings' ),
+						'permission_callback' => function () {
+							return current_user_can( 'manage_options' ) ? true : new WP_Error( 'am_forbidden', 'Only administrators can change the settings.', array( 'status' => 403 ) );
+						},
+					),
+				),
+			),
+			array(
 				'route' => '/records/(?P<coll>[a-z]+)',
 				'args'  => array(
 					'methods'             => 'GET',
@@ -226,6 +247,16 @@ class RL_REST {
 		$res = RL_Settings::save_articles( $rows );
 		self::log( 'articles_saved', 'articles', array( 'count' => count( $res['articles'] ), 'kept' => $res['kept'] ) );
 		return $res;
+	}
+
+	public static function save_app_settings( $req ) {
+		$body = $req->get_json_params();
+		if ( ! is_array( $body ) || ! isset( $body['settings'] ) || ! is_array( $body['settings'] ) ) {
+			return new WP_Error( 'rl_bad_request', 'Missing settings.', array( 'status' => 400 ) );
+		}
+		$s = RL_Settings::save_app_settings( $body['settings'] );
+		self::log( 'settings_saved', 'settings', array( 'vat' => $s['vat'], 'remindDays' => $s['remindDays'] ) );
+		return array( 'settings' => $s );
 	}
 
 	/* ---------- records ---------- */

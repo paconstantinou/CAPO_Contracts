@@ -145,6 +145,62 @@ class RL_Settings {
 		return array( 'articles' => self::articles(), 'kept' => $kept );
 	}
 
+	/* ---------- application settings (Ρυθμίσεις page): VAT rate, default reminder days, custom fields ---------- */
+
+	const CF_COLLECTIONS = array( 'software', 'contracts', 'tenders', 'contractors' );
+
+	public static function app_settings() {
+		$raw = get_option( 'rl_app_settings', '' );
+		$in  = is_string( $raw ) && '' !== $raw ? json_decode( $raw, true ) : ( is_array( $raw ) ? $raw : array() );
+		return self::normalize_app_settings( is_array( $in ) ? $in : array() );
+	}
+
+	public static function normalize_app_settings( $in ) {
+		$vat = isset( $in['vat'] ) && is_numeric( $in['vat'] ) ? max( 0, min( 100, round( (float) $in['vat'], 2 ) ) ) : 19;
+		$rem = isset( $in['remindDays'] ) && is_numeric( $in['remindDays'] ) ? max( 1, min( 365, (int) $in['remindDays'] ) ) : 30;
+		$cf  = array();
+		foreach ( self::CF_COLLECTIONS as $c ) {
+			$cf[ $c ] = array();
+			$seen     = array();
+			$list     = isset( $in['customFields'][ $c ] ) && is_array( $in['customFields'][ $c ] ) ? $in['customFields'][ $c ] : array();
+			foreach ( array_slice( $list, 0, 30 ) as $f ) {
+				if ( ! is_array( $f ) ) {
+					continue;
+				}
+				$id    = isset( $f['id'] ) ? (string) $f['id'] : '';
+				$label = isset( $f['label'] ) ? trim( wp_strip_all_tags( (string) $f['label'] ) ) : '';
+				$type  = isset( $f['type'] ) && in_array( $f['type'], array( 'text', 'number', 'date', 'select' ), true ) ? $f['type'] : 'text';
+				if ( ! preg_match( '/^[A-Za-z0-9_-]{1,40}$/', $id ) || '' === $label || isset( $seen[ $id ] ) ) {
+					continue;
+				}
+				$seen[ $id ] = 1;
+				$opts        = array();
+				if ( 'select' === $type && isset( $f['options'] ) && is_array( $f['options'] ) ) {
+					foreach ( array_slice( $f['options'], 0, 50 ) as $o ) {
+						$o = trim( wp_strip_all_tags( is_scalar( $o ) ? (string) $o : '' ) );
+						if ( '' !== $o && ! in_array( mb_substr( $o, 0, 100 ), $opts, true ) ) {
+							$opts[] = mb_substr( $o, 0, 100 );
+						}
+					}
+				}
+				$cf[ $c ][] = array( 'id' => $id, 'label' => mb_substr( $label, 0, 80 ), 'type' => $type, 'options' => $opts );
+			}
+		}
+		return array( 'vat' => $vat, 'remindDays' => $rem, 'customFields' => $cf );
+	}
+
+	public static function save_app_settings( $in ) {
+		$n = self::normalize_app_settings( is_array( $in ) ? $in : array() );
+		update_option( 'rl_app_settings', wp_json_encode( $n ), false );
+		return $n;
+	}
+
+	/** Custom field definitions of one collection. @return array[] { id, label, type, options } */
+	public static function custom_fields( $collection ) {
+		$s = self::app_settings();
+		return isset( $s['customFields'][ $collection ] ) ? $s['customFields'][ $collection ] : array();
+	}
+
 	/** Days a deleted record stays in the trash before it is removed for good. 0 = never remove automatically. */
 	public static function trash_days() {
 		return max( 0, (int) get_option( 'rl_trash_days', 30 ) );

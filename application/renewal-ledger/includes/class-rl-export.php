@@ -150,7 +150,7 @@ class RL_Export {
 				$row[] = self::status_software( $d );
 				$rows[] = $row;
 			}
-			return array( $head, $rows );
+			return self::with_custom( $collection, $head, $rows, $items );
 		}
 
 		if ( 'contractors' === $collection ) {
@@ -165,7 +165,7 @@ class RL_Export {
 				$s      = isset( $stats[ $it['id'] ] ) ? $stats[ $it['id'] ] : array( 'active' => 0, 'tenders' => array() );
 				$rows[] = array( self::g( $d, 'name' ), self::g( $d, 'address' ), self::g( $d, 'address2' ), self::g( $d, 'postal' ), self::g( $d, 'city' ), self::g( $d, 'country' ), self::g( $d, 'contact' ), self::g( $d, 'email' ), self::g( $d, 'phone' ), (int) $s['active'], implode( ', ', array_values( $s['tenders'] ) ) );
 			}
-			return array( $head, $rows );
+			return self::with_custom( $collection, $head, $rows, $items );
 		}
 
 		if ( 'tenders' === $collection ) {
@@ -194,7 +194,7 @@ class RL_Export {
 				$row[]  = isset( $labels[ $st ] ) ? $labels[ $st ] : $st;
 				$rows[] = $row;
 			}
-			return array( $head, $rows );
+			return self::with_custom( $collection, $head, $rows, $items );
 		}
 
 		$max = 1;
@@ -237,6 +237,25 @@ class RL_Export {
 			}
 			array_push( $row, self::g( $d, 'repName' ), self::g( $d, 'repPhone' ), self::g( $d, 'repEmail' ), self::extras_text( $d ), $ex > 0 ? $ex : '' );
 			$rows[] = $row;
+		}
+		return self::with_custom( $collection, $head, $rows, $items );
+	}
+
+	/** Appends one column per custom field (Ρυθμίσεις) of the collection; $items is in the same order as $rows. */
+	private static function with_custom( $collection, $head, $rows, $items ) {
+		$defs = RL_Settings::custom_fields( $collection );
+		if ( ! $defs ) {
+			return array( $head, $rows );
+		}
+		foreach ( $defs as $f ) {
+			$head[] = $f['label'];
+		}
+		foreach ( $rows as $i => $row ) {
+			$cv = isset( $items[ $i ]['data']['custom'] ) && is_array( $items[ $i ]['data']['custom'] ) ? $items[ $i ]['data']['custom'] : array();
+			foreach ( $defs as $f ) {
+				$v = isset( $cv[ $f['id'] ] ) ? $cv[ $f['id'] ] : '';
+				$rows[ $i ][] = ( 'number' === $f['type'] && is_numeric( $v ) ) ? (float) $v : $v;
+			}
 		}
 		return array( $head, $rows );
 	}
