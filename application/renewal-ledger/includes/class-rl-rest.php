@@ -94,6 +94,31 @@ class RL_REST {
 				),
 			),
 			array(
+				'route' => '/backup-schedule',
+				'args'  => array(
+					array(
+						'methods'             => 'GET',
+						'callback'            => function () {
+							return array( 'schedule' => RL_Backup::view() );
+						},
+						'permission_callback' => array( __CLASS__, 'admin_only' ),
+					),
+					array(
+						'methods'             => 'PUT',
+						'callback'            => array( __CLASS__, 'save_backup_schedule' ),
+						'permission_callback' => array( __CLASS__, 'admin_only' ),
+					),
+				),
+			),
+			array(
+				'route' => '/backup-schedule/run',
+				'args'  => array(
+					'methods'             => 'POST',
+					'callback'            => array( __CLASS__, 'run_backup' ),
+					'permission_callback' => array( __CLASS__, 'admin_only' ),
+				),
+			),
+			array(
 				'route' => '/records/(?P<coll>[a-z]+)',
 				'args'  => array(
 					'methods'             => 'GET',
@@ -247,6 +272,35 @@ class RL_REST {
 		$res = RL_Settings::save_articles( $rows );
 		self::log( 'articles_saved', 'articles', array( 'count' => count( $res['articles'] ), 'kept' => $res['kept'] ) );
 		return $res;
+	}
+
+	public static function admin_only() {
+		if ( ! is_user_logged_in() ) {
+			return new WP_Error( 'rest_forbidden', 'Login required.', array( 'status' => 401 ) );
+		}
+		return current_user_can( 'manage_options' ) ? true : new WP_Error( 'am_forbidden', 'Only administrators can change the backup schedule.', array( 'status' => 403 ) );
+	}
+
+	public static function save_backup_schedule( $req ) {
+		$body = $req->get_json_params();
+		if ( ! is_array( $body ) || ! isset( $body['schedule'] ) || ! is_array( $body['schedule'] ) ) {
+			return new WP_Error( 'rl_bad_request', 'Missing schedule.', array( 'status' => 400 ) );
+		}
+		$s = RL_Backup::save( $body['schedule'] );
+		if ( is_wp_error( $s ) ) {
+			return $s;
+		}
+		self::log( 'backup_schedule_saved', 'settings', array( 'enabled' => $s['enabled'], 'frequency' => $s['frequency'], 'keep' => $s['keep'] ) );
+		return array( 'schedule' => $s );
+	}
+
+	public static function run_backup() {
+		$r = RL_Backup::run( 'manual' );
+		if ( is_wp_error( $r ) ) {
+			$st = $r->get_error_data();
+			return new WP_Error( $r->get_error_code(), $r->get_error_message(), array( 'status' => is_array( $st ) && isset( $st['status'] ) ? $st['status'] : 500 ) );
+		}
+		return array( 'result' => $r, 'schedule' => RL_Backup::view() );
 	}
 
 	public static function save_app_settings( $req ) {

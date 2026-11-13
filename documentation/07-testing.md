@@ -7,6 +7,10 @@ php tests/integration/cron-milestones-test.php /path/to/wp-load.php     # milest
 php tests/integration/emails-migration-test.php /path/to/wp-load.php    # password clean-up, e-mail validation and routing
 php tests/integration/engine-service-test.php /path/to/wp-load.php    # engine, service, store, logging
 php tests/integration/rest-permissions-test.php http://127.0.0.1:8088   # HTTP: anonymous, CSRF, roles, export, uploads
+php tests/integration/settings-test.php http://127.0.0.1:8088 /path/to/wp-load.php        # settings, custom fields
+php tests/integration/backup-schedule-test.php http://127.0.0.1:8088 /path/to/wp-load.php  # scheduled backup to a folder
+node tests/unit/settings-test.js                                                  # settings helpers + ZIP writer/reader
+node tests/browser/wp-backup-schedule-test.js                                     # browser: schedule card, run now, restore of the server ZIP
 ```
 The REST test expects users `admin` (Super Admin), `viewer1`, `editor1`, `manager1`, `nobody` (password `Pw-<login>-12345!`).
 See the root README for what is and is not verified.

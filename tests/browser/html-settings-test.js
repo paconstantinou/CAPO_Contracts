@@ -14,6 +14,7 @@ const file = require('path').resolve(process.argv[2] || 'index.html');
   await p.click('#tabSt'); await W(600);
   let d = await T('#list');
   ok('Ρυθμίσεις page shows Backup & Restore, general settings and custom fields', d.includes('Backup') && d.includes('Γενικές ρυθμίσεις') && d.includes('Custom fields'));
+  ok('scheduled backup: info card explains it is WordPress/Windows only (no form in the browser build)', d.includes('Προγραμματισμένο backup') && d.includes('Schedule-Backup.bat') && (await p.locator('#bsCard').count()) === 0);
   ok('no Add / Import / Export buttons on the settings page', !(await p.isVisible('#btnAdd')) && !(await p.isVisible('#btnImport')) && !(await p.isVisible('#btnExport')));
   /* --- custom fields --- */
   const add = async (coll, label, type, opts) => {

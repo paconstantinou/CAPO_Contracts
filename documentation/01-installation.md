@@ -2,7 +2,7 @@
 
 Requirements: WordPress 5.8+, PHP 7.4+ (ZipArchive recommended for .xlsx export), MySQL/MariaDB, HTTPS.
 
-1. **Plugins → Add New → Upload**: install `application-management-1.3.0.zip` first, then `renewal-ledger-3.12.0.zip`. (PROCURE360 refuses to serve data when Application Management is missing.)
+1. **Plugins → Add New → Upload**: install `application-management-1.3.0.zip` first, then `renewal-ledger-3.13.0.zip`. (PROCURE360 refuses to serve data when Application Management is missing.)
 2. Activate **Application Management**. The administrator who activates it becomes the first **Super Admin**. Other WordPress administrators get no application access until a Super Admin assigns it.
 3. Activate **PROCURE360**. It registers two modules: `software` (Online Renewals) and `contracts` (Συμβάσεις).
 4. Create a private page containing the shortcode `[renewal_ledger]`.

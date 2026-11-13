@@ -2,7 +2,7 @@
 /**
  * Plugin Name: PROCURE360
  * Description: PROCURE360 – Integrated Procurement & Budget Management System. Συνδέει αγορές λογισμικού, συμβάσεις, μελλοντικούς διαγωνισμούς και προγραμματισμό προϋπολογισμού, με ετήσιες υπενθυμίσεις, συνημμένα, εισαγωγή/εξαγωγή Excel και ειδοποιήσεις email. Τα δεδομένα αποθηκεύονται στη βάση SQL του WordPress.
- * Version: 3.12.0
+ * Version: 3.13.0
  * Requires Plugins: application-management
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RL_VERSION', '3.12.0' );
+define( 'RL_VERSION', '3.13.0' );
 define( 'RL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RL_URL', plugin_dir_url( __FILE__ ) );
 
@@ -22,6 +22,7 @@ require_once RL_DIR . 'includes/class-rl-export.php';
 require_once RL_DIR . 'includes/class-rl-settings.php';
 require_once RL_DIR . 'includes/class-rl-rest.php';
 require_once RL_DIR . 'includes/class-rl-cron.php';
+require_once RL_DIR . 'includes/class-rl-backup.php';
 
 register_activation_hook( __FILE__, 'rl_activate' );
 register_deactivation_hook( __FILE__, 'rl_deactivate' );
@@ -30,10 +31,12 @@ function rl_activate() {
 	RL_DB::install();
 	RL_DB::ensure_dir();
 	RL_Cron::schedule();
+	RL_Backup::schedule();
 }
 
 function rl_deactivate() {
 	RL_Cron::unschedule();
+	RL_Backup::unschedule();
 }
 
 /* Create or update the tables after a plugin update, and make sure the cron event exists. */
@@ -45,6 +48,7 @@ add_action( 'plugins_loaded', function () {
 		update_option( 'rl_db_version', RL_VERSION );
 	}
 	RL_Cron::schedule();
+	RL_Backup::schedule();
 } );
 
 /* Declare the two modules to the Application Management plugin. Access is granted there, never here. */
@@ -87,6 +91,7 @@ add_action( 'am_register_modules', function ( $registry ) {
 RL_Settings::init();
 RL_REST::init();
 RL_Cron::init();
+RL_Backup::init();
 
 /* [renewal_ledger] shortcode: place it on a page. The data itself is only served to allowed, logged-in users. */
 add_shortcode( 'renewal_ledger', function () {
@@ -131,6 +136,7 @@ add_shortcode( 'renewal_ledger', function () {
 				'maxUpload'   => RL_DB::max_upload(),
 				'canArticles' => RL_Settings::can_edit_articles(),
 				'settings'    => RL_Settings::app_settings(),
+				'backupSchedule' => current_user_can( 'manage_options' ) ? RL_Backup::view() : null,
 				'artPerms'    => RL_Settings::article_perms(),
 			)
 		) . ';',

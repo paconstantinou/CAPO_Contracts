@@ -8,6 +8,7 @@ Write-Host "Program and data folder: $dest"
 $ans = Read-Host 'Delete the program files AND ALL SAVED DATA? Type DELETE to confirm, or press Enter to keep them'
 if ($ans -ceq 'DELETE') {
   Remove-Item -LiteralPath $dest -Recurse -Force -ErrorAction SilentlyContinue
+  schtasks /Delete /TN 'PROCURE360 Backup' /F 2>$null | Out-Null # the scheduled backup needs the data folder
   if (Test-Path $dest) { Write-Host 'Some files are in use. Close PROCURE360 and run this again.' } else { Write-Host 'Everything was deleted.' }
 } else {
   Write-Host 'Files and data were kept.'
