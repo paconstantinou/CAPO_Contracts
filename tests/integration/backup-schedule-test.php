@@ -108,6 +108,7 @@ t( 'keep=2: only the two newest backups remain', 2 === count( glob( $dir . '/PRO
 t( 'the newest one is kept and files that are not backups are never touched', is_file( $dir . '/' . $r['json']['result']['file'] ) && is_file( $dir . '/keep-me.txt' ) );
 
 echo "when is it due\n";
+wp_cache_delete( RL_Backup::OPTION, 'options' ); // this process cached the option at the start; the HTTP requests changed it since
 $base_s = RL_Backup::get();
 $mk = function ( $freq, $ago ) use ( $base_s ) { return array_merge( $base_s, array( 'enabled' => true, 'frequency' => $freq, 'path' => $base_s['path'], 'lastRun' => gmdate( 'c', time() - $ago ) ) ); };
 t( 'weekly: 6 days ago is not due, 8 days ago is due', ! RL_Backup::is_due( $mk( 'weekly', 6 * 86400 ) ) && RL_Backup::is_due( $mk( 'weekly', 8 * 86400 ) ) );
@@ -116,14 +117,14 @@ t( 'never ran: due at once', RL_Backup::is_due( array_merge( $mk( 'weekly', 0 ),
 t( 'disabled: never due', ! RL_Backup::is_due( array_merge( $mk( 'weekly', 99 * 86400 ), array( 'enabled' => false ) ) ) );
 
 echo "scheduled run and failure\n";
-$o = RL_Backup::get(); $o['lastRun'] = gmdate( 'c', time() - 9 * 86400 ); $o['frequency'] = 'weekly'; $o['enabled'] = true; update_option( RL_Backup::OPTION, $o, false );
+wp_cache_delete( RL_Backup::OPTION, 'options' ); $o = RL_Backup::get(); $o['lastRun'] = gmdate( 'c', time() - 9 * 86400 ); $o['frequency'] = 'weekly'; $o['enabled'] = true; update_option( RL_Backup::OPTION, $o, false );
 $before = count( glob( $dir . '/PROCURE360-backup-*.zip' ) ); sleep( 1 );
 do_action( RL_Backup::HOOK );
 $after = RL_Backup::get();
 t( 'the cron hook makes a backup when one is due', true === $after['lastOk'] && strtotime( $after['lastRun'] ) > time() - 30, json_encode( $after ) );
 $n = count( glob( $dir . '/PROCURE360-backup-*.zip' ) ); do_action( RL_Backup::HOOK );
 t( 'and does nothing again right after (not due)', $n === count( glob( $dir . '/PROCURE360-backup-*.zip' ) ) );
-$o = RL_Backup::get(); $o['path'] = $dir . '/gone'; $o['lastRun'] = gmdate( 'c', time() - 9 * 86400 ); update_option( RL_Backup::OPTION, $o, false );
+wp_cache_delete( RL_Backup::OPTION, 'options' ); $o = RL_Backup::get(); $o['path'] = $dir . '/gone'; $o['lastRun'] = gmdate( 'c', time() - 9 * 86400 ); update_option( RL_Backup::OPTION, $o, false );
 do_action( RL_Backup::HOOK ); $f2 = RL_Backup::get();
 t( 'folder missing at run time: failure recorded with a message, no crash', false === $f2['lastOk'] && '' !== $f2['lastMessage'], json_encode( $f2 ) );
 $r = $c->rl( 'POST', 'backup-schedule/run' );
