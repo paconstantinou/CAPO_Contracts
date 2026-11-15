@@ -23,13 +23,19 @@ Tender numbers are unique among live tenders (case- and space-insensitive): `PUT
 
 ## Settings and custom fields (3.12.0)
 
-* `GET /rl/v1/settings` (logged in) returns `{vat, remindDays, customFields:{software|contracts|tenders|contractors:[{id,label,type,options}]}}`; `PUT /rl/v1/settings` needs `manage_options` (otherwise `403 am_forbidden`) and is normalised server-side (VAT 0–100, remindDays 1–365, ≤30 fields per collection, id `^[A-Za-z0-9_-]{1,40}$`, types `text|number|date|select`). Stored in option `rl_app_settings`; also delivered in `RL_CFG.settings`.
+* `GET /rl/v1/settings` (logged in) returns `{vat, remindDays, customFields:{software|contracts|tenders|contractors:[{id,label,type,options}]}}`; `PUT /rl/v1/settings` needs `manage_options` or `settings:manage_settings` (otherwise `403 am_forbidden`) and is normalised server-side (VAT 0–100, remindDays 1–365, ≤30 fields per collection, id `^[A-Za-z0-9_-]{1,40}$`, types `text|number|date|select`). Stored in option `rl_app_settings`; also delivered in `RL_CFG.settings`.
 * Records carry `custom:{fieldId:value}`. `RL_DB::sanitize_record` drops values for undefined fields, selects outside the options, non-numeric numbers and invalid dates. Excel/CSV exports append one column per custom field.
 * Backup (client-side ZIP, `format: 1`): `manifest.json`, `data/{software,contracts,tenders,contractors}.json`, `settings.json`, `articles.json`, `files/<attachmentId>`. Restore upserts by id (contractors, tenders, contracts, software), never deletes, and re-uploads attachments not already present (same name and size). Trash is not part of a backup.
 
+## Audit trail, uploads, settings permission (3.14.0)
+
+* `PUT /rl/v1/settings` and `GET|PUT /rl/v1/backup-schedule`, `POST /rl/v1/backup-schedule/run` need `manage_options` **or** the Application Management permission `settings:manage_settings`.
+* `POST /rl/v1/files`: besides the extension, the first bytes are checked (`415 rl_bad_content`) and an optional antivirus scan runs (`422 rl_infected`, `503 rl_av_unavailable`). Refusals are logged as `ledger.file_rejected`.
+* `GET /rl/v1/files/{id}` writes `ledger.file_download`; refused requests on `/rl/v1/*` write `ledger.access_denied`; `PUT /records/{coll}/{id}` on an existing record logs a field-level diff. See `08-audit-and-hardening.md`.
+
 ## Scheduled backup (3.13.0)
 
-* `GET|PUT /rl/v1/backup-schedule` and `POST /rl/v1/backup-schedule/run`: administrators only (`manage_options`; anonymous 401, others 403 `am_forbidden`). Body of the PUT: `{"schedule":{"enabled":bool,"frequency":"weekly|monthly","path":"/abs/folder","keep":1-100}}`. The folder must be absolute, free of `..` and stream wrappers, existing and writable by the web server, and outside ABSPATH, `wp-content` and the uploads folder (`400 rl_bad_path` otherwise). It is stored in option `rl_backup_schedule`, separate from `rl_app_settings`, so it is not part of a backup.
+* `GET|PUT /rl/v1/backup-schedule` and `POST /rl/v1/backup-schedule/run`: administrators only (`manage_options` or `settings:manage_settings`; anonymous 401, others 403 `am_forbidden`). Body of the PUT: `{"schedule":{"enabled":bool,"frequency":"weekly|monthly","path":"/abs/folder","keep":1-100}}`. The folder must be absolute, free of `..` and stream wrappers, existing and writable by the web server, and outside ABSPATH, `wp-content` and the uploads folder (`400 rl_bad_path` otherwise). It is stored in option `rl_backup_schedule`, separate from `rl_app_settings`, so it is not part of a backup.
 * WP-Cron event `rl_scheduled_backup` runs hourly and makes a backup when one is due (last run + 7 days or + 1 month). Output: `PROCURE360-backup-YYYY-MM-DD_HHMMSS.zip` (the same format 1 ZIP as the manual backup, built with PHP `ZipArchive`; written as `.part` and renamed). Only files matching that name are ever pruned (`keep`). A failure is stored (`lastOk`, `lastMessage`) and mailed to the reminder recipients at most once a day. Runs are logged in the Application Management activity log (`backup_created`, `backup_failed`).
 
 ## Milestones

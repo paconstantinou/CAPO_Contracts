@@ -40,7 +40,10 @@ function client( $base, $u, $p ) { $c = new Client( $base ); if ( ! $c->login( $
 $c = client( $base, 'admin', getenv( 'RL_TEST_ADMIN_PASS' ) ?: die( "Set RL_TEST_ADMIN_PASS\n" ) );
 $tmp = tempnam( sys_get_temp_dir(), 'att' ); file_put_contents( $tmp, "<?xml version=\"1.0\"?><a xmlns=\"http://www.w3.org/1999/xhtml\"><script>alert(1)</script></a>" );
 foreach ( array( 'xml', 'eml', 'msg', 'lic', 'json', 'rtf', '7z', 'cer', 'p7m', 'tiff', 'dwg' ) as $ext ) {
-	$r = $c->req( 'POST', '/?rest_route=/rl/v1/files&coll=contracts', array( 'file' => new CURLFile( $tmp, 'application/octet-stream', 'probe.' . $ext ) ), array(), true );
+	// formats with a fixed signature need a real one since 3.14.0 (content check); the others keep the XML probe
+	$sigs = array( 'rtf' => '{\\rtf1 probe}', '7z' => "7z\xBC\xAF\x27\x1C\x00\x04" );
+	$use = $tmp; if ( isset( $sigs[ $ext ] ) ) { $use = tempnam( sys_get_temp_dir(), 'att' ); file_put_contents( $use, $sigs[ $ext ] ); }
+	$r = $c->req( 'POST', '/?rest_route=/rl/v1/files&coll=contracts', array( 'file' => new CURLFile( $use, 'application/octet-stream', 'probe.' . $ext ) ), array(), true );
 	t( ".$ext accepted", 200 === $r['code'] && ! empty( $r['json']['id'] ), $r['code'] . ' ' . $r['body'] );
 	if ( 'xml' === $ext && ! empty( $r['json']['id'] ) ) {
 		$g = $c->req( 'GET', '/?rest_route=/rl/v1/files/' . $r['json']['id'] );

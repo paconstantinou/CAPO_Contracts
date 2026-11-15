@@ -2,7 +2,7 @@
 /**
  * Plugin Name: PROCURE360
  * Description: PROCURE360 – Integrated Procurement & Budget Management System. Συνδέει αγορές λογισμικού, συμβάσεις, μελλοντικούς διαγωνισμούς και προγραμματισμό προϋπολογισμού, με ετήσιες υπενθυμίσεις, συνημμένα, εισαγωγή/εξαγωγή Excel και ειδοποιήσεις email. Τα δεδομένα αποθηκεύονται στη βάση SQL του WordPress.
- * Version: 3.13.1
+ * Version: 3.14.0
  * Requires Plugins: application-management
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RL_VERSION', '3.13.1' );
+define( 'RL_VERSION', '3.14.0' );
 define( 'RL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RL_URL', plugin_dir_url( __FILE__ ) );
 
@@ -23,6 +23,8 @@ require_once RL_DIR . 'includes/class-rl-settings.php';
 require_once RL_DIR . 'includes/class-rl-rest.php';
 require_once RL_DIR . 'includes/class-rl-cron.php';
 require_once RL_DIR . 'includes/class-rl-backup.php';
+require_once RL_DIR . 'includes/class-rl-audit.php';
+require_once RL_DIR . 'includes/class-rl-upload-guard.php';
 
 register_activation_hook( __FILE__, 'rl_activate' );
 register_deactivation_hook( __FILE__, 'rl_deactivate' );
@@ -80,6 +82,13 @@ add_action( 'am_register_modules', function ( $registry ) {
 			'source'      => 'renewal-ledger',
 			'actions'     => array( 'purge' => 'Delete permanently from the trash' ),
 		) );
+	$registry->register( 'settings', array(
+		'name'        => 'PROCURE360 Settings (Ρυθμίσεις)',
+		'description' => 'Who may change the PROCURE360 settings and the backup schedule. WordPress administrators always can. Only Administrators get this permission by default.',
+		'source'      => 'renewal-ledger',
+		'actions'     => array( 'manage_settings' => 'Change settings and schedule backups' ),
+		'presets'     => array( 'manager' => array(), 'editor' => array(), 'viewer' => array() ),
+	) );
 	$registry->register( 'tenders', array(
 		'name'        => 'Tenders (Διαγωνισμοί)',
 		'description' => 'Planned tenders with estimated budget (PROCURE360).',
@@ -140,11 +149,11 @@ add_shortcode( 'renewal_ledger', function () {
 				'serverExport' => true,
 				'articles' => RL_Settings::articles(),
 				'trashDays' => RL_Settings::trash_days(),
-				'canManage'   => current_user_can( 'manage_options' ),
+				'canManage'   => RL_REST::can_manage_settings(),
 				'maxUpload'   => RL_DB::max_upload(),
 				'canArticles' => RL_Settings::can_edit_articles(),
 				'settings'    => RL_Settings::app_settings(),
-				'backupSchedule' => current_user_can( 'manage_options' ) ? RL_Backup::view() : null,
+				'backupSchedule' => RL_REST::can_manage_settings() ? RL_Backup::view() : null,
 				'artPerms'    => RL_Settings::article_perms(),
 			)
 		) . ';',

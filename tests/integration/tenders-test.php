@@ -76,7 +76,7 @@ t( 'cancelled tender can be re-activated', 'active' === $get( $c, 'tenders', 'tn
 
 echo "tenders: promote\n";
 $f = $c->req( 'POST', '/?rest_route=/rl/v1/files', array( 'coll' => 'tenders', 'file' => curl_file_create( __FILE__, 'text/plain', 'x.txt' ) ), array(), true );
-$up = $c->req( 'POST', '/?rest_route=/rl/v1/files&coll=tenders', array( 'file' => new CURLFile( __DIR__ . '/set-override.php', 'application/pdf', 'spec.pdf' ) ), array(), true );
+$up = $c->req( 'POST', '/?rest_route=/rl/v1/files&coll=tenders', array( 'file' => new CURLFile( ( function () { $f = tempnam( sys_get_temp_dir(), 'spec' ); file_put_contents( $f, "%PDF-1.4\n%spec\n" ); return $f; } )(), 'application/pdf', 'spec.pdf' ) ), array(), true );
 $att = $up['json'] ?? null;
 if ( $att && ! empty( $att['id'] ) ) {
 	$d['attachments'] = array( array( 'id' => $att['id'] ) );

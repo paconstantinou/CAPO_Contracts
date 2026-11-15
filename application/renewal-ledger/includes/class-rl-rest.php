@@ -88,7 +88,7 @@ class RL_REST {
 						'methods'             => 'PUT',
 						'callback'            => array( __CLASS__, 'save_app_settings' ),
 						'permission_callback' => function () {
-							return current_user_can( 'manage_options' ) ? true : new WP_Error( 'am_forbidden', 'Only administrators can change the settings.', array( 'status' => 403 ) );
+							return self::can_manage_settings() ? true : new WP_Error( 'am_forbidden', 'Only administrators can change the settings.', array( 'status' => 403 ) );
 						},
 					),
 				),
@@ -278,7 +278,16 @@ class RL_REST {
 		if ( ! is_user_logged_in() ) {
 			return new WP_Error( 'rest_forbidden', 'Login required.', array( 'status' => 401 ) );
 		}
-		return current_user_can( 'manage_options' ) ? true : new WP_Error( 'am_forbidden', 'Only administrators can change the backup schedule.', array( 'status' => 403 ) );
+		return self::can_manage_settings() ? true : new WP_Error( 'am_forbidden', 'Only administrators can change the backup schedule.', array( 'status' => 403 ) );
+	}
+
+	/**
+	 * Settings tab, backup schedule and restore: WordPress administrators (manage_options, as before) OR anybody who has the
+	 * "manage_settings" permission of the "Settings" module in Application Management (so a PROCURE360 administrator
+	 * does not have to be a WordPress administrator).
+	 */
+	public static function can_manage_settings() {
+		return current_user_can( 'manage_options' ) || self::can( 'settings', 'manage_settings' );
 	}
 
 	public static function save_backup_schedule( $req ) {
@@ -446,7 +455,16 @@ class RL_REST {
 			self::log( 'ledger.tender_' . $data['status'], $coll, array( 'id' => $id, 'title' => $data['title'] ) );
 		}
 		$title = in_array( $coll, array( 'software', 'contractors' ), true ) ? $data['name'] : $data['title'];
-		self::log( $old ? 'ledger.record_edit' : 'ledger.record_create', $coll, array( 'id' => $id, 'title' => $title ) );
+		$det = array( 'id' => $id, 'title' => $title );
+		if ( $old ) {
+			// Field-level diff. Sensitive fields are only marked "changed"; the whole entry must fit the 4000-char log column.
+			$chg = RL_Audit_Diff::changes( $old, $data );
+			if ( strlen( (string) wp_json_encode( $chg ) ) > 3000 ) {
+				$chg = array_keys( $chg );
+			}
+			$det['changes'] = $chg;
+		}
+		self::log( $old ? 'ledger.record_edit' : 'ledger.record_create', $coll, $det );
 		return rest_ensure_response( array( 'ok' => true ) );
 	}
 
@@ -561,6 +579,11 @@ class RL_REST {
 			return new WP_Error( $code, 'Upload failed', array( 'status' => 400 ) );
 		}
 		$f   = $files['file'];
+		$chk = RL_Upload_Guard::check( $f['tmp_name'], $f['name'] );
+		if ( is_wp_error( $chk ) ) {
+			self::log( 'ledger.file_rejected', $coll, array( 'file' => sanitize_file_name( wp_basename( $f['name'] ) ), 'reason' => $chk->get_error_code() ) );
+			return $chk;
+		}
 		$res = RL_DB::store_file( $f['tmp_name'], $f['name'], (int) $f['size'], get_current_user_id(), $coll );
 		if ( is_wp_error( $res ) ) {
 			return $res;
@@ -586,6 +609,7 @@ class RL_REST {
 		while ( ob_get_level() ) {
 			ob_end_clean();
 		}
+		self::log( 'ledger.file_download', (string) $row['collection'], array( 'file' => $row['orig_name'], 'id' => $row['id'] ) );
 		readfile( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
 		exit;
 	}

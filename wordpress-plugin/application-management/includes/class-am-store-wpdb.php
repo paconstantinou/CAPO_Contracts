@@ -412,6 +412,7 @@ class AM_Store_WPDB implements AM_Store {
 			'ip'             => isset( $row['ip'] ) ? (string) $row['ip'] : '',
 			'created_at'     => isset( $row['created_at'] ) ? $row['created_at'] : $this->now(),
 		) );
+		return (int) $this->db->insert_id;
 	}
 
 	private function log_where( array $f, array &$args ) {

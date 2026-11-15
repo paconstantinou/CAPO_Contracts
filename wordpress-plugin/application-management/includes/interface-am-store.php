@@ -86,7 +86,7 @@ interface AM_Store {
 
 	/* ---- activity log ---- */
 
-	/** $row keys: user_id, target_user_id, action, module, details, ip, created_at */
+	/** $row keys: user_id, target_user_id, action, module, details, ip, created_at. @return int id of the new row */
 	public function add_log( array $row );
 
 	/**

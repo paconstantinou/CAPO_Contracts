@@ -83,7 +83,7 @@
       if(!(blob instanceof Blob)||!blob.size)return Promise.reject({code:"invalid_request",message:"empty file"});
       var fd=new FormData();fd.append("file",blob,blob.name||"file");fd.append("coll",(opts&&opts.coll)||curColl());
       return api("POST","files",fd,true).then(function(r){return {id:r.id,url:"#",sizeBytes:r.size,contentType:r.type}},function(e){
-        var m={rl_too_large:"too_large",rl_bad_type:"unsupported_type"};
+        var m={rl_too_large:"too_large",rl_bad_type:"unsupported_type",rl_bad_content:"bad_content",rl_infected:"infected",rl_av_unavailable:"av_unavailable"};
         /* PHP drops a request bigger than post_max_size before WordPress sees it, so the server then only reports a missing field */
         if((e.code==="rl_bad_coll"||e.code==="rl_no_file")&&cfg.maxUpload&&blob.size>cfg.maxUpload)throw {code:"too_large",message:e.message};
         throw {code:m[e.code]||e.code||"upstream_error",message:e.message};

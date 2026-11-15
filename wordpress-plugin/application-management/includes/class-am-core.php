@@ -257,7 +257,9 @@ class AM {
 		}
 		$row['details']    = isset( $row['details'] ) ? substr( (string) $row['details'], 0, 4000 ) : '';
 		$row['created_at'] = gmdate( 'Y-m-d H:i:s' );
-		self::store()->add_log( $row );
+		$id = self::store()->add_log( $row );
+		/* Lets an add-on (e.g. the PROCURE360 tamper-evident chain) see every log row with its id. */
+		do_action( 'am_log_written', $row, (int) $id );
 	}
 
 	public static function on_login( $login, $user ) {

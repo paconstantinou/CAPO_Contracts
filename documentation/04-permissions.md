@@ -1,6 +1,6 @@
 # Roles and permissions
 
-Roles: Super Admin, Administrator, Manager, Editor, Viewer, Custom Role (plus any you create). Standard module permissions: **View, Create, Edit, Delete, Export, Manage**; modules may add their own (Online Renewals adds **Credentials**).
+Roles: Super Admin, Administrator, Manager, Editor, Viewer, Custom Role (plus any you create). Standard module permissions: **View, Create, Edit, Delete, Export, Manage**; modules may add their own (Online Renewals adds **Credentials**; the **PROCURE360 Settings** module has **Manage settings**, given to Administrator and Super Admin only by default).
 
 Default presets for a newly seen module: Administrator = all standard; Manager = view/create/edit/export; Editor = view/create/edit; Viewer = view. Custom actions such as *Credentials* are given to nobody except Super Admin until you grant them.
 

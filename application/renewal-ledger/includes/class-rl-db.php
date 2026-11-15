@@ -749,8 +749,14 @@ class RL_DB {
 	/* ---------- files ---------- */
 
 	public static function dir() {
-		$u = wp_upload_dir();
-		return trailingslashit( $u['basedir'] ) . 'renewal-ledger';
+		/* Optional: keep the attachments outside the web root. define( 'RL_FILES_DIR', '/var/procure360/files' ) in wp-config.php, or use the rl_files_dir filter. */
+		if ( defined( 'RL_FILES_DIR' ) && '' !== (string) RL_FILES_DIR ) {
+			return rtrim( (string) RL_FILES_DIR, '/\\' );
+		}
+		$u   = wp_upload_dir();
+		$dir = trailingslashit( $u['basedir'] ) . 'renewal-ledger';
+		$f   = apply_filters( 'rl_files_dir', $dir );
+		return is_string( $f ) && '' !== $f ? rtrim( $f, '/\\' ) : $dir;
 	}
 
 	public static function ensure_dir() {
