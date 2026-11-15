@@ -29,17 +29,8 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Copy-Item -Path (Join-Path $Source '*') -Destination $dest -Recurse -Force
 Write-Host 'Program files copied.'
 
-$xl = Join-Path $dest 'xlsx.full.min.js'
-if (-not (Test-Path $xl)) {
-  try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -UseBasicParsing -Uri 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js' -OutFile $xl -TimeoutSec 60
-    if ((Get-Item $xl).Length -lt 100000) { Remove-Item $xl -Force; throw 'unexpected download' }
-    Write-Host 'Excel component downloaded (works offline from now on).'
-  } catch {
-    Write-Host 'Could not download the Excel component. Excel import/export will need an internet connection.'
-  }
-}
+# The Excel component (SheetJS 0.20.3) ships inside the package (app\xlsx.full.min.js) and was copied above: no download, works offline.
+if (-not (Test-Path (Join-Path $dest 'xlsx.full.min.js'))) { Write-Host 'WARNING: xlsx.full.min.js is missing from the package. Excel import/export will not work.' }
 
 $uri = ([System.Uri](Join-Path $dest 'index.html')).AbsoluteUri
 $data = Join-Path $dest 'data'

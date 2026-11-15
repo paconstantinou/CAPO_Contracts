@@ -118,7 +118,15 @@ add_shortcode( 'renewal_ledger', function () {
 	}
 
 	wp_enqueue_style( 'rl-app', RL_URL . 'assets/app.css', array(), RL_VERSION );
-	wp_enqueue_script( 'rl-xlsx', 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', array(), '0.18.5', true );
+	wp_enqueue_script( 'rl-xlsx', RL_URL . 'assets/vendor/xlsx.full.min.js', array(), '0.20.3', true ); // bundled, not loaded from a CDN (supply chain, offline networks)
+	add_filter(
+		'script_loader_tag',
+		function ( $tag, $handle ) {
+			return 'rl-xlsx' === $handle ? str_replace( '<script ', '<script integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT" crossorigin="anonymous" ', $tag ) : $tag;
+		},
+		10,
+		2
+	);
 	wp_enqueue_script( 'rl-shim', RL_URL . 'assets/wp-shim.js', array(), RL_VERSION, true );
 	wp_enqueue_script( 'rl-app', RL_URL . 'assets/app.js', array( 'rl-xlsx', 'rl-shim' ), RL_VERSION, true );
 	wp_add_inline_script(
