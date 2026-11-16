@@ -9,6 +9,8 @@ php tests/integration/engine-service-test.php /path/to/wp-load.php    # engine, 
 php tests/integration/rest-permissions-test.php http://127.0.0.1:8088   # HTTP: anonymous, CSRF, roles, export, uploads
 php tests/integration/settings-test.php http://127.0.0.1:8088 /path/to/wp-load.php        # settings, custom fields
 php tests/integration/backup-schedule-test.php http://127.0.0.1:8088 /path/to/wp-load.php  # scheduled backup to a folder
+php tests/integration/contract-dup-test.php http://127.0.0.1:8088 /path/to/wp-load.php        # one tender number = one contract (create/edit/legacy/trash/promote)
+node tests/browser/html-search-dup-test.js [index.html]                           # duplicate message in the form + search field on every page (also WordPress: RL_URL/RL_PASS)
 php tests/integration/audit-test.php http://127.0.0.1:8088 /path/to/wp-load.php          # audit chain, field diff, download/denied log, upload guard, manage_settings (site needs RL_AUDIT_KEY)
 node tests/unit/vendor-sri-test.js                                                # bundled SheetJS = SRI hash = README hashes, no CDN
 node tests/browser/wp-xlsx-test.js                                                # browser: SheetJS from the plugin with SRI, no external request

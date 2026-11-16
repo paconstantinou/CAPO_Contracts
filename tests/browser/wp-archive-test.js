@@ -15,9 +15,9 @@ if (!pass) { console.error('RL_PASS required'); process.exit(2); }
   const T = s => p.innerText(s), W = ms => p.waitForTimeout(ms);
   const api = (m, path, body) => p.evaluate(async ([m, path, body]) => { path = path.replace('&purge=1', (RL_CFG.rest.indexOf('?') >= 0 ? '&' : '?') + 'purge=1'); const r = await fetch(RL_CFG.rest + path, { method: m, headers: { 'X-WP-Nonce': RL_CFG.nonce, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); return r.status; }, [m, path, body]);
   const tit = 'Probe Archive ' + Date.now();
-  const mk = async (title, from) => {
+  let seq = 0; const mk = async (title, from) => {
     await p.click('#tabCt'); await W(600); await p.click('#btnAdd'); await W(300); await p.click('[data-act=ctfull]'); await W(300);
-    await p.fill('#c_title', title); await p.fill('#c_tender', 'ARC-1/2020');
+    await p.fill('#c_title', title); await p.fill('#c_tender', 'ARC-' + (++seq) + '/' + Date.now());
     await p.fill('#c_months', '12'); await p.dispatchEvent('#c_months', 'change'); await p.fill('#c_dateFrom', from); await p.dispatchEvent('#c_dateFrom', 'change'); await W(300);
     await p.fill('#cy_cost_0', '1000'); await p.click('[data-act=ctsave]'); await W(1500);
   };

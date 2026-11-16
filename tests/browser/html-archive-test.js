@@ -10,9 +10,9 @@ const file = require('path').resolve(process.argv[2] || 'index.html');
   let bad = 0; const ok = (n, c) => { if (!c) bad++; console.log((c ? '  ok   ' : '  FAIL ') + n); };
   const T = s => p.innerText(s), W = ms => p.waitForTimeout(ms);
   const tit = 'Probe Archive ' + Date.now();
-  const mk = async (title, from) => {
+  let seq = 0; const mk = async (title, from) => {
     await p.click('#tabCt'); await W(600); await p.click('#btnAdd'); await W(300); await p.click('[data-act=ctfull]'); await W(300);
-    await p.fill('#c_title', title); await p.fill('#c_tender', 'ARC-1/2020');
+    await p.fill('#c_title', title); await p.fill('#c_tender', 'ARC-' + (++seq) + '/' + Date.now());
     await p.fill('#c_months', '12'); await p.dispatchEvent('#c_months', 'change'); await p.fill('#c_dateFrom', from); await p.dispatchEvent('#c_dateFrom', 'change'); await W(300);
     await p.fill('#cy_cost_0', '1000'); await p.click('[data-act=ctsave]'); await W(1500);
   };

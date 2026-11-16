@@ -46,7 +46,7 @@ $ids = array( 'arc1', 'arc2', 'arc3' );
 $clean = function () use ( $c, $ids ) { foreach ( $ids as $i ) { $c->rl( 'DELETE', 'records/contracts/' . $i ); $c->rl( 'DELETE', 'records/contracts/' . $i . '&purge=1' ); } };
 $clean();
 $y = function ( $o ) { return gmdate( 'Y-m-d', time() + 86400 * $o ); };
-$mk = function ( $title, $from, $to, $extra = array() ) use ( $y ) { return array_merge( array( 'title' => $title, 'tender' => 'ARC-1', 'months' => 12, 'dateFrom' => $y( $from ), 'dateTo' => $y( $to ), 'cost' => 100, 'years' => array( array( 'from' => $y( $from ), 'to' => $y( $to ), 'cost' => 100, 'remind' => 30 ) ), 'milestones' => array( array( 'id' => 'm1', 'year' => 1, 'description' => 'Probe ms', 'due' => $y( 5 ), 'remind' => 30 ) ) ), $extra ); };
+$mk = function ( $title, $from, $to, $extra = array() ) use ( $y ) { static $n = 0; $n++; /* one tender number per contract since 3.15.0 */ return array_merge( array( 'title' => $title, 'tender' => 'ARC-' . $n . '-' . substr( md5( $title ), 0, 6 ), 'months' => 12, 'dateFrom' => $y( $from ), 'dateTo' => $y( $to ), 'cost' => 100, 'years' => array( array( 'from' => $y( $from ), 'to' => $y( $to ), 'cost' => 100, 'remind' => 30 ) ), 'milestones' => array( array( 'id' => 'm1', 'year' => 1, 'description' => 'Probe ms', 'due' => $y( 5 ), 'remind' => 30 ) ) ), $extra ); };
 
 echo "archive: expired contract can be archived\n";
 $r = $c->rl( 'PUT', 'records/contracts/arc1', array( 'data' => $mk( 'Probe Archive expired', -400, -10, array( 'archived' => true, 'archivedAt' => $y( 0 ) ) ) ) );

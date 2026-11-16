@@ -74,7 +74,7 @@ t( 'representative fields stored', 'Μαρία Αντιπρόσωπος' === $d[
 $bad = $ct; $bad['contractorId'] = 'nope';
 $r = $c->rl( 'PUT', 'records/contracts/ctc2', array( 'data' => $bad ) );
 t( 'unknown contractor -> 400', 400 === $r['code'] && 'rl_bad_contractor' === ( $r['json']['code'] ?? '' ), $r['body'] );
-$free = $ct; $free['contractorId'] = ''; $free['contractor'] = 'Ελεύθερο κείμενο'; $free['contractorVat'] = '999';
+$free = $ct; $free['tender'] = '13/2026'; $free['contractorId'] = ''; $free['contractor'] = 'Ελεύθερο κείμενο'; $free['contractorVat'] = '999';
 $r = $c->rl( 'PUT', 'records/contracts/ctc2', array( 'data' => $free ) );
 $d = $get( $c, 'contracts', 'ctc2' );
 t( 'contract without a link keeps legacy text', 200 === $r['code'] && 'Ελεύθερο κείμενο' === $d['contractor'] && '999' === $d['contractorVat'] );
@@ -102,7 +102,7 @@ t( 'restore while the name is taken -> 409', 409 === $r['code'], $r['body'] );
 $c->rl( 'DELETE', 'records/contractors/ctr3' );
 $r = $c->rl( 'POST', 'records/contractors/ctr2/restore' );
 t( 'restore works once it is free', 200 === $r['code'], $r['body'] );
-$r = $c->rl( 'PUT', 'records/contracts/ctc2', array( 'data' => array_merge( $ct, array( 'contractorId' => 'ctr3' ) ) ) );
+$r = $c->rl( 'PUT', 'records/contracts/ctc2', array( 'data' => array_merge( $ct, array( 'tender' => '13/2026', 'contractorId' => 'ctr3' ) ) ) );
 t( 'cannot link a trashed contractor (400)', 400 === $r['code'], $r['body'] );
 
 echo "contractors: export with counts\n";

@@ -382,6 +382,13 @@ class RL_REST {
 			}
 			return $clean;
 		}
+		$dup = ! empty( $clean['tender'] ) ? RL_DB::tender_with_number( $clean['tender'], $cid, 'contracts' ) : null;
+		if ( $dup ) {
+			foreach ( $atts as $a ) {
+				RL_DB::delete_file( $a['id'] );
+			}
+			return new WP_Error( 'rl_duplicate_contract', 'A contract with tender number "' . $clean['tender'] . '" already exists ("' . $dup['title'] . '").', array( 'status' => 409, 'existing' => $dup['id'] ) );
+		}
 		$res = RL_DB::save_record( 'contracts', $cid, $clean, get_current_user_id() );
 		if ( is_wp_error( $res ) ) {
 			return $res;
@@ -436,6 +443,13 @@ class RL_REST {
 			$dup = RL_DB::tender_with_number( $data['tender'], $id );
 			if ( $dup ) {
 				return new WP_Error( 'rl_duplicate_tender', 'Tender number "' . $data['tender'] . '" is already used by the tender "' . $dup['title'] . '".', array( 'status' => 409 ) );
+			}
+		}
+		// Contracts: a new contract may not reuse the tender number of another contract; an existing one is only checked when its number changes.
+		if ( 'contracts' === $coll && ! empty( $data['tender'] ) && ( ! $old || RL_DB::tender_key( isset( $old['tender'] ) ? $old['tender'] : '' ) !== RL_DB::tender_key( $data['tender'] ) ) ) {
+			$dup = RL_DB::tender_with_number( $data['tender'], $id, 'contracts' );
+			if ( $dup ) {
+				return new WP_Error( 'rl_duplicate_contract', 'A contract with tender number "' . $data['tender'] . '" already exists ("' . $dup['title'] . '").', array( 'status' => 409, 'existing' => $dup['id'] ) );
 			}
 		}
 		if ( 'contractors' === $coll ) {
@@ -515,6 +529,13 @@ class RL_REST {
 			$dup = ( $rec && ! empty( $rec['tender'] ) ) ? RL_DB::tender_with_number( $rec['tender'], $id ) : null;
 			if ( $dup ) {
 				return new WP_Error( 'rl_duplicate_tender', 'Tender number "' . $rec['tender'] . '" is already used by the tender "' . $dup['title'] . '".', array( 'status' => 409 ) );
+			}
+		}
+		if ( 'contracts' === $coll ) {
+			$rec = RL_DB::get_record( $coll, $id );
+			$dup = ( $rec && ! empty( $rec['tender'] ) ) ? RL_DB::tender_with_number( $rec['tender'], $id, 'contracts' ) : null;
+			if ( $dup ) {
+				return new WP_Error( 'rl_duplicate_contract', 'A contract with tender number "' . $rec['tender'] . '" already exists ("' . $dup['title'] . '").', array( 'status' => 409 ) );
 			}
 		}
 		if ( 'contractors' === $coll ) {

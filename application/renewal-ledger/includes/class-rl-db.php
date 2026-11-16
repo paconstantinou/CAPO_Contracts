@@ -26,12 +26,13 @@ class RL_DB {
 	}
 
 	/** The live (not trashed) tender that already uses this number, other than $except_id. @return array|null { id, title } */
-	public static function tender_with_number( $number, $except_id = '' ) {
+	/** Another live record of the collection (tenders by default, or contracts) that already uses this tender number. */
+	public static function tender_with_number( $number, $except_id = '', $coll = 'tenders' ) {
 		$key = self::tender_key( $number );
 		if ( '' === $key ) {
 			return null;
 		}
-		foreach ( self::list_records( 'tenders' ) as $r ) {
+		foreach ( self::list_records( $coll ) as $r ) {
 			if ( (string) $r['id'] !== (string) $except_id && self::tender_key( isset( $r['data']['tender'] ) ? $r['data']['tender'] : '' ) === $key ) {
 				return array( 'id' => $r['id'], 'title' => isset( $r['data']['title'] ) ? (string) $r['data']['title'] : '' );
 			}
