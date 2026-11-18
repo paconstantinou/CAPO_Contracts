@@ -69,6 +69,11 @@
 #rl-app .guide p,#rl-app .guide li{line-height:1.5;max-width:75ch}
 #rl-app .guide ul{padding-left:20px;margin:6px 0}
 #rl-app .gtoc{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+#rl-app .amprev{display:block;margin-top:3px;font-size:12.5px;font-weight:600;color:#9a5b00}
+#rl-app .amsum{background:var(--surface2,#f5f6f8);border-radius:10px;padding:10px 12px}
+#rl-app .amh{border-left:3px solid #c98a1b;padding:4px 0 4px 10px;margin:8px 0}
+#rl-app .amch{margin:4px 0 0 16px;padding:0;font-size:13px}
+#rl-app .amold{text-decoration:line-through;color:var(--muted,#667)}
 #rl-app .gsearch{width:100%;box-sizing:border-box;margin:8px 0 2px;padding:9px 12px;font:inherit;border:1px solid var(--line,#c9ced6);border-radius:8px;background:var(--surface,#fff);color:inherit}
 #rl-app .empty{padding:40px 20px;text-align:center;color:var(--muted)}
 #rl-app .empty h2{color:var(--ink);font-size:20px;margin-bottom:6px}
@@ -121,6 +126,8 @@
 #rl-app #tabCt{--tc:#1e3a8a;--tc2:#2f4fa8}
 #rl-app #tabTn{--tc:#6d3fc0;--tc2:#7d52cf}
 #rl-app #tabBd{--tc:#0f7a55;--tc2:#13906a}
+#rl-app #tabPv{--tc:#b3541e;--tc2:#c9632a}
+#rl-app #tabRc{--tc:#1d5fa8;--tc2:#2a73c2}
 #rl-app .tab:hover{transform:translateY(-2px);box-shadow:0 4px 0 rgba(15,23,42,.06),0 12px 18px -8px rgba(15,23,42,.4)}
 #rl-app .tab[aria-selected=true]{background:linear-gradient(180deg,var(--tc2),var(--tc));color:#fff;border-color:var(--tc);border-bottom-color:rgba(0,0,0,.35);transform:translateY(1px);box-shadow:inset 0 2px 3px rgba(255,255,255,.28),0 8px 16px -8px var(--tc)}
 #rl-app .tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -214,6 +221,9 @@
 #rl-app .bdleg .sw,#rl-app table.bdt tr.src-sw td{--lc:#0b7d8f;background:#dff1f4}
 #rl-app .bdleg .ct,#rl-app table.bdt tr.src-ct td{--lc:#1e3a8a;background:#e1e7f6}
 #rl-app .bdleg .tn,#rl-app table.bdt tr.src-tn td{--lc:#6d3fc0;background:#ece4f8}
+#rl-app .bdleg .pv,#rl-app table.bdt tr.src-pv td{--lc:#b3541e;background:#fbe9dc}
+#rl-app table.bdt tr.src-pv td:first-child{box-shadow:inset 5px 0 0 var(--lc)}
+#rl-app table.rct td.bad{color:#b3261e;font-weight:700}
 #rl-app table.bdt tr.src-sw td:first-child,#rl-app table.bdt tr.src-ct td:first-child,#rl-app table.bdt tr.src-tn td:first-child{box-shadow:inset 5px 0 0 var(--lc)}
 #rl-app table.bdt td.how{color:inherit;opacity:.85}
 #rl-app table.arview td.mono{white-space:nowrap}

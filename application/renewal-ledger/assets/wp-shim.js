@@ -18,12 +18,14 @@
   window.RL_BACKUP_SCHEDULE={get:function(){return api("GET","backup-schedule")},save:function(o){return api("PUT","backup-schedule",{schedule:o})},run:function(){return api("POST","backup-schedule/run",{})}};
   var perms=cfg.perms||{};
   function curColl(){
-    var t=document.getElementById("tabCt"),n=document.getElementById("tabTn"),k=document.getElementById("tabCo");
+    var t=document.getElementById("tabCt"),n=document.getElementById("tabTn"),k=document.getElementById("tabCo"),pv=document.getElementById("tabPv");
+    if(pv&&pv.getAttribute("aria-selected")==="true")return "provisions";
     if(k&&k.getAttribute("aria-selected")==="true")return "contractors";
     return n&&n.getAttribute("aria-selected")==="true"?"tenders":t&&t.getAttribute("aria-selected")==="true"?"contracts":"software";
   }
   function onBd(){var t=document.getElementById("tabBd");return !!t&&t.getAttribute("aria-selected")==="true"}
   function onSt(){var t=document.getElementById("tabSt");return !!t&&t.getAttribute("aria-selected")==="true"}
+  function onRc(){var t=document.getElementById("tabRc");return !!t&&t.getAttribute("aria-selected")==="true"}
   function onAr(){var t=document.getElementById("tabAr");return !!t&&t.getAttribute("aria-selected")==="true"}
   function P(c,a){return !!(perms[c]&&perms[c][a])}
   var cache={},subs=[],loaded={};
@@ -135,10 +137,19 @@
       var root=document.getElementById("rl-app");if(!root)return;
       var c=curColl();
       var bdt=document.getElementById("tabBd");
-      var anyView=P("software","view")||P("contracts","view")||P("tenders","view")||P("contractors","view");
+      var anyView=P("software","view")||P("contracts","view")||P("tenders","view")||P("contractors","view")||P("provisions","view");
       if(bdt)bdt.style.display=anyView?"":"none";
       var art=document.getElementById("tabAr");if(art)art.style.display=anyView?"":"none";
       var stt=document.getElementById("tabSt");if(stt)stt.style.display=cfg.canManage?"":"none";
+      var rct=document.getElementById("tabRc");if(rct)rct.style.display=anyView?"":"none";
+      var pvt=document.getElementById("tabPv");if(pvt)pvt.style.display=P("provisions","view")?"":"none";
+      if(onRc()){
+        /* the reconciliation table is calculated from tenders and contracts; nothing to add or import */
+        hide("#btnAdd,#emAdd,#btnImport,#emImp",root,true);
+        hide("#btnExport",root,!(P("contracts","export")||P("tenders","export")));
+        if(!anyView)setTimeout(function(){var x=document.getElementById("tabSw");x&&x.click()},0);
+        return;
+      }
       if(onSt()){hide("#btnAdd,#emAdd,#btnImport,#emImp,#btnExport",root,true);return}
       if(onAr()){
         /* the article list is reference data for everyone who can view something; editing happens in the WordPress settings */
@@ -154,13 +165,13 @@
         return;
       }
       hide("#btnAdd,#emAdd,[data-act=pick],[data-act=tpl],[data-act=ctsample],#emSample",root,!P(c,"create"));
-      hide("#btnImport,#emImp",root,!P(c,"create")||c==="tenders"||c==="contractors"); /* tenders and contractors have no Excel import */
+      hide("#btnImport,#emImp",root,!P(c,"create")||c==="tenders"||c==="contractors"||c==="provisions"); /* tenders and contractors have no Excel import */
       hide("[data-act=coaddfromct],[data-act=coaddlegacy]",root,!P("contractors","create"));
       hide("[data-act=comigrate]",root,!(P("contractors","create")&&P("contracts","edit")));
       hide("#btnExport",root,!P(c,"export"));
       hide("[data-act=xlsx],[data-act=csv]",root,!P(c,"export"));
       hide("[data-act=edit],[data-act=renew],[data-act=renewid],[data-act=attach],[data-act=rsave],[data-act=msadd],[data-act=msedit],[data-act=msdel],[data-act=msdone]",root,!P(c,"edit"));
-      hide("[data-act=del],[data-act=ctdel],[data-act=tndel],[data-act=codel]",root,!P(c,"delete"));
+      hide("[data-act=del],[data-act=ctdel],[data-act=tndel],[data-act=codel],[data-act=pvdel]",root,!P(c,"delete"));
       hide("[data-act=tncancel],[data-act=tncancelyes],[data-act=tnreopen]",root,!P("tenders","edit"));
       hide("[data-act=tnpromote]",root,!(P("tenders","edit")&&P("contracts","create")));
       hide("[data-f=trash],[data-act=trrestore]",root,!P(c,"delete"));
@@ -170,7 +181,7 @@
       if(sw)sw.style.display=P("software","view")?"":"none";
       if(ct)ct.style.display=P("contracts","view")?"":"none";
       if(tn)tn.style.display=P("tenders","view")?"":"none";
-      if(!P(c,"view")){var vis=[sw,ct,tn,co].filter(function(x){return x&&x.style.display!=="none"});if(vis[0])setTimeout(function(){vis[0].click()},0)}
+      if(!P(c,"view")){var vis=[sw,ct,tn,co,pvt].filter(function(x){return x&&x.style.display!=="none"});if(vis[0])setTimeout(function(){vis[0].click()},0)}
     }finally{gating=false}
   }
   document.addEventListener("DOMContentLoaded",function(){
@@ -184,7 +195,7 @@
   /* Exports come from the server, so the Export permission is really enforced and Excel/CSV content matches it. */
   document.addEventListener("click",function(e){
     var b=e.target.closest&&e.target.closest("[data-act=xlsx],[data-act=csv]");
-    if(!b||!cfg.serverExport)return;
+    if(!b||!cfg.serverExport||curColl()==="provisions")return;
     e.preventDefault();e.stopImmediatePropagation();
     var fmt=b.getAttribute("data-act"),c=curColl();
     fetch(cfg.rest+"export/"+c+"?format="+fmt,{credentials:"same-origin",headers:{"X-WP-Nonce":cfg.nonce||""}}).then(function(r){

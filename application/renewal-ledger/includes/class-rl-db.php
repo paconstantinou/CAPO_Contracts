@@ -8,7 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class RL_DB {
 
-	const COLLECTIONS = array( 'software', 'contracts', 'tenders', 'contractors' );
+	const COLLECTIONS = array( 'software', 'contracts', 'tenders', 'contractors', 'provisions' );
 	const MAX_FILE    = 20971520; // 20 MB
 	const MAX_JSON    = 262144;   // 256 KB per record
 
@@ -432,6 +432,60 @@ class RL_DB {
 		return $out;
 	}
 
+	/**
+	 * Amendment history of a contract (v3.16.0): { id, date, description, at, changes[{label,old,new}], costBefore, costAfter, before{...snapshot} }.
+	 * Only the shape is validated here; put_record() keeps old entries unchanged and unremovable (append-only).
+	 */
+	public static function v_amendments( $list ) {
+		$out = array();
+		if ( ! is_array( $list ) ) {
+			return $out;
+		}
+		foreach ( array_slice( $list, 0, 100 ) as $a ) {
+			if ( ! is_array( $a ) || empty( $a['id'] ) || ! preg_match( '/^[A-Za-z0-9_-]{1,64}$/', (string) $a['id'] ) ) {
+				continue;
+			}
+			$ch = array();
+			foreach ( array_slice( isset( $a['changes'] ) && is_array( $a['changes'] ) ? $a['changes'] : array(), 0, 200 ) as $c ) {
+				if ( is_array( $c ) ) {
+					$ch[] = array(
+						'label' => self::v_str( isset( $c['label'] ) ? $c['label'] : '', 200 ),
+						'old'   => self::v_str( isset( $c['old'] ) ? $c['old'] : '', 1500 ),
+						'new'   => self::v_str( isset( $c['new'] ) ? $c['new'] : '', 1500 ),
+					);
+				}
+			}
+			$b  = isset( $a['before'] ) && is_array( $a['before'] ) ? $a['before'] : array();
+			$ys = array();
+			foreach ( array_slice( isset( $b['years'] ) && is_array( $b['years'] ) ? $b['years'] : array(), 0, 60 ) as $y ) {
+				if ( is_array( $y ) ) {
+					$ys[] = array( 'from' => self::v_date( isset( $y['from'] ) ? $y['from'] : '' ), 'to' => self::v_date( isset( $y['to'] ) ? $y['to'] : '' ), 'cost' => self::v_num( isset( $y['cost'] ) ? $y['cost'] : '', true ) );
+				}
+			}
+			$out[] = array(
+				'id'          => (string) $a['id'],
+				'date'        => self::v_date( isset( $a['date'] ) ? $a['date'] : '' ),
+				'description' => self::v_str( isset( $a['description'] ) ? $a['description'] : '', 300 ),
+				'at'          => isset( $a['at'] ) && is_numeric( $a['at'] ) ? (int) $a['at'] : 0,
+				'changes'     => $ch,
+				'costBefore'  => self::v_num( isset( $a['costBefore'] ) ? $a['costBefore'] : 0 ),
+				'costAfter'   => self::v_num( isset( $a['costAfter'] ) ? $a['costAfter'] : 0 ),
+				'before'      => array(
+					'title'    => self::v_str( isset( $b['title'] ) ? $b['title'] : '', 300 ),
+					'tender'   => self::v_str( isset( $b['tender'] ) ? $b['tender'] : '', 100 ),
+					'months'   => max( 0, min( 1200, (int) ( isset( $b['months'] ) ? $b['months'] : 0 ) ) ),
+					'dateFrom' => self::v_date( isset( $b['dateFrom'] ) ? $b['dateFrom'] : '' ),
+					'dateTo'   => self::v_date( isset( $b['dateTo'] ) ? $b['dateTo'] : '' ),
+					'cost'     => self::v_num( isset( $b['cost'] ) ? $b['cost'] : 0 ),
+					'years'    => $ys,
+					'budget'   => self::v_budget( isset( $b['budget'] ) ? $b['budget'] : array() ),
+					'extras'   => self::v_extras( isset( $b['extras'] ) ? $b['extras'] : array() ),
+				),
+			);
+		}
+		return $out;
+	}
+
 	/** Additional / optional services of a contract: { id, desc, amount (per contract year), article }. */
 	private static function v_extras( $list ) {
 		$out = array();
@@ -621,6 +675,38 @@ class RL_DB {
 			}
 			return $out;
 		}
+		if ( 'provisions' === $collection ) {
+			// General Provision (v3.16.0): description, related budget article, attachments and amounts (without VAT) for the 3 years after the registration year.
+			$base = (int) $g( 'baseYear' );
+			if ( $base < 2000 || $base > 2200 ) {
+				$base = (int) gmdate( 'Y' );
+			}
+			$amounts = array();
+			$in      = is_array( $g( 'amounts' ) ) ? $g( 'amounts' ) : array();
+			for ( $i = 1; $i <= 3; $i++ ) {
+				$v = null;
+				foreach ( $in as $a ) {
+					if ( is_array( $a ) && isset( $a['year'] ) && (int) $a['year'] === $base + $i && isset( $a['amount'] ) && '' !== $a['amount'] && is_numeric( $a['amount'] ) && (float) $a['amount'] >= 0 ) {
+						$v = round( min( 1000000000, (float) $a['amount'] ), 2 );
+					}
+				}
+				$amounts[] = array( 'year' => $base + $i, 'amount' => null === $v ? '' : $v );
+			}
+			$out = array(
+				'title'       => self::v_str( $g( 'title' ), 300 ),
+				'article'     => self::v_str( $g( 'article' ), 200 ),
+				'notes'       => self::v_str( $g( 'notes' ), 4000 ),
+				'baseYear'    => $base,
+				'amounts'     => $amounts,
+				'attachments' => self::v_attachments( $g( 'attachments' ), $collection ),
+				'createdAt'   => $created,
+				'sample'      => ! empty( $d['sample'] ),
+			);
+			if ( '' === $out['title'] ) {
+				return new WP_Error( 'rl_bad_data', 'Η περιγραφή της πρόνοιας είναι υποχρεωτική.', array( 'status' => 400 ) );
+			}
+			return $out;
+		}
 		if ( 'contractors' === $collection ) {
 			$out = array(
 				'name'      => self::v_str( $g( 'name' ), 300 ),
@@ -705,6 +791,7 @@ class RL_DB {
 		$out['emails'] = $emails;
 		$out['budget'] = self::v_budget( $g( 'budget' ) );
 		$out['extras']       = self::v_extras( $g( 'extras' ) );
+		$out['amendments']   = self::v_amendments( $g( 'amendments' ) );
 		$out['contractorId'] = preg_match( '/^[A-Za-z0-9_-]{1,64}$/', (string) $g( 'contractorId' ) ) ? (string) $g( 'contractorId' ) : '';
 		$out['repName']      = self::v_str( $g( 'repName' ), 200 );
 		$out['repPhone']     = self::v_str( $g( 'repPhone' ), 60 );

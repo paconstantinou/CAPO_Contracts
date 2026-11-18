@@ -147,7 +147,7 @@ class RL_Settings {
 
 	/* ---------- application settings (Ρυθμίσεις page): VAT rate, default reminder days, custom fields ---------- */
 
-	const CF_COLLECTIONS = array( 'software', 'contracts', 'tenders', 'contractors' );
+	const CF_COLLECTIONS = array( 'software', 'contracts', 'tenders', 'contractors', 'provisions' );
 
 	public static function app_settings() {
 		$raw = get_option( 'rl_app_settings', '' );
@@ -315,7 +315,7 @@ TXT;
 			<?php else : ?>
 				<div class="notice notice-info inline"><p>Ποιος μπορεί να βλέπει, να δημιουργεί, να επεξεργάζεται, να διαγράφει ή να εξάγει ορίζεται <strong>μόνο</strong> από το
 					<a href="<?php echo esc_url( admin_url( 'admin.php?page=am-users' ) ); ?>">Application Management → Users &amp; Access</a>.
-					Τα modules είναι <code>software</code>, <code>contracts</code>, <code>tenders</code>, <code>contractors</code> και <code>articles</code>.</p></div>
+					Τα modules είναι <code>software</code>, <code>contracts</code>, <code>tenders</code>, <code>contractors</code>, <code>provisions</code> και <code>articles</code>.</p></div>
 			<?php endif; ?>
 
 			<p>Για να εμφανίσεις την εφαρμογή, δημιούργησε μια σελίδα (ιδανικά ιδιωτική) και πρόσθεσε μέσα το shortcode <code>[renewal_ledger]</code>.

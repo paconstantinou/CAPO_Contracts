@@ -10,6 +10,12 @@ php tests/integration/rest-permissions-test.php http://127.0.0.1:8088   # HTTP: 
 php tests/integration/settings-test.php http://127.0.0.1:8088 /path/to/wp-load.php        # settings, custom fields
 php tests/integration/backup-schedule-test.php http://127.0.0.1:8088 /path/to/wp-load.php  # scheduled backup to a folder
 php tests/integration/contract-dup-test.php http://127.0.0.1:8088 /path/to/wp-load.php        # one tender number = one contract (create/edit/legacy/trash/promote)
+php tests/integration/amendment-test.php http://127.0.0.1:8088 /path/to/wp-load.php           # contract amendments are append-only
+php tests/integration/provisions-test.php http://127.0.0.1:8088 /path/to/wp-load.php         # general provisions: whitelist, roles, trash
+node tests/unit/provisions-reconcile-test.js                                                  # provisions in the budget + reconciliation sets (20% rule)
+node tests/browser/html-amend-test.js index.html                                              # amendment form, previous values, history
+node tests/browser/html-provisions-test.js index.html                                         # provisions tab, budget, reconciliation tab
+RL_PASS=… node tests/browser/wp-provisions-test.js                                            # same in WordPress, incl. viewer role
 node tests/browser/html-search-dup-test.js [index.html]                           # duplicate message in the form + search field on every page (also WordPress: RL_URL/RL_PASS)
 php tests/integration/audit-test.php http://127.0.0.1:8088 /path/to/wp-load.php          # audit chain, field diff, download/denied log, upload guard, manage_settings (site needs RL_AUDIT_KEY)
 node tests/unit/vendor-sri-test.js                                                # bundled SheetJS = SRI hash = README hashes, no CDN

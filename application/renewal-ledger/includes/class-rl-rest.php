@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class RL_REST {
 
-	const COLLECTIONS = array( 'software', 'contracts', 'tenders', 'contractors' );
+	const COLLECTIONS = array( 'software', 'contracts', 'tenders', 'contractors', 'provisions' );
 
 	public static function init() {
 		add_action( 'rest_api_init', array( __CLASS__, 'routes' ) );
@@ -452,6 +452,22 @@ class RL_REST {
 				return new WP_Error( 'rl_duplicate_contract', 'A contract with tender number "' . $data['tender'] . '" already exists ("' . $dup['title'] . '").', array( 'status' => 409, 'existing' => $dup['id'] ) );
 			}
 		}
+		// Amendment history is append-only: stored entries are kept exactly as they are, only entries with a new id (and a description) are added.
+		$amended = array();
+		if ( 'contracts' === $coll ) {
+			$keep = ( $old && ! empty( $old['amendments'] ) && is_array( $old['amendments'] ) ) ? $old['amendments'] : array();
+			$have = array();
+			foreach ( $keep as $k ) {
+				$have[ $k['id'] ] = true;
+			}
+			foreach ( isset( $data['amendments'] ) ? (array) $data['amendments'] : array() as $a ) {
+				if ( ! isset( $have[ $a['id'] ] ) && '' !== $a['description'] && count( $amended ) < 5 ) {
+					$a['at']   = (int) round( microtime( true ) * 1000 );
+					$amended[] = $a;
+				}
+			}
+			$data['amendments'] = array_merge( $keep, $amended );
+		}
 		if ( 'contractors' === $coll ) {
 			$dup = RL_DB::contractor_duplicate( $data['name'], $id );
 			if ( $dup ) {
@@ -461,6 +477,9 @@ class RL_REST {
 		$res = RL_DB::save_record( $coll, $id, $data, get_current_user_id() );
 		if ( is_wp_error( $res ) ) {
 			return $res;
+		}
+		foreach ( $amended as $a ) {
+			self::log( 'ledger.contract_amended', $coll, array( 'id' => $id, 'title' => $data['title'], 'amendment' => $a['id'], 'description' => $a['description'], 'cost' => array( $a['costBefore'], $a['costAfter'] ) ) );
 		}
 		if ( 'contractors' === $coll && $old && ( ! isset( $old['name'] ) || $old['name'] !== $data['name'] ) ) {
 			RL_DB::refresh_contractor_name( $id, $data['name'], get_current_user_id() );
