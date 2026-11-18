@@ -57,6 +57,19 @@ t( 'a provision without a description is refused', 400 === $c->rl( 'PUT', 'recor
 t( 'a bad base year falls back to the current year', ( $c->rl( 'PUT', 'records/provisions/pv1', $P( array( 'baseYear' => 5 ) ) ) && (int) gmdate( 'Y' ) === $get( $c )['baseYear'] ) );
 t( 'the audit log records the creation', (bool) $wpdb->get_var( "SELECT COUNT(*) FROM $lt WHERE module = 'provisions' AND action = 'ledger.record_create'" ) || (bool) $wpdb->get_var( "SELECT COUNT(*) FROM $lt WHERE details LIKE '%pv1%'" ) );
 $c->rl( 'PUT', 'records/provisions/pv1', $P() );
+t( 'rcInclude defaults to false', false === $get( $c )['rcInclude'] );
+$c->rl( 'PUT', 'records/provisions/pv1', $P( array( 'rcInclude' => true ) ) );
+t( 'rcInclude (Reconciliation Framework flag) is stored', true === $get( $c )['rcInclude'] );
+$c->rl( 'PUT', 'records/provisions/pv1', $P() );
+/* the same flag on contracts */
+$cr = fn( $o = array() ) => array( 'data' => array_merge( array( 'title' => 'RC τεστ', 'tender' => 'RC-FLAG-1', 'months' => 12, 'dateFrom' => '2027-01-01', 'dateTo' => '2027-12-31', 'cost' => 10, 'years' => array( array( 'from' => '2027-01-01', 'to' => '2027-12-31', 'cost' => 10, 'remind' => 30 ) ) ), $o ) );
+$c->rl( 'DELETE', 'records/contracts/rcf1' ); $c->rl( 'DELETE', 'records/contracts/rcf1&purge=1' );
+t( 'contract saved', 200 === $c->rl( 'PUT', 'records/contracts/rcf1', $cr() )['code'] );
+$gc = function () use ( $c ) { foreach ( $c->rl( 'GET', 'records/contracts' )['json']['items'] ?? array() as $i ) { if ( 'rcf1' === $i['id'] ) { return $i['data']; } } return null; };
+t( 'contract rcInclude defaults to false', false === $gc()['rcInclude'] );
+$c->rl( 'PUT', 'records/contracts/rcf1', $cr( array( 'rcInclude' => true ) ) );
+t( 'contract rcInclude is stored', true === $gc()['rcInclude'] );
+$c->rl( 'DELETE', 'records/contracts/rcf1' ); $c->rl( 'DELETE', 'records/contracts/rcf1&purge=1' );
 /* roles */
 foreach ( array( 'viewer1' => array( 200, 403 ), 'nobody' => array( 403, 403 ) ) as $u => $exp ) {
 	$x = client( $base, $u, 'Pw-' . $u . '-12345!' );

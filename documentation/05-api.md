@@ -103,3 +103,6 @@ New collection `provisions` (`/rl/v1/records/provisions[/{id}]`, trash, restore,
 
 ## Contract amendments (3.16.0)
 Contracts get `amendments`: a list of `{ id, date, description, at, changes[{label,old,new}], costBefore, costAfter, before{…snapshot of the contract before the amendment} }`. The list is **append-only**: `PUT /rl/v1/records/contracts/{id}` keeps every stored entry exactly as it is (sent copies are ignored, an empty list does not delete), accepts only entries with a new `id` and a non-empty `description` (at most 5 per save) and stamps `at` on the server. Every new amendment is written to the activity log as `ledger.contract_amended`. The reconciliation page uses `before` / `costBefore` of the first entry as the original amount.
+
+## Reconciliation Framework flag (3.17.0)
+Contracts and provisions get the boolean `rcInclude` (default `false`): «Συμπερίληψη στο Πλαίσιο Συμφιλίωσης». The reconciliation page lists flagged contracts and provisions in two extra tables. Its contract rule is now an **absolute difference** of more than 4,999 € between the contract's total cost (with extras, excl. VAT) and the estimated cost of the tender it was promoted from (`RC_LIMIT` in app.js); only **active** tenders are listed.

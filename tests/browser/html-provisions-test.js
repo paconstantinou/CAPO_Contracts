@@ -66,30 +66,42 @@ const file = path.resolve(process.argv[2] || 'index.html');
   const promote = async (name, newCost) => { await p.click('#tabTn'); await W(500); await p.click('text=' + name); await W(300); await p.click('[data-act=tnpromote]'); await W(500);
     if (newCost) { await p.fill('#cy_cost_0', newCost); await p.dispatchEvent('#cy_cost_0', 'change'); }
     await p.click('[data-act=ctsave]'); await W(1500); await p.click('[data-act=close]').catch(() => {}); await W(300); };
-  await mkTender('Διαγ Α', 'RC-A/2027', '1000'); await p.click('[data-act=close]').catch(() => {});
-  await mkTender('Διαγ Β', 'RC-B/2027', '1000'); await p.click('[data-act=close]').catch(() => {});
-  await mkTender('Διαγ Γ', 'RC-C/2027', '1000'); await p.click('[data-act=close]').catch(() => {});
-  await promote('Διαγ Α', '1500');   /* +50%: deviates */
-  await promote('Διαγ Β', '1200');   /* exactly +20%: does not */
+  await mkTender('Διαγ Α', 'RC-A/2027', '10000'); await p.click('[data-act=close]').catch(() => {});
+  await mkTender('Διαγ Β', 'RC-B/2027', '10000'); await p.click('[data-act=close]').catch(() => {});
+  await mkTender('Διαγ Γ', 'RC-C/2027', '10000'); await p.click('[data-act=close]').catch(() => {});
+  await promote('Διαγ Α', '16000');  /* +6000: reported */
+  await promote('Διαγ Β', '14999');  /* +4999: not reported */
   await p.click('#tabRc'); await W(500);
   let r = await T('#list');
   ok('tab opens, no add button', !(await vis('#btnAdd')));
-  ok('A lists all three tenders with their status', ['Διαγ Α', 'Διαγ Β', 'Διαγ Γ'].every(x => r.includes(x)) && r.includes('Προωθήθηκε σε σύμβαση') && r.includes('Ενεργός'), r.slice(0, 400));
-  const secB = await p.evaluate(() => [...document.querySelectorAll('#list section.bds')].map(s => s.innerText));
-  ok('B has only the +50% contract', secB[1].includes('Διαγ Α') && !secB[1].includes('Διαγ Β') && secB[1].includes('+50'), secB[1].slice(0, 400));
-  ok('C is empty before any amendment', secB[2].includes('Δεν υπάρχουν γραμμές'));
-  /* amend contract Διαγ Β: 1200 -> 1500 */
-  await p.click('#tabCt'); await W(500); await p.click('text=Διαγ Β'); await W(300); await p.click('[data-act=ctamend]'); await W(400);
-  await p.fill('#cy_cost_0', '1500'); await p.dispatchEvent('#cy_cost_0', 'change'); await p.fill('#am_desc', 'ΤΕΑΑ'); await p.click('[data-act=ctsave]'); await W(900); await p.click('[data-act=close]'); await W(300);
-  await p.click('#tabRc'); await W(500);
-  const s2 = await p.evaluate(() => [...document.querySelectorAll('#list section.bds')].map(s => s.innerText));
-  ok('after the amendment Β is now deviating (1000 -> 1500 = +50%)', s2[1].includes('Διαγ Β') && s2[1].includes('Διαγ Α'));
-  ok('C lists the amended contract with original 1.200, current 1.500, +25% and the description', s2[2].includes('Διαγ Β') && s2[2].includes('1.200,00') && s2[2].includes('1.500,00') && s2[2].includes('ΤΕΑΑ') && s2[2].includes('+25'), s2[2].slice(0, 400));
-  await p.fill('#q', 'ΤΕΑΑ'); await W(300);
-  const s3 = await p.evaluate(() => [...document.querySelectorAll('#list section.bds')].map(s => s.innerText));
-  ok('search filters rows (amendment text)', s3[2].includes('Διαγ Β') && !s3[0].includes('Διαγ Γ'));
+  ok('A lists ONLY the active tender (the two promoted ones are not listed)', r.includes('Διαγ Γ') && !(await p.evaluate(() => document.querySelector('#list section.bds').innerText)).includes('Διαγ Α') && !(await p.evaluate(() => document.querySelector('#list section.bds').innerText)).includes('Διαγ Β'), r.slice(0, 300));
+  const secs = async () => p.evaluate(() => [...document.querySelectorAll('#list section.bds')].map(s => s.innerText));
+  let sc = await secs();
+  ok('five sections', sc.length === 5);
+  ok('B has only the +6000 contract (the +4999 one is not reported)', sc[1].includes('Διαγ Α') && !sc[1].includes('Διαγ Β') && sc[1].includes('6.000,00'), sc[1].slice(0, 400));
+  ok('C is empty before any amendment', sc[2].includes('Δεν υπάρχουν γραμμές') && sc[3].includes('Δεν υπάρχουν γραμμές') && sc[4].includes('Δεν υπάρχουν γραμμές'));
+  /* amend contract Διαγ Β: 14999 -> 16000 */
+  await p.click('#tabCt'); await W(500); await p.click('text=Διαγ Β'); await W(300);
+  ok('contract detail shows the reconciliation flag', (await T('#overlay')).includes('Δεν συμπεριλαμβάνεται'));
+  await p.click('[data-act=ctamend]'); await W(400);
+  ok('amend form has the include checkbox', await vis('#c_rcInclude'));
+  await p.fill('#cy_cost_0', '16000'); await p.dispatchEvent('#cy_cost_0', 'change'); await p.check('#c_rcInclude'); await p.fill('#am_desc', 'ΤΕΑΑ'); await W(200);
+  ok('the flag change is listed with its previous value', (await T('#amSummary')).includes('Συμπερίληψη στο Πλαίσιο Συμφιλίωσης') && (await T('#amSummary')).includes('Όχι'));
+  await p.click('[data-act=ctsave]'); await W(900); await p.click('[data-act=close]'); await W(300);
+  await p.click('#tabRc'); await W(500); sc = await secs();
+  ok('after the amendment Β deviates (10000 -> 16000)', sc[1].includes('Διαγ Β') && sc[1].includes('Διαγ Α'));
+  ok('C lists it: original 14.999,00, current 16.000,00, +6,67% and the description', sc[2].includes('Διαγ Β') && sc[2].includes('14.999,00') && sc[2].includes('16.000,00') && sc[2].includes('ΤΕΑΑ') && sc[2].includes('+6,67'), sc[2].slice(0, 400));
+  ok('D lists the flagged contract', sc[3].includes('Διαγ Β') && !sc[3].includes('Διαγ Α'));
+  /* provision flag */
+  await p.click('#tabPv'); await W(300); await p.click('#btnAdd'); await W(300); await p.fill('#pv_title', 'Πρόνοια RC'); await p.selectOption('#pv_article', { index: 1 }); await p.fill('#pv_amt_0', '700');
+  ok('provision form has the include checkbox', await vis('#pv_rc')); await p.check('#pv_rc'); await p.click('[data-act=pvsave]'); await W(700);
+  ok('provision detail shows the flag', (await T('#overlay')).includes('Συμπεριλαμβάνεται')); await p.click('[data-act=close]'); await W(300);
+  await p.click('#tabRc'); await W(500); sc = await secs();
+  ok('E lists the flagged provision (700 net, with VAT in the year column)', sc[4].includes('Πρόνοια RC') && sc[4].includes('700,00'), sc[4].slice(0, 300));
+  await p.fill('#q', 'ΤΕΑΑ'); await W(300); sc = await secs();
+  ok('search filters rows (amendment text)', sc[2].includes('Διαγ Β') && !sc[4].includes('Πρόνοια RC'));
   await p.fill('#q', ''); await W(200);
-  ok('stats show the counts', (await T('#stats')).includes('3') );
+  ok('stats show the counts', (await T('#stats')).toUpperCase().includes('ΔΙΑΓΩΝΙΣΜΟΙ'));
   ok('export button present on this tab', await vis('#btnExport'));
   ok('no script errors', errs.length === 0, errs.join(' | '));
   console.log(bad ? '\n' + bad + ' FAILED' : '\nall passed'); await b.close(); process.exit(bad ? 1 : 0);

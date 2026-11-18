@@ -9,7 +9,7 @@ const code = [
   grab(/\/\*BD-CALC-START\*\//, '/*BD-CALC-END*/'), grab(/\/\*RC-CALC-START\*\//, '/*RC-CALC-END*/'),
   'function bdVat(){return BD_VAT}', grab(/function exOk/, 'function exText'),
 ].join('\n');
-const api = new Function(code + '\nreturn {DEFAULT_ARTICLES,bdBuild,bdTotals,rcSets,ctTotal,RC_THR};')();
+const api = new Function(code + '\nreturn {DEFAULT_ARTICLES,bdBuild,bdTotals,rcSets,ctTotal,RC_LIMIT};')();
 let ok = 0, bad = 0;
 function t(name, fn) { try { fn(); ok++; console.log('  ok   ' + name); } catch (e) { bad++; console.log('  FAIL ' + name + '\n       ' + e.message); } }
 const arts = api.DEFAULT_ARTICLES, code1 = arts[0].code;
@@ -33,19 +33,29 @@ t('provisions with an unknown article go to "no article"', () => {
 
 const mk = (id, cost) => ({ id, title: 'C' + id, tender: 'T' + id, cost, years: [{ cost }], extras: [] });
 const tn = (id, cost, to) => ({ id: 't' + id, title: 'Δ' + id, tender: 'T' + id, cost, status: to ? 'promoted' : 'active', promotedTo: to || '' });
-t('deviation exactly 20% is NOT reported; just above is (up and down)', () => {
-  const R = api.rcSets([tn('1', 100, 'c1'), tn('2', 100, 'c2'), tn('3', 100, 'c3'), tn('4', 100, 'c4')], [mk('c1', 120), mk('c2', 120.01), mk('c3', 79), mk('c4', 80)]);
+t('limit: exactly 4,999 EUR is NOT reported; 4,999.01 is (up and down)', () => {
+  const R = api.rcSets([tn('1', 10000, 'c1'), tn('2', 10000, 'c2'), tn('3', 10000, 'c3'), tn('4', 10000, 'c4')], [mk('c1', 14999), mk('c2', 14999.01), mk('c3', 5000.99), mk('c4', 5001)]);
   assert.deepStrictEqual(R.dev.map(d => d.c.id).sort(), ['c2', 'c3']);
-  assert.strictEqual(R.dev.find(d => d.c.id === 'c2').pct, 20.01); assert.strictEqual(R.dev.find(d => d.c.id === 'c3').diff, -21);
+  assert.strictEqual(R.dev.find(d => d.c.id === 'c2').diff, 4999.01); assert.strictEqual(R.dev.find(d => d.c.id === 'c3').diff, -4999.01);
+});
+t('a small tender with a big percentage change is NOT reported (absolute rule)', () => {
+  const R = api.rcSets([tn('1', 100, 'c1')], [mk('c1', 4000)]); assert.strictEqual(R.dev.length, 0);
 });
 t('contract cost includes the extra services', () => {
-  const c = mk('c1', 100); c.extras = [{ desc: 'x', amount: 30 }];
-  const R = api.rcSets([tn('1', 100, 'c1')], [c]); assert.strictEqual(R.dev.length, 1); assert.strictEqual(R.dev[0].cur, 130);
+  const c = mk('c1', 10000); c.extras = [{ desc: 'x', amount: 6000 }];
+  const R = api.rcSets([tn('1', 10000, 'c1')], [c]); assert.strictEqual(R.dev.length, 1); assert.strictEqual(R.dev[0].cur, 16000);
 });
-t('contracts without a tender, or with a zero-cost tender, never deviate', () => {
-  const R = api.rcSets([tn('1', 0, 'c1')], [mk('c1', 500), mk('c2', 500)]); assert.strictEqual(R.dev.length, 0);
+t('contracts without a tender never deviate', () => { assert.strictEqual(api.rcSets([], [mk('c1', 50000)]).dev.length, 0); });
+t('a zero-cost tender counts as base 0 (any contract above the limit deviates)', () => { assert.strictEqual(api.rcSets([tn('1', 0, 'c1')], [mk('c1', 6000)]).dev.length, 1); });
+t('only ACTIVE tenders are listed; promoted/cancelled are not, but promoted ones still drive section B', () => {
+  const c = tn('3', 10000); c.status = 'cancelled';
+  const R = api.rcSets([tn('1', 1), tn('2', 10000, 'c9'), c], [mk('c9', 20000)]);
+  assert.deepStrictEqual(R.tenders.map(t => t.id), ['t1']); assert.strictEqual(R.dev.length, 1);
 });
-t('all tenders are listed (any status)', () => { const R = api.rcSets([tn('1', 1), tn('2', 2, 'c9')], []); assert.strictEqual(R.tenders.length, 2); });
+t('manual inclusion: flagged contracts and provisions only', () => {
+  const a = mk('c1', 10); a.rcInclude = true; const R = api.rcSets([], [a, mk('c2', 5)], null, [{ id: 'p1', rcInclude: true }, { id: 'p2' }]);
+  assert.deepStrictEqual(R.inc.map(x => x.c.id), ['c1']); assert.deepStrictEqual(R.provs.map(p => p.id), ['p1']);
+});
 t('amended contracts: only those where an amendment changed the cost; original = cost before the first amendment', () => {
   const a = mk('c1', 150); a.amendments = [{ costBefore: 100, costAfter: 120, description: 'ΤΕΑΑ' }, { costBefore: 120, costAfter: 150, description: 'ΚΕΑΑ' }];
   const b = mk('c2', 100); b.amendments = [{ costBefore: 100, costAfter: 100, description: 'Παράταση' }];

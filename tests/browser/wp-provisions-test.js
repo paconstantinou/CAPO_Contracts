@@ -27,7 +27,7 @@ const { chromium } = require('playwright');
   await p.click('#tabBd'); await W(800);
   ok('Budget includes it', (await T('#list')).includes('WPPV πρόνοια') && (await T('#list')).includes('2.380,00'));
   await p.click('#tabRc'); await W(600);
-  ok('reconciliation page renders three sections', (await p.locator('#list section.bds').count()) === 3 && !(await p.isVisible('#btnAdd')));
+  ok('reconciliation page renders five sections', (await p.locator('#list section.bds').count()) === 5 && !(await p.isVisible('#btnAdd')));
   await p.click('#tabPv'); await W(400); await p.click('[data-act=pvopen]'); await W(300); await p.click('[data-act=pvdel]'); await W(200); await p.click('#delYes'); await W(1200);
   await p.click('[data-f=trash]'); await W(800);
   ok('deleted provision is in the trash (server)', (await T('#list')).includes('WPPV πρόνοια'));

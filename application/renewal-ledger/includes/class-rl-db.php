@@ -697,6 +697,7 @@ class RL_DB {
 				'article'     => self::v_str( $g( 'article' ), 200 ),
 				'notes'       => self::v_str( $g( 'notes' ), 4000 ),
 				'baseYear'    => $base,
+				'rcInclude'   => ! empty( $d['rcInclude'] ),
 				'amounts'     => $amounts,
 				'attachments' => self::v_attachments( $g( 'attachments' ), $collection ),
 				'createdAt'   => $created,
@@ -792,6 +793,7 @@ class RL_DB {
 		$out['budget'] = self::v_budget( $g( 'budget' ) );
 		$out['extras']       = self::v_extras( $g( 'extras' ) );
 		$out['amendments']   = self::v_amendments( $g( 'amendments' ) );
+		$out['rcInclude']    = ! empty( $d['rcInclude'] ); // 3.17.0: shown in the Reconciliation Framework
 		$out['contractorId'] = preg_match( '/^[A-Za-z0-9_-]{1,64}$/', (string) $g( 'contractorId' ) ) ? (string) $g( 'contractorId' ) : '';
 		$out['repName']      = self::v_str( $g( 'repName' ), 200 );
 		$out['repPhone']     = self::v_str( $g( 'repPhone' ), 60 );
