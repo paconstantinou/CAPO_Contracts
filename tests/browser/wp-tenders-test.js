@@ -18,7 +18,7 @@ if (!pass) { console.error('RL_PASS required'); process.exit(2); }
   ok('tab Διαγωνισμοί is visible', await p.locator('#tabTn:visible').count() === 1);
   await p.click('#btnGuide'); await W(400);
   const gd = await T('#overlay');
-  ok('user guide opens from the header and describes every tab', ['Online Renewals', 'Συμβάσεις', 'Διαγωνισμοί', 'Προϋπολογισμός', 'ΦΠΑ 19%', 'Promote στις Συμβάσεις', 'Κάδος'].every(x => gd.includes(x)) && /έκδοση \d+\.\d+\.\d+/.test(gd));
+  ok('user guide opens from the header and describes every tab', ['Λογισμικά', 'Συμβάσεις', 'Διαγωνισμοί', 'Προϋπολογισμός', 'ΦΠΑ 19%', 'Promote στις Συμβάσεις', 'Κάδος'].every(x => gd.includes(x)) && /έκδοση \d+\.\d+\.\d+/.test(gd));
   await p.click('[data-act=gsec][data-id=tn]'); await W(600);
   ok('guide topic buttons scroll to their section', await p.evaluate(() => { const e = document.getElementById('g-tn'); const r = e.getBoundingClientRect(); return r.top < window.innerHeight; }));
   await p.click('#overlay [data-act=close]'); await W(300);
@@ -50,7 +50,7 @@ if (!pass) { console.error('RL_PASS required'); process.exit(2); }
   ok('budget sheet includes the active tender (same table as contracts)', (await T('#list')).includes(name) && (await T('#list')).includes('Εκτιμώμενος διαγωνισμός: ΔΙΑΓ-1/2027'));
   const bg = sel => p.evaluate(s => { const e = document.querySelector(s); return e ? getComputedStyle(e).backgroundColor : null; }, sel);
   ok('budget row of a tender is shaded with the tender tab colour', (await bg('table.bdt tr.src-tn td')) === 'rgb(236, 228, 248)');
-  ok('budget legend names the three sources', (await T('.bdleg')).includes('Online Renewals') && (await T('.bdleg')).includes('Διαγωνισμοί'));
+  ok('budget legend names the three sources', (await T('.bdleg')).includes('Λογισμικά') && (await T('.bdleg')).includes('Διαγωνισμοί'));
   ok('year in the budget totals is emphasised', await p.locator('.stat .yr').count() > 0 && (await p.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.stat .yr')).fontSize))) > 16);
   await p.click('#tabAr'); await W(600);
   const artTxt = await T('#list');

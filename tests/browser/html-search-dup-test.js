@@ -38,7 +38,7 @@ const file = path.resolve(process.argv[2] || 'index.html');
   await p.click('#tabCt'); await W(400);
 
   console.log('search field on every page');
-  const pages = [['#tabSw', 'Online Renewals'], ['#tabCt', 'Συμβάσεις'], ['#tabTn', 'Διαγωνισμοί'], ['#tabCo', 'Ανάδοχοι'], ['#tabAr', 'Άρθρα'], ['#tabBd', 'Προϋπολογισμός'], ['#tabSt', 'Ρυθμίσεις']];
+  const pages = [['#tabSw', 'Λογισμικά'], ['#tabCt', 'Συμβάσεις'], ['#tabTn', 'Διαγωνισμοί'], ['#tabCo', 'Ανάδοχοι'], ['#tabAr', 'Άρθρα'], ['#tabBd', 'Προϋπολογισμός'], ['#tabSt', 'Ρυθμίσεις']];
   for (const [tab, name] of pages) {
     if (!(await p.locator(tab).count()) || !(await vis(tab))) { console.log('  (tab ' + tab + ' not shown, skipped)'); continue; }
     await p.click(tab); await W(500);

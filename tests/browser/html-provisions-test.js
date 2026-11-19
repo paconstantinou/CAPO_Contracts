@@ -72,14 +72,16 @@ const file = path.resolve(process.argv[2] || 'index.html');
   await promote('Διαγ Α', '16000');  /* +6000: reported */
   await promote('Διαγ Β', '14999');  /* +4999: not reported */
   await p.click('#tabRc'); await W(500);
+  const rowsOf = async k => p.evaluate(k => [...document.querySelectorAll('#list table.rct tbody tr.k-' + k)].map(r => [...r.children].map(c => c.innerText)), k);
   let r = await T('#list');
   ok('tab opens, no add button', !(await vis('#btnAdd')));
-  ok('A lists ONLY the active tender (the two promoted ones are not listed)', r.includes('Διαγ Γ') && !(await p.evaluate(() => document.querySelector('#list section.bds').innerText)).includes('Διαγ Α') && !(await p.evaluate(() => document.querySelector('#list section.bds').innerText)).includes('Διαγ Β'), r.slice(0, 300));
-  const secs = async () => p.evaluate(() => [...document.querySelectorAll('#list section.bds')].map(s => s.innerText));
-  let sc = await secs();
-  ok('five sections', sc.length === 5);
-  ok('B has only the +6000 contract (the +4999 one is not reported)', sc[1].includes('Διαγ Α') && !sc[1].includes('Διαγ Β') && sc[1].includes('6.000,00'), sc[1].slice(0, 400));
-  ok('C is empty before any amendment', sc[2].includes('Δεν υπάρχουν γραμμές') && sc[3].includes('Δεν υπάρχουν γραμμές') && sc[4].includes('Δεν υπάρχουν γραμμές'));
+  ok('ONE table in the template layout: 13 columns, numbered row 1..6, years from the current year', await p.evaluate(() => { const t = document.querySelectorAll('#list table.rct'); const h = [...t[0].querySelectorAll('thead tr')[1].children].map(c => c.innerText); const y = new Date().getFullYear(); return t.length === 1 && h.length === 13 && h[0] === 'Κεφάλαιο' && h[1] === 'Άρθρο' && h[2].includes('' + y) && h[3].includes('' + (y + 1)) && h[9].includes('' + (y + 3)) && [...t[0].querySelectorAll('thead tr')[0].children].map(c => c.innerText).join('') === '123456' }));
+  let tn = await rowsOf('tn'), dv = await rowsOf('dv');
+  ok('A lists ONLY the active tender (the two promoted ones have no row of their own)', tn.length === 1 && tn[0][12].includes('Διαγ Γ') && !r.includes('Διαγ Β'), JSON.stringify(tn).slice(0, 300));
+  ok('A row: chapter blank, amount of Y+1 with VAT as base, change 0, revised = base', tn[0][0] === '' && tn[0][3] === '11.900' && tn[0][4] === '0' && tn[0][5] === '11.900', JSON.stringify(tn[0]));
+  ok('B has only the +6000 contract: base 11.900, change +7.140, revised 19.040', dv.length === 1 && dv[0][12].includes('Διαγ Α') && dv[0][3] === '11.900' && dv[0][4] === '7.140' && dv[0][5] === '19.040', JSON.stringify(dv));
+  ok('no row for the +4999 contract', !r.includes('Διαγ Β'));
+  ok('no other groups yet', (await rowsOf('am')).length === 0 && (await rowsOf('inc')).length === 0 && (await rowsOf('pv')).length === 0);
   /* amend contract Διαγ Β: 14999 -> 16000 */
   await p.click('#tabCt'); await W(500); await p.click('text=Διαγ Β'); await W(300);
   ok('contract detail shows the reconciliation flag', (await T('#overlay')).includes('Δεν συμπεριλαμβάνεται'));
@@ -88,20 +90,27 @@ const file = path.resolve(process.argv[2] || 'index.html');
   await p.fill('#cy_cost_0', '16000'); await p.dispatchEvent('#cy_cost_0', 'change'); await p.check('#c_rcInclude'); await p.fill('#am_desc', 'ΤΕΑΑ'); await W(200);
   ok('the flag change is listed with its previous value', (await T('#amSummary')).includes('Συμπερίληψη στο Πλαίσιο Συμφιλίωσης') && (await T('#amSummary')).includes('Όχι'));
   await p.click('[data-act=ctsave]'); await W(900); await p.click('[data-act=close]'); await W(300);
-  await p.click('#tabRc'); await W(500); sc = await secs();
-  ok('after the amendment Β deviates (10000 -> 16000)', sc[1].includes('Διαγ Β') && sc[1].includes('Διαγ Α'));
-  ok('C lists it: original 14.999,00, current 16.000,00, +6,67% and the description', sc[2].includes('Διαγ Β') && sc[2].includes('14.999,00') && sc[2].includes('16.000,00') && sc[2].includes('ΤΕΑΑ') && sc[2].includes('+6,67'), sc[2].slice(0, 400));
-  ok('D lists the flagged contract', sc[3].includes('Διαγ Β') && !sc[3].includes('Διαγ Α'));
+  await p.click('#tabRc'); await W(500); dv = await rowsOf('dv');
+  ok('after the amendment Β deviates (10000 -> 16000)', dv.length === 2 && dv.some(x => x[12].includes('Διαγ Β')));
+  let am = await rowsOf('am'), inc = await rowsOf('inc');
+  ok('Γ lists it: base 17.849 (14.999 + VAT), change +1.191, revised 19.040, with the description', am.length === 1 && am[0][3] === '17.849' && am[0][4] === '1.191' && am[0][5] === '19.040' && am[0][12].includes('ΤΕΑΑ'), JSON.stringify(am));
+  ok('Δ lists the flagged contract', inc.length === 1 && inc[0][12].includes('Διαγ Β'));
   /* provision flag */
   await p.click('#tabPv'); await W(300); await p.click('#btnAdd'); await W(300); await p.fill('#pv_title', 'Πρόνοια RC'); await p.selectOption('#pv_article', { index: 1 }); await p.fill('#pv_amt_0', '700');
   ok('provision form has the include checkbox', await vis('#pv_rc')); await p.check('#pv_rc'); await p.click('[data-act=pvsave]'); await W(700);
   ok('provision detail shows the flag', (await T('#overlay')).includes('Συμπεριλαμβάνεται')); await p.click('[data-act=close]'); await W(300);
-  await p.click('#tabRc'); await W(500); sc = await secs();
-  ok('E lists the flagged provision (700 net, with VAT in the year column)', sc[4].includes('Πρόνοια RC') && sc[4].includes('700,00'), sc[4].slice(0, 300));
-  await p.fill('#q', 'ΤΕΑΑ'); await W(300); sc = await secs();
-  ok('search filters rows (amendment text)', sc[2].includes('Διαγ Β') && !sc[4].includes('Πρόνοια RC'));
+  await p.click('#tabRc'); await W(500); let pv = await rowsOf('pv');
+  ok('Ε lists the flagged provision: 700 net = 833 with VAT, explanation has the description', pv.length === 1 && pv[0][3] === '833' && pv[0][12].includes('Περιγραφή: Πρόνοια RC'), JSON.stringify(pv));
+  await p.fill('#q', 'ΤΕΑΑ'); await W(300);
+  ok('search filters rows (amendment text)', (await rowsOf('am')).length === 1 && (await rowsOf('pv')).length === 0 && (await rowsOf('tn')).length === 0);
   await p.fill('#q', ''); await W(200);
   ok('stats show the counts', (await T('#stats')).toUpperCase().includes('ΔΙΑΓΩΝΙΣΜΟΙ'));
+  /* Excel export keeps the template layout */
+  const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 20000 }), p.click('#btnExport')]); const xf = require('path').join(require('os').tmpdir(), 'rc-' + Date.now() + '.xlsx'); await dl.saveAs(xf);
+  const py = require('child_process').spawnSync('python3', ['-c', `import openpyxl,sys\nws=openpyxl.load_workbook(sys.argv[1]).active\nprint(ws.title,'|',ws['A2'].value,'|',repr(ws['C2'].value),'|',ws['D1'].value,'|',ws['B3'].value,'|',ws['D3'].number_format,'|',ws['C2'].font.name,ws['C2'].font.sz,'|',ws.max_row)`, xf]).stdout.toString();
+  ok('Excel: template sheet, header, numbering, styles and rows', py.includes('Πλαίσιο Συμφιλίωσης | Κεφάλαιο | ') && py.includes('| 1 |') && py.includes('#,##0') && py.includes('Arial 9.0'), py);
+  if (process.env.RC_KEEP) { require('fs').copyFileSync(xf, process.env.RC_KEEP + '.xlsx'); await p.screenshot({ path: process.env.RC_KEEP + '.png' }); }
+  ok('Excel has one data row per table row', Number(py.trim().split('|').pop()) === 2 + (await p.evaluate(() => document.querySelectorAll('#list table.rct tbody tr').length)), py);
   ok('export button present on this tab', await vis('#btnExport'));
   ok('no script errors', errs.length === 0, errs.join(' | '));
   console.log(bad ? '\n' + bad + ' FAILED' : '\nall passed'); await b.close(); process.exit(bad ? 1 : 0);

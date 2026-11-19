@@ -22,7 +22,7 @@ if (!file && !pass) { console.error('RL_PASS required (or pass an HTML file)'); 
   const panelW = () => p.evaluate(() => document.querySelector('#overlay .panel').getBoundingClientRect().width);
 
   /* 1. forms: full screen, not closed by clicking outside / Backspace / Escape without asking */
-  for (const [tab, label] of [['#tabSw', 'Online Renewals'], ['#tabCt', 'Συμβάσεις'], ['#tabTn', 'Διαγωνισμοί']]) {
+  for (const [tab, label] of [['#tabSw', 'Λογισμικά'], ['#tabCt', 'Συμβάσεις'], ['#tabTn', 'Διαγωνισμοί']]) {
     await p.click(tab); await W(500); await p.click('#btnAdd'); await W(300);
     const full = await p.locator('[data-act=wfull],[data-act=ctfull]').count(); if (full) { await p.click('[data-act=wfull],[data-act=ctfull]'); await W(300); }
     ok(label + ': form opens full screen', (await panelW()) >= 1390);

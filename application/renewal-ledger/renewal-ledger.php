@@ -2,7 +2,7 @@
 /**
  * Plugin Name: PROCURE360
  * Description: PROCURE360 – Integrated Procurement & Budget Management System. Συνδέει αγορές λογισμικού, συμβάσεις, μελλοντικούς διαγωνισμούς και προγραμματισμό προϋπολογισμού, με ετήσιες υπενθυμίσεις, συνημμένα, εισαγωγή/εξαγωγή Excel και ειδοποιήσεις email. Τα δεδομένα αποθηκεύονται στη βάση SQL του WordPress.
- * Version: 3.18.0
+ * Version: 3.19.0
  * Requires Plugins: application-management
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RL_VERSION', '3.18.0' );
+define( 'RL_VERSION', '3.19.0' );
 define( 'RL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RL_URL', plugin_dir_url( __FILE__ ) );
 
@@ -56,7 +56,7 @@ add_action( 'plugins_loaded', function () {
 /* Declare the two modules to the Application Management plugin. Access is granted there, never here. */
 add_action( 'am_register_modules', function ( $registry ) {
 	$registry->register( 'software', array(
-		'name'        => 'Online Renewals',
+		'name'        => 'Λογισμικά',
 		'description' => 'Software renewals (PROCURE360).',
 		'source'      => 'renewal-ledger',
 		'actions'     => array(
