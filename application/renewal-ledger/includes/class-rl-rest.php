@@ -94,6 +94,34 @@ class RL_REST {
 				),
 			),
 			array(
+				'route' => '/note-template',
+				'args'  => array(
+					array(
+						'methods'             => 'GET',
+						'callback'            => function () {
+							return array( 'template' => RL_Settings::note_template() );
+						},
+						'permission_callback' => function () {
+							return is_user_logged_in() && ( self::can( 'software', 'view' ) || self::can_manage_settings() ) ? true : new WP_Error( 'am_forbidden', 'Not allowed.', array( 'status' => 403 ) );
+						},
+					),
+					array(
+						'methods'             => 'PUT',
+						'callback'            => array( __CLASS__, 'save_note_template' ),
+						'permission_callback' => function () {
+							return self::can_manage_settings() ? true : new WP_Error( 'am_forbidden', 'Only administrators can change the note template.', array( 'status' => 403 ) );
+						},
+					),
+					array(
+						'methods'             => 'DELETE',
+						'callback'            => array( __CLASS__, 'reset_note_template' ),
+						'permission_callback' => function () {
+							return self::can_manage_settings() ? true : new WP_Error( 'am_forbidden', 'Only administrators can change the note template.', array( 'status' => 403 ) );
+						},
+					),
+				),
+			),
+			array(
 				'route' => '/backup-schedule',
 				'args'  => array(
 					array(
@@ -310,6 +338,25 @@ class RL_REST {
 			return new WP_Error( $r->get_error_code(), $r->get_error_message(), array( 'status' => is_array( $st ) && isset( $st['status'] ) ? $st['status'] : 500 ) );
 		}
 		return array( 'result' => $r, 'schedule' => RL_Backup::view() );
+	}
+
+	public static function save_note_template( $req ) {
+		$body = $req->get_json_params();
+		if ( ! is_array( $body ) || empty( $body['data'] ) || ! is_string( $body['data'] ) ) {
+			return new WP_Error( 'rl_bad_request', 'Missing template.', array( 'status' => 400 ) );
+		}
+		$t = RL_Settings::save_note_template( isset( $body['name'] ) ? (string) $body['name'] : '', $body['data'] );
+		if ( is_wp_error( $t ) ) {
+			return $t;
+		}
+		self::log( 'note_template_saved', 'settings', array( 'name' => $t['name'], 'bytes' => $t['bytes'] ) );
+		return array( 'template' => $t );
+	}
+
+	public static function reset_note_template() {
+		RL_Settings::reset_note_template();
+		self::log( 'note_template_reset', 'settings', array() );
+		return array( 'template' => RL_Settings::note_template() );
 	}
 
 	public static function save_app_settings( $req ) {

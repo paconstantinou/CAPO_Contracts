@@ -106,3 +106,10 @@ Contracts get `amendments`: a list of `{ id, date, description, at, changes[{lab
 
 ## Reconciliation Framework flag (3.17.0)
 Contracts and provisions get the boolean `rcInclude` (default `false`): «Συμπερίληψη στο Πλαίσιο Συμφιλίωσης». The reconciliation page lists flagged contracts and provisions in two extra tables. Its contract rule is now an **absolute difference** of more than 4,999 € between the contract's total cost (with extras, excl. VAT) and the estimated cost of the tender it was promoted from (`RC_LIMIT` in app.js); only **active** tenders are listed.
+
+## Renewal note template (3.18.0)
+`/rl/v1/note-template` keeps the optional custom Word template used by «Ετοιμασία Σημειώματος» (the built-in default is embedded in the app; the note itself is filled in the browser).
+- `GET` — any logged-in user with `software:view` (or `settings:manage_settings`): `{ template: { custom, name, at, bytes, data } }` (`data` = base64 of the .docx; `custom:false` when none is stored).
+- `PUT` `{ name, data }` — `settings:manage_settings` only. `data` is base64; refused with 400/413 when it is not valid base64, over 2 MB, not a ZIP (`PK` signature, opened with ZipArchive), has no `word/document.xml`, contains `vbaProject`, `activeX` or `embeddings/*.bin`, has over 300 entries or over 30 MB uncompressed. The name is sanitized. Stored in the option `rl_note_template` (autoload off). Logged as `note_template_saved`.
+- `DELETE` — `settings:manage_settings` only; back to the default. Logged as `note_template_reset`.
+The template is not part of the JSON/ZIP backup.

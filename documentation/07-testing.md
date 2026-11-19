@@ -14,6 +14,9 @@ php tests/integration/amendment-test.php http://127.0.0.1:8088 /path/to/wp-load.
 php tests/integration/provisions-test.php http://127.0.0.1:8088 /path/to/wp-load.php         # general provisions: whitelist, roles, trash
 node tests/unit/provisions-reconcile-test.js                                                  # provisions in the budget + reconciliation sets (20% rule)
 node tests/browser/html-amend-test.js index.html                                              # amendment form, previous values, history
+node tests/browser/html-note-test.js index.html                                               # renewal note (.docx filled from the template) + template card in settings
+php tests/integration/note-template-test.php http://127.0.0.1:8088 /path/to/wp-load.php         # /note-template: validation, size, macros, roles, log
+RL_PASS=… node tests/browser/wp-note-test.js                                                  # same in WordPress (template stored in the database)
 node tests/browser/html-provisions-test.js index.html                                         # provisions tab, budget, reconciliation tab
 RL_PASS=… node tests/browser/wp-provisions-test.js                                            # same in WordPress, incl. viewer role
 node tests/browser/html-search-dup-test.js [index.html]                           # duplicate message in the form + search field on every page (also WordPress: RL_URL/RL_PASS)

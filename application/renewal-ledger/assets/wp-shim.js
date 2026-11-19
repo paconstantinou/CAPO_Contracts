@@ -15,6 +15,7 @@
   }
   window.RL_SAVE_ARTICLES=function(list){return api("PUT","articles",{articles:list})};
   window.RL_SAVE_SETTINGS=function(obj){return api("PUT","settings",{settings:obj})};
+  window.RL_NOTE_TPL={get:function(){return api("GET","note-template")},save:function(name,data){return api("PUT","note-template",{name:name,data:data})},reset:function(){return api("DELETE","note-template")}};
   window.RL_BACKUP_SCHEDULE={get:function(){return api("GET","backup-schedule")},save:function(o){return api("PUT","backup-schedule",{schedule:o})},run:function(){return api("POST","backup-schedule/run",{})}};
   var perms=cfg.perms||{};
   function curColl(){

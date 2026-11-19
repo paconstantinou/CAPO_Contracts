@@ -195,6 +195,98 @@ class RL_Settings {
 		return $n;
 	}
 
+	/* ---------- the Word template of the renewal note (Σημείωμα) ---------- */
+	const NOTE_TPL_OPTION = 'rl_note_template';
+	const NOTE_TPL_MAX    = 2097152; // 2 MB
+
+	/** The custom template, or { custom:false } when the built-in default is used. @return array { custom, name, at, bytes, data (base64) } */
+	public static function note_template() {
+		$raw = get_option( self::NOTE_TPL_OPTION, '' );
+		$t   = is_string( $raw ) && '' !== $raw ? json_decode( $raw, true ) : null;
+		if ( ! is_array( $t ) || empty( $t['data'] ) ) {
+			return array( 'custom' => false, 'name' => '', 'at' => 0, 'bytes' => 0, 'data' => '' );
+		}
+		return array(
+			'custom' => true,
+			'name'   => (string) ( $t['name'] ?? 'template.docx' ),
+			'at'     => (int) ( $t['at'] ?? 0 ),
+			'bytes'  => (int) ( $t['bytes'] ?? 0 ),
+			'data'   => (string) $t['data'],
+		);
+	}
+
+	/** Validates (a real .docx, no macros, size limit) and stores the uploaded template. @return array|WP_Error */
+	public static function save_note_template( $name, $b64 ) {
+		$bin = base64_decode( $b64, true );
+		if ( false === $bin || '' === $bin ) {
+			return new WP_Error( 'rl_bad_data', 'Το αρχείο δεν είναι έγκυρο.', array( 'status' => 400 ) );
+		}
+		if ( strlen( $bin ) > self::NOTE_TPL_MAX ) {
+			return new WP_Error( 'rl_bad_data', 'Το πρότυπο είναι πολύ μεγάλο (μέγιστο 2 MB).', array( 'status' => 413 ) );
+		}
+		if ( 'PK' . "\x03\x04" !== substr( $bin, 0, 4 ) ) {
+			return new WP_Error( 'rl_bad_data', 'Το αρχείο δεν είναι έγγραφο Word (.docx).', array( 'status' => 400 ) );
+		}
+		if ( ! class_exists( 'ZipArchive' ) ) {
+			return new WP_Error( 'rl_unavailable', 'Ο server δεν υποστηρίζει έλεγχο αρχείων .docx (ZipArchive).', array( 'status' => 500 ) );
+		}
+		if ( ! function_exists( 'wp_tempnam' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
+		$tmp = wp_tempnam( 'rl-note-tpl' );
+		file_put_contents( $tmp, $bin );
+		$zip = new ZipArchive();
+		$ok  = true === $zip->open( $tmp );
+		$has = false;
+		$big = false;
+		$bad = false;
+		if ( $ok ) {
+			$total = 0;
+			if ( $zip->numFiles > 300 ) {
+				$big = true;
+			}
+			for ( $i = 0; $i < $zip->numFiles && ! $big; $i++ ) {
+				$st = $zip->statIndex( $i );
+				if ( ! $st ) {
+					continue;
+				}
+				$total += (int) $st['size'];
+				$n      = strtolower( (string) $st['name'] );
+				if ( 'word/document.xml' === $n ) {
+					$has = true;
+				}
+				if ( false !== strpos( $n, 'vbaproject' ) || false !== strpos( $n, 'activex' ) || '.bin' === substr( $n, -4 ) && false !== strpos( $n, 'embeddings/' ) ) {
+					$bad = true;
+				}
+			}
+			if ( $total > 30 * 1024 * 1024 ) {
+				$big = true;
+			}
+			$zip->close();
+		}
+		wp_delete_file( $tmp );
+		if ( ! $ok || ! $has ) {
+			return new WP_Error( 'rl_bad_data', 'Το αρχείο δεν είναι έγκυρο έγγραφο Word (.docx).', array( 'status' => 400 ) );
+		}
+		if ( $bad ) {
+			return new WP_Error( 'rl_bad_data', 'Το πρότυπο περιέχει macros ή ενσωματωμένα αντικείμενα και απορρίφθηκε.', array( 'status' => 400 ) );
+		}
+		if ( $big ) {
+			return new WP_Error( 'rl_bad_data', 'Το πρότυπο είναι υπερβολικά μεγάλο μετά την αποσυμπίεση.', array( 'status' => 413 ) );
+		}
+		$name = mb_substr( sanitize_file_name( (string) $name ), 0, 120 );
+		if ( '' === $name ) {
+			$name = 'template.docx';
+		}
+		$rec = array( 'name' => $name, 'at' => time(), 'bytes' => strlen( $bin ), 'data' => base64_encode( $bin ) );
+		update_option( self::NOTE_TPL_OPTION, wp_json_encode( $rec ), false );
+		return self::note_template();
+	}
+
+	public static function reset_note_template() {
+		delete_option( self::NOTE_TPL_OPTION );
+	}
+
 	/** Custom field definitions of one collection. @return array[] { id, label, type, options } */
 	public static function custom_fields( $collection ) {
 		$s = self::app_settings();
