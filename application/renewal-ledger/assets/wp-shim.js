@@ -16,6 +16,7 @@
   window.RL_SAVE_ARTICLES=function(list){return api("PUT","articles",{articles:list})};
   window.RL_SAVE_SETTINGS=function(obj){return api("PUT","settings",{settings:obj})};
   window.RL_NOTE_TPL={get:function(){return api("GET","note-template")},save:function(name,data){return api("PUT","note-template",{name:name,data:data})},reset:function(){return api("DELETE","note-template")}};
+  window.RL_AUTO_TN={run:function(){return api("POST","auto-tenders/run",{})}};
   window.RL_BACKUP_SCHEDULE={get:function(){return api("GET","backup-schedule")},save:function(o){return api("PUT","backup-schedule",{schedule:o})},run:function(){return api("POST","backup-schedule/run",{})}};
   var perms=cfg.perms||{};
   function curColl(){
@@ -117,15 +118,10 @@
   document.addEventListener("click",function(e){
     var a=e.target.closest&&e.target.closest("a[data-blob]");if(!a)return;
     e.preventDefault();
-    var html=isHtmlFile(a.textContent,"");/* HTML attachments are downloaded, never rendered inside the site */
-    var w=html?null:window.open("","_blank");
+    /* every attachment is downloaded under its own file name (never opened in a tab, where it would get a generated name) */
     fetch(cfg.rest+"files/"+a.getAttribute("data-blob"),{credentials:"same-origin",headers:{"X-WP-Nonce":cfg.nonce||""}}).then(function(r){
       if(!r.ok)throw new Error(r.status);return r.blob();
-    }).then(function(b){
-      if(html||isHtmlFile("",b.type)){if(w)w.close();saveAs(b,a.textContent);return}
-      var u=URL.createObjectURL(b);
-      if(w){w.location.href=u}else{var d=document.createElement("a");d.href=u;d.download=a.textContent||"file";document.body.appendChild(d);d.click();d.remove()}
-    }).catch(function(){if(w)w.close();alert("Το αρχείο δεν βρέθηκε ή δεν έχεις δικαίωμα. / File not found or access denied.")});
+    }).then(function(b){saveAs(b,a.textContent)}).catch(function(){alert("Το αρχείο δεν βρέθηκε ή δεν έχεις δικαίωμα. / File not found or access denied.")});
   });
 
   /* Convenience only: hide what the user may not do. The server enforces every one of these again on each request. */

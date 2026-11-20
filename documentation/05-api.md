@@ -113,3 +113,8 @@ Contracts and provisions get the boolean `rcInclude` (default `false`): «Συμ
 - `PUT` `{ name, data }` — `settings:manage_settings` only. `data` is base64; refused with 400/413 when it is not valid base64, over 2 MB, not a ZIP (`PK` signature, opened with ZipArchive), has no `word/document.xml`, contains `vbaProject`, `activeX` or `embeddings/*.bin`, has over 300 entries or over 30 MB uncompressed. The name is sanitized. Stored in the option `rl_note_template` (autoload off). Logged as `note_template_saved`.
 - `DELETE` — `settings:manage_settings` only; back to the default. Logged as `note_template_reset`.
 The template is not part of the JSON/ZIP backup.
+
+
+## 3.20.0 – tender amendments, contract link, automatic tenders
+* Tender fields added: `contractId` (related contract; unknown ids are dropped), `status: pending` (Pending Approval, not counted in the budget), `autoCreated` / `autoAt` (set only by the server-side automatic run; ignored on write), `amendments[]` (append-only like contracts: `{id,date,description,at,changes[{label,old,new}],costBefore,costAfter,before}`; audit event `ledger.tender_amended`). Amendments apply to active tenders only; promote clears them.
+* `POST /rl/v1/auto-tenders/run` (settings manager + `create` on tenders) → `{created:n}`. Creates a pending tender for every non-archived contract ending in current year +1..+3 that has no related tender; cost = contract total (cost + extras × years, no VAT) × 10%, start = day after contract end. Idempotent. The same run happens once a year on/after 5 January (`init` + daily cron `rl_daily_reminders`, option `rl_auto_tn_year`).

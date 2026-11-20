@@ -2,7 +2,7 @@
 /**
  * Plugin Name: PROCURE360
  * Description: PROCURE360 – Integrated Procurement & Budget Management System. Συνδέει αγορές λογισμικού, συμβάσεις, μελλοντικούς διαγωνισμούς και προγραμματισμό προϋπολογισμού, με ετήσιες υπενθυμίσεις, συνημμένα, εισαγωγή/εξαγωγή Excel και ειδοποιήσεις email. Τα δεδομένα αποθηκεύονται στη βάση SQL του WordPress.
- * Version: 3.19.0
+ * Version: 3.20.0
  * Requires Plugins: application-management
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RL_VERSION', '3.19.0' );
+define( 'RL_VERSION', '3.20.0' );
 define( 'RL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RL_URL', plugin_dir_url( __FILE__ ) );
 
@@ -22,6 +22,7 @@ require_once RL_DIR . 'includes/class-rl-export.php';
 require_once RL_DIR . 'includes/class-rl-settings.php';
 require_once RL_DIR . 'includes/class-rl-rest.php';
 require_once RL_DIR . 'includes/class-rl-cron.php';
+require_once RL_DIR . 'includes/class-rl-auto.php';
 require_once RL_DIR . 'includes/class-rl-backup.php';
 require_once RL_DIR . 'includes/class-rl-audit.php';
 require_once RL_DIR . 'includes/class-rl-upload-guard.php';
@@ -106,6 +107,7 @@ add_action( 'am_register_modules', function ( $registry ) {
 RL_Settings::init();
 RL_REST::init();
 RL_Cron::init();
+RL_Auto::init();
 RL_Backup::init();
 
 /* [renewal_ledger] shortcode: place it on a page. The data itself is only served to allowed, logged-in users. */

@@ -739,9 +739,14 @@ class RL_DB {
 				'years'       => array(),
 				'budget'      => self::v_budget( $g( 'budget' ) ),
 				'attachments' => self::v_attachments( $g( 'attachments' ), $collection ),
-				'status'      => in_array( $g( 'status' ), array( 'active', 'cancelled', 'promoted' ), true ) ? $g( 'status' ) : 'active',
+				'status'      => in_array( $g( 'status' ), array( 'active', 'pending', 'cancelled', 'promoted' ), true ) ? $g( 'status' ) : 'active',
 				'statusAt'    => self::v_date( $g( 'statusAt' ) ),
 				'promotedTo'  => preg_match( '/^[A-Za-z0-9_-]{1,64}$/', (string) $g( 'promotedTo' ) ) ? (string) $g( 'promotedTo' ) : '',
+				// 3.20.0: link to the related contract, origin of an automatically created tender, amendment history (append-only, see RL_REST::put_record)
+				'contractId'  => preg_match( '/^[A-Za-z0-9_-]{1,64}$/', (string) $g( 'contractId' ) ) ? (string) $g( 'contractId' ) : '',
+				'autoCreated' => ! empty( $d['autoCreated'] ),
+				'autoAt'      => self::v_date( $g( 'autoAt' ) ),
+				'amendments'  => self::v_amendments( $g( 'amendments' ) ),
 				'createdAt'   => $created,
 				'sample'      => ! empty( $d['sample'] ),
 			);

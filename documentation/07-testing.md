@@ -42,3 +42,5 @@ WordPress UI in a real browser: `RL_URL=… RL_PAGE=/page-with-shortcode/ RL_USE
 Trash: `php tests/integration/trash-test.php <base-url> <wp-load.php>` (HTTP, needs `RL_TEST_ADMIN_PASS`), `php tests/integration/trash-cron-test.php <wp-load.php>` (auto-purge, retention, reminders), `node tests/browser/wp-trash-test.js` (real browser; run as admin, as a user with delete but no purge, and as a viewer).
 
 Tenders: `php tests/integration/tenders-test.php <base-url>` (HTTP; needs `RL_TEST_ADMIN_PASS`). Real browser: `node tests/browser/wp-tenders-test.js` (WordPress, needs `RL_PASS`) and `node tests/browser/html-tenders-test.js path/to/index.html` (standalone HTML and Windows builds). The Claude artifact build needs the Claude host and was only syntax-checked.
+
+* 3.20.0: `tests/unit/auto-tender-test.js` (atPlan), `tests/browser/html-tender-amend-test.js <html>` (tender amendment, pending/approve, link, ΣΤ row), `tests/integration/tender-auto-test.php <base-url>` (append-only amendments, contractId, autoCreated ignored, idempotent run, permissions).

@@ -94,6 +94,18 @@ class RL_REST {
 				),
 			),
 			array(
+				'route' => '/auto-tenders/run',
+				'args'  => array(
+					array(
+						'methods'             => 'POST',
+						'callback'            => array( __CLASS__, 'run_auto_tenders' ),
+						'permission_callback' => function () {
+							return self::can_manage_settings() && self::can( 'tenders', 'create' ) ? true : new WP_Error( 'am_forbidden', 'Not allowed.', array( 'status' => 403 ) );
+						},
+					),
+				),
+			),
+			array(
 				'route' => '/note-template',
 				'args'  => array(
 					array(
@@ -386,6 +398,12 @@ class RL_REST {
 	 * Promote a tender to a contract in one step. Body: { contractId, data } where data is the (corrected) contract.
 	 * The tender is kept for reference (status "promoted") and stops being counted in the budget.
 	 */
+	/** Manual run of the yearly automatic tender creation (it ignores the 5 January date; contracts that already have a related tender are skipped, so it can be repeated safely). */
+	public static function run_auto_tenders( $req ) {
+		$res = RL_Auto::run( wp_date( 'Y-m-d' ), get_current_user_id() );
+		return array( 'created' => count( $res ) );
+	}
+
 	public static function promote_tender( $req ) {
 		$id     = $req['id'];
 		$body   = $req->get_json_params();
@@ -422,6 +440,7 @@ class RL_REST {
 		}
 		$data['attachments'] = $atts;
 		$data['milestones']  = array();
+		$data['amendments']  = array(); // the history of the tender does not move to the contract
 		$clean               = RL_DB::sanitize_record( 'contracts', $data );
 		if ( is_wp_error( $clean ) ) {
 			foreach ( $atts as $a ) {
@@ -482,6 +501,13 @@ class RL_REST {
 			if ( 'promoted' !== $data['status'] ) {
 				$data['promotedTo'] = '';
 			}
+			// A new tender may be created as "pending" (automatic creation). The related contract must exist, and the origin flag cannot be added or removed later.
+			if ( '' !== $data['contractId'] && ! RL_DB::record_exists( 'contracts', $data['contractId'] ) ) {
+				$data['contractId'] = '';
+			}
+			// Only the server-side automatic run (RL_Auto) sets the origin flag; through the REST API it is copied from the stored record, never from the request.
+			$data['autoCreated'] = $old && ! empty( $old['autoCreated'] );
+			$data['autoAt']      = $old && isset( $old['autoAt'] ) ? $old['autoAt'] : '';
 			if ( ( ! $old || ( isset( $old['status'] ) ? $old['status'] : 'active' ) !== $data['status'] ) && 'cancelled' === $data['status'] ) {
 				$data['statusAt'] = gmdate( 'Y-m-d' );
 			}
@@ -501,7 +527,7 @@ class RL_REST {
 		}
 		// Amendment history is append-only: stored entries are kept exactly as they are, only entries with a new id (and a description) are added.
 		$amended = array();
-		if ( 'contracts' === $coll ) {
+		if ( in_array( $coll, array( 'contracts', 'tenders' ), true ) ) {
 			$keep = ( $old && ! empty( $old['amendments'] ) && is_array( $old['amendments'] ) ) ? $old['amendments'] : array();
 			$have = array();
 			foreach ( $keep as $k ) {
@@ -526,7 +552,7 @@ class RL_REST {
 			return $res;
 		}
 		foreach ( $amended as $a ) {
-			self::log( 'ledger.contract_amended', $coll, array( 'id' => $id, 'title' => $data['title'], 'amendment' => $a['id'], 'description' => $a['description'], 'cost' => array( $a['costBefore'], $a['costAfter'] ) ) );
+			self::log( 'tenders' === $coll ? 'ledger.tender_amended' : 'ledger.contract_amended', $coll, array( 'id' => $id, 'title' => $data['title'], 'amendment' => $a['id'], 'description' => $a['description'], 'cost' => array( $a['costBefore'], $a['costAfter'] ) ) );
 		}
 		if ( 'contractors' === $coll && $old && ( ! isset( $old['name'] ) || $old['name'] !== $data['name'] ) ) {
 			RL_DB::refresh_contractor_name( $id, $data['name'], get_current_user_id() );
