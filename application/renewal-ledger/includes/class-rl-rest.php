@@ -94,6 +94,50 @@ class RL_REST {
 				),
 			),
 			array(
+				'route' => '/owners',
+				'args'  => array(
+					array(
+						'methods'             => 'GET',
+						'callback'            => function () {
+							return array( 'items' => RL_Owners::eligible_users(), 'me' => get_current_user_id() );
+						},
+						'permission_callback' => function () {
+							// The list of possible owners is for people who can add or change records.
+							foreach ( RL_DB::OWNED as $m ) {
+								if ( self::can( $m, 'create' ) || self::can( $m, 'edit' ) ) {
+									return self::check( $m, self::can( $m, 'create' ) ? 'create' : 'edit' );
+								}
+							}
+							return self::check( RL_DB::OWNED[0], 'create' ); // 401 / 403, logged
+						},
+					),
+				),
+			),
+			array(
+				'route' => '/owners/unassigned',
+				'args'  => array(
+					array(
+						'methods'             => 'GET',
+						'callback'            => array( __CLASS__, 'list_unassigned' ),
+						'permission_callback' => function () {
+							return is_user_logged_in() ? ( self::can_manage_settings() ? true : new WP_Error( 'am_forbidden', 'Only administrators can assign owners.', array( 'status' => 403 ) ) ) : new WP_Error( 'rest_forbidden', 'Login required.', array( 'status' => 401 ) );
+						},
+					),
+				),
+			),
+			array(
+				'route' => '/owners/assign',
+				'args'  => array(
+					array(
+						'methods'             => 'POST',
+						'callback'            => array( __CLASS__, 'assign_owners' ),
+						'permission_callback' => function () {
+							return is_user_logged_in() ? ( self::can_manage_settings() ? true : new WP_Error( 'am_forbidden', 'Only administrators can assign owners.', array( 'status' => 403 ) ) ) : new WP_Error( 'rest_forbidden', 'Login required.', array( 'status' => 401 ) );
+						},
+					),
+				),
+			),
+			array(
 				'route' => '/auto-tenders/run',
 				'args'  => array(
 					array(
@@ -284,15 +328,28 @@ class RL_REST {
 	private static function file_permission( $file_id, $action ) {
 		$row  = RL_DB::get_file( $file_id );
 		$coll = $row ? (string) $row['collection'] : '';
+		$res  = null;
 		if ( self::valid_coll( $coll ) ) {
-			return self::check( $coll, $action );
-		}
-		foreach ( self::COLLECTIONS as $c ) {
-			if ( self::can( $c, $action ) ) {
-				return self::check( $c, $action );
+			$res = self::check( $coll, $action );
+		} else {
+			foreach ( self::COLLECTIONS as $c ) {
+				if ( self::can( $c, $action ) ) {
+					$res = self::check( $c, $action );
+					break;
+				}
+			}
+			if ( null === $res ) {
+				$res = self::check( self::COLLECTIONS[0], $action );
 			}
 		}
-		return self::check( self::COLLECTIONS[0], $action );
+		// A person who sees only his or her own records only gets the files of those records (or files he or she uploaded and has not attached yet).
+		if ( true === $res && $row ) {
+			$restricted = RL_Owners::owned( $coll ) ? ! RL_Owners::sees_all( $coll ) : ! ( RL_Owners::sees_all( 'software' ) && RL_Owners::sees_all( 'contracts' ) && RL_Owners::sees_all( 'tenders' ) && RL_Owners::sees_all( 'provisions' ) );
+			if ( $restricted && ! RL_DB::file_visible_to( $file_id, get_current_user_id() ) ) {
+				return new WP_Error( 'rl_not_found', 'File not found', array( 'status' => 404 ) );
+			}
+		}
+		return $res;
 	}
 
 	public static function save_articles( $req ) {
@@ -385,7 +442,12 @@ class RL_REST {
 
 	public static function list_records( $req ) {
 		$coll  = $req['coll'];
-		$items = RL_DB::list_records( $coll, (bool) $req['trash'] );
+		$items = RL_DB::list_records( $coll, (bool) $req['trash'], RL_Owners::scope( $coll ) );
+		if ( RL_Owners::owned( $coll ) ) {
+			foreach ( $items as $i => $it ) {
+				$items[ $i ]['ownerName'] = RL_Owners::name_of( $it['owner'] );
+			}
+		}
 		if ( 'software' === $coll && ! self::can( 'software', 'credentials' ) ) {
 			foreach ( $items as $i => $it ) {
 				$items[ $i ]['data']['username'] = '';
@@ -410,9 +472,16 @@ class RL_REST {
 		$cid    = is_array( $body ) && isset( $body['contractId'] ) ? (string) $body['contractId'] : '';
 		$data   = is_array( $body ) && isset( $body['data'] ) && is_array( $body['data'] ) ? $body['data'] : null;
 		$tender = RL_DB::get_record( 'tenders', $id );
-		if ( ! $tender || RL_DB::is_trashed( 'tenders', $id ) ) {
+		$t_own  = RL_DB::get_owner( 'tenders', $id );
+		if ( ! $tender || RL_DB::is_trashed( 'tenders', $id ) || ! RL_Owners::may_touch( 'tenders', $t_own ) ) {
 			return new WP_Error( 'rl_not_found', 'Tender not found.', array( 'status' => 404 ) );
 		}
+		// The new contract belongs to the owner of the tender (he or she becomes its coordinator) unless another user is named.
+		$asked = RL_Owners::parse_asked( is_array( $body ) && isset( $body['ownerId'] ) ? $body['ownerId'] : null );
+		if ( is_wp_error( $asked ) ) {
+			return $asked;
+		}
+		$c_owner = null !== $asked ? $asked : (int) $t_own;
 		if ( isset( $tender['status'] ) && 'active' !== $tender['status'] ) {
 			return new WP_Error( 'rl_tender_closed', 'Only an active tender can be promoted.', array( 'status' => 409 ) );
 		}
@@ -453,16 +522,19 @@ class RL_REST {
 			foreach ( $atts as $a ) {
 				RL_DB::delete_file( $a['id'] );
 			}
-			return new WP_Error( 'rl_duplicate_contract', 'A contract with tender number "' . $clean['tender'] . '" already exists ("' . $dup['title'] . '").', array( 'status' => 409, 'existing' => $dup['id'] ) );
+			return new WP_Error( 'rl_duplicate_contract', 'A contract with tender number "' . $clean['tender'] . '" already exists' . self::dup_text( 'contracts', $dup ) . '.', array( 'status' => 409, 'existing' => self::dup_visible( 'contracts', $dup ) ? $dup['id'] : '' ) );
 		}
-		$res = RL_DB::save_record( 'contracts', $cid, $clean, get_current_user_id() );
+		if ( $c_owner > 0 ) {
+			$clean['coordinator'] = RL_Owners::coordinator_text( $c_owner, isset( $clean['coordinator'] ) ? $clean['coordinator'] : '' );
+		}
+		$res = RL_DB::save_record( 'contracts', $cid, $clean, get_current_user_id(), $c_owner );
 		if ( is_wp_error( $res ) ) {
 			return $res;
 		}
 		$tender['status']     = 'promoted';
 		$tender['promotedTo'] = $cid;
 		$tender['statusAt']   = gmdate( 'Y-m-d' );
-		$res                  = RL_DB::save_record( 'tenders', $id, $tender, get_current_user_id() );
+		$res                  = RL_DB::save_record( 'tenders', $id, $tender, get_current_user_id() ); // the tender keeps its owner
 		if ( is_wp_error( $res ) ) {
 			return $res;
 		}
@@ -471,10 +543,41 @@ class RL_REST {
 		return rest_ensure_response( array( 'ok' => true, 'contractId' => $cid ) );
 	}
 
+	/** May the current user see this record (an array with 'id')? Used so that a message never names a record the user cannot see. */
+	private static function dup_visible( $coll, $dup ) {
+		return RL_Owners::may_touch( $coll, RL_DB::get_owner( $coll, $dup['id'] ) );
+	}
+
+	/** ' ("Title")' / ' by the tender "Title"' when the user may see the other record, nothing otherwise. */
+	private static function dup_text( $coll, $dup, $lead = '' ) {
+		if ( ! self::dup_visible( $coll, $dup ) ) {
+			return '' === $lead ? '' : ' by another record';
+		}
+		return '' === $lead ? ' ("' . $dup['title'] . '")' : ' ' . $lead . ' "' . $dup['title'] . '"';
+	}
+
 	public static function put_record( $req ) {
 		$coll = $req['coll'];
 		$id   = $req['id'];
 		$body = $req->get_json_params();
+		// Somebody else's record does not exist for a person who sees only his or her own records.
+		$cur_owner = RL_DB::get_owner( $coll, $id ); // null = a new record
+		if ( ! RL_Owners::may_touch( $coll, $cur_owner ) ) {
+			return new WP_Error( 'rl_not_found', 'Record not found.', array( 'status' => 404 ) );
+		}
+		// Owner: a new record belongs to the person who saves it unless he or she names another user; only people who see all records may change the owner of an existing record.
+		$owner_arg = null;
+		if ( RL_Owners::owned( $coll ) ) {
+			$asked = RL_Owners::parse_asked( is_array( $body ) && isset( $body['ownerId'] ) ? $body['ownerId'] : null );
+			if ( is_wp_error( $asked ) ) {
+				return $asked;
+			}
+			if ( null === $cur_owner ) {
+				$owner_arg = null !== $asked ? $asked : (int) get_current_user_id();
+			} elseif ( null !== $asked && RL_Owners::sees_all( $coll ) ) {
+				$owner_arg = $asked;
+			}
+		}
 		$data = is_array( $body ) && isset( $body['data'] ) ? $body['data'] : null;
 		$data = RL_DB::sanitize_record( $coll, $data );
 		if ( is_wp_error( $data ) ) {
@@ -515,14 +618,14 @@ class RL_REST {
 		if ( 'tenders' === $coll && ! empty( $data['tender'] ) ) {
 			$dup = RL_DB::tender_with_number( $data['tender'], $id );
 			if ( $dup ) {
-				return new WP_Error( 'rl_duplicate_tender', 'Tender number "' . $data['tender'] . '" is already used by the tender "' . $dup['title'] . '".', array( 'status' => 409 ) );
+				return new WP_Error( 'rl_duplicate_tender', 'Tender number "' . $data['tender'] . '" is already used' . self::dup_text( 'tenders', $dup, 'by the tender' ) . '.', array( 'status' => 409 ) );
 			}
 		}
 		// Contracts: a new contract may not reuse the tender number of another contract; an existing one is only checked when its number changes.
 		if ( 'contracts' === $coll && ! empty( $data['tender'] ) && ( ! $old || RL_DB::tender_key( isset( $old['tender'] ) ? $old['tender'] : '' ) !== RL_DB::tender_key( $data['tender'] ) ) ) {
 			$dup = RL_DB::tender_with_number( $data['tender'], $id, 'contracts' );
 			if ( $dup ) {
-				return new WP_Error( 'rl_duplicate_contract', 'A contract with tender number "' . $data['tender'] . '" already exists ("' . $dup['title'] . '").', array( 'status' => 409, 'existing' => $dup['id'] ) );
+				return new WP_Error( 'rl_duplicate_contract', 'A contract with tender number "' . $data['tender'] . '" already exists' . self::dup_text( 'contracts', $dup ) . '.', array( 'status' => 409, 'existing' => self::dup_visible( 'contracts', $dup ) ? $dup['id'] : '' ) );
 			}
 		}
 		// Amendment history is append-only: stored entries are kept exactly as they are, only entries with a new id (and a description) are added.
@@ -547,7 +650,12 @@ class RL_REST {
 				return new WP_Error( 'rl_duplicate_contractor', 'A contractor with the same name already exists ("' . $dup['name'] . '").', array( 'status' => 409, 'existing' => $dup['id'] ) );
 			}
 		}
-		$res = RL_DB::save_record( $coll, $id, $data, get_current_user_id() );
+		// Contracts: the coordinator is the owner, so the text shown everywhere (list, exports, note) is the owner's name.
+		$final_owner = null !== $owner_arg ? (int) $owner_arg : (int) $cur_owner;
+		if ( 'contracts' === $coll && $final_owner > 0 ) {
+			$data['coordinator'] = RL_Owners::coordinator_text( $final_owner, isset( $data['coordinator'] ) ? $data['coordinator'] : '' );
+		}
+		$res = RL_DB::save_record( $coll, $id, $data, get_current_user_id(), $owner_arg );
 		if ( is_wp_error( $res ) ) {
 			return $res;
 		}
@@ -562,6 +670,9 @@ class RL_REST {
 		}
 		$title = in_array( $coll, array( 'software', 'contractors' ), true ) ? $data['name'] : $data['title'];
 		$det = array( 'id' => $id, 'title' => $title );
+		if ( null !== $owner_arg && (int) $owner_arg !== (int) $cur_owner ) {
+			$det['owner'] = array( RL_Owners::name_of( $cur_owner ), RL_Owners::name_of( $owner_arg ) );
+		}
 		if ( $old ) {
 			// Field-level diff. Sensitive fields are only marked "changed"; the whole entry must fit the 4000-char log column.
 			$chg = RL_Audit_Diff::changes( $old, $data );
@@ -593,6 +704,9 @@ class RL_REST {
 		if ( ! $old ) {
 			return rest_ensure_response( array( 'ok' => true ) );
 		}
+		if ( ! RL_Owners::may_touch( $coll, RL_DB::get_owner( $coll, $id ) ) ) {
+			return new WP_Error( 'rl_not_found', 'Record not found.', array( 'status' => 404 ) );
+		}
 		if ( $req['purge'] ) {
 			if ( ! RL_DB::is_trashed( $coll, $id ) ) {
 				return new WP_Error( 'rl_not_in_trash', 'Only records in the trash can be deleted permanently.', array( 'status' => 409 ) );
@@ -604,7 +718,10 @@ class RL_REST {
 		if ( 'contractors' === $coll ) {
 			$used = RL_DB::contractor_contracts( $id );
 			if ( $used ) {
-				return new WP_Error( 'rl_contractor_in_use', 'This contractor is used by ' . count( $used ) . ' contract(s) and cannot be deleted.', array( 'status' => 409, 'contracts' => $used ) );
+				$seen = array_values( array_filter( $used, function ( $u ) {
+					return self::dup_visible( 'contracts', $u );
+				} ) );
+				return new WP_Error( 'rl_contractor_in_use', 'This contractor is used by ' . count( $used ) . ' contract(s) and cannot be deleted.', array( 'status' => 409, 'contracts' => $seen ) );
 			}
 		}
 		if ( RL_DB::trash_record( $coll, $id, get_current_user_id() ) ) {
@@ -616,18 +733,21 @@ class RL_REST {
 	public static function restore_record( $req ) {
 		$coll = $req['coll'];
 		$id   = $req['id'];
+		if ( ! RL_Owners::may_touch( $coll, RL_DB::get_owner( $coll, $id ) ) ) {
+			return new WP_Error( 'rl_not_in_trash', 'Record is not in the trash.', array( 'status' => 404 ) );
+		}
 		if ( 'tenders' === $coll ) {
 			$rec = RL_DB::get_record( $coll, $id );
 			$dup = ( $rec && ! empty( $rec['tender'] ) ) ? RL_DB::tender_with_number( $rec['tender'], $id ) : null;
 			if ( $dup ) {
-				return new WP_Error( 'rl_duplicate_tender', 'Tender number "' . $rec['tender'] . '" is already used by the tender "' . $dup['title'] . '".', array( 'status' => 409 ) );
+				return new WP_Error( 'rl_duplicate_tender', 'Tender number "' . $rec['tender'] . '" is already used' . self::dup_text( 'tenders', $dup, 'by the tender' ) . '.', array( 'status' => 409 ) );
 			}
 		}
 		if ( 'contracts' === $coll ) {
 			$rec = RL_DB::get_record( $coll, $id );
 			$dup = ( $rec && ! empty( $rec['tender'] ) ) ? RL_DB::tender_with_number( $rec['tender'], $id, 'contracts' ) : null;
 			if ( $dup ) {
-				return new WP_Error( 'rl_duplicate_contract', 'A contract with tender number "' . $rec['tender'] . '" already exists ("' . $dup['title'] . '").', array( 'status' => 409 ) );
+				return new WP_Error( 'rl_duplicate_contract', 'A contract with tender number "' . $rec['tender'] . '" already exists' . self::dup_text( 'contracts', $dup ) . '.', array( 'status' => 409 ) );
 			}
 		}
 		if ( 'contractors' === $coll ) {
@@ -650,7 +770,7 @@ class RL_REST {
 		$coll   = $req['coll'];
 		$format = $req['format'] ? $req['format'] : 'xlsx';
 		$creds  = 'software' === $coll && self::can( 'software', 'credentials' );
-		list( $head, $rows ) = RL_Export::table( $coll, $creds );
+		list( $head, $rows ) = RL_Export::table( $coll, $creds, RL_Owners::scope( $coll ) );
 		$name = 'renewal-ledger-' . $coll . '-' . gmdate( 'Y-m-d' );
 		self::log( 'ledger.export', $coll, array( 'format' => $format, 'rows' => count( $rows ) ) );
 
@@ -734,5 +854,58 @@ class RL_REST {
 			self::log( 'ledger.file_delete', (string) $row['collection'], array( 'file' => $row['orig_name'] ) );
 		}
 		return rest_ensure_response( array( 'ok' => true ) );
+	}
+
+	/* ---------- owners ---------- */
+
+	/** Records that have no owner yet (contracts of the time before 3.21, records created by an automatic run), with a matching proposal for each. For administrators. */
+	public static function list_unassigned( $req ) {
+		$out = array();
+		foreach ( RL_DB::OWNED as $coll ) {
+			foreach ( RL_DB::unowned( $coll ) as $r ) {
+				$d     = $r['data'];
+				$title = self::title_of( $coll, $d );
+				$hint  = 'contracts' === $coll && isset( $d['coordinator'] ) ? (string) $d['coordinator'] : '';
+				$sug   = '' !== $hint ? RL_Owners::suggest( $hint ) : 0;
+				if ( ! $sug && $r['created_by'] > 0 && 'contracts' !== $coll ) {
+					$sug = RL_Owners::is_eligible( $r['created_by'] ) ? (int) $r['created_by'] : 0;
+				}
+				$out[] = array( 'coll' => $coll, 'id' => $r['id'], 'title' => $title, 'coordinator' => $hint, 'createdBy' => RL_Owners::name_of( $r['created_by'] ), 'trashed' => $r['trashed'], 'suggested' => $sug );
+			}
+		}
+		return array( 'items' => $out, 'users' => RL_Owners::eligible_users() );
+	}
+
+	/** Body: { items: [ { coll, id, owner } ] }. Sets the owner of records (for contracts also the coordinator text). */
+	public static function assign_owners( $req ) {
+		$body  = $req->get_json_params();
+		$items = is_array( $body ) && isset( $body['items'] ) && is_array( $body['items'] ) ? array_slice( $body['items'], 0, 500 ) : null;
+		if ( null === $items ) {
+			return new WP_Error( 'rl_bad_request', 'Missing items.', array( 'status' => 400 ) );
+		}
+		$done = 0;
+		foreach ( $items as $it ) {
+			$coll = is_array( $it ) && isset( $it['coll'] ) ? (string) $it['coll'] : '';
+			$id   = is_array( $it ) && isset( $it['id'] ) ? (string) $it['id'] : '';
+			$own  = RL_Owners::parse_asked( is_array( $it ) && isset( $it['owner'] ) ? $it['owner'] : null );
+			if ( is_wp_error( $own ) ) {
+				return $own;
+			}
+			if ( null === $own || ! RL_Owners::owned( $coll ) || ! preg_match( '/^[A-Za-z0-9_-]{1,64}$/', $id ) ) {
+				continue;
+			}
+			$rec = RL_DB::get_record( $coll, $id );
+			if ( ! $rec ) {
+				continue;
+			}
+			if ( 'contracts' === $coll ) {
+				$rec['coordinator'] = RL_Owners::coordinator_text( $own, isset( $rec['coordinator'] ) ? $rec['coordinator'] : '' );
+			}
+			if ( true === RL_DB::save_record( $coll, $id, $rec, get_current_user_id(), $own ) ) {
+				++$done;
+				self::log( 'ledger.owner_assigned', $coll, array( 'id' => $id, 'title' => self::title_of( $coll, $rec ), 'owner' => RL_Owners::name_of( $own ) ) );
+			}
+		}
+		return rest_ensure_response( array( 'ok' => true, 'assigned' => $done ) );
 	}
 }

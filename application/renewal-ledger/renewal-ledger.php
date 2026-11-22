@@ -2,7 +2,7 @@
 /**
  * Plugin Name: PROCURE360
  * Description: PROCURE360 – Integrated Procurement & Budget Management System. Συνδέει αγορές λογισμικού, συμβάσεις, μελλοντικούς διαγωνισμούς και προγραμματισμό προϋπολογισμού, με ετήσιες υπενθυμίσεις, συνημμένα, εισαγωγή/εξαγωγή Excel και ειδοποιήσεις email. Τα δεδομένα αποθηκεύονται στη βάση SQL του WordPress.
- * Version: 3.20.0
+ * Version: 3.21.0
  * Requires Plugins: application-management
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -13,11 +13,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RL_VERSION', '3.20.0' );
+define( 'RL_VERSION', '3.21.0' );
 define( 'RL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RL_URL', plugin_dir_url( __FILE__ ) );
 
 require_once RL_DIR . 'includes/class-rl-db.php';
+require_once RL_DIR . 'includes/class-rl-owners.php';
 require_once RL_DIR . 'includes/class-rl-export.php';
 require_once RL_DIR . 'includes/class-rl-settings.php';
 require_once RL_DIR . 'includes/class-rl-rest.php';
@@ -63,13 +64,17 @@ add_action( 'am_register_modules', function ( $registry ) {
 		'actions'     => array(
 			'credentials' => 'See and change usernames',
 			'purge'       => 'Delete permanently from the trash',
+			'view_all'    => 'See all records, not only the ones he or she owns',
 		),
 	) );
 	$registry->register( 'contracts', array(
 		'name'        => 'Contracts (Συμβάσεις)',
 		'description' => 'Contracts with yearly reminders (PROCURE360).',
 		'source'      => 'renewal-ledger',
-		'actions'     => array( 'purge' => 'Delete permanently from the trash' ),
+		'actions'     => array(
+			'purge'    => 'Delete permanently from the trash',
+			'view_all' => 'See all records, not only the ones he or she owns',
+		),
 	) );
 	$registry->register( 'articles', array(
 		'name'        => 'Budget Articles (Άρθρα)',
@@ -94,17 +99,24 @@ add_action( 'am_register_modules', function ( $registry ) {
 		'name'        => 'General Provisions (Γενικές Πρόνοιες)',
 		'description' => 'Budget provisions for the next 3 years, counted in the Budget tab (PROCURE360).',
 		'source'      => 'renewal-ledger',
-		'actions'     => array( 'purge' => 'Delete permanently from the trash' ),
+		'actions'     => array(
+			'purge'    => 'Delete permanently from the trash',
+			'view_all' => 'See all records, not only the ones he or she owns',
+		),
 	) );
 	$registry->register( 'tenders', array(
 		'name'        => 'Tenders (Διαγωνισμοί)',
 		'description' => 'Planned tenders with estimated budget (PROCURE360).',
 		'source'      => 'renewal-ledger',
-		'actions'     => array( 'purge' => 'Delete permanently from the trash' ),
+		'actions'     => array(
+			'purge'    => 'Delete permanently from the trash',
+			'view_all' => 'See all records, not only the ones he or she owns',
+		),
 	) );
 } );
 
 RL_Settings::init();
+RL_Owners::init();
 RL_REST::init();
 RL_Cron::init();
 RL_Auto::init();
@@ -117,7 +129,7 @@ add_shortcode( 'renewal_ledger', function () {
 	}
 	$perms = array();
 	foreach ( array( 'software', 'contracts', 'tenders', 'contractors', 'provisions' ) as $m ) {
-		foreach ( array( 'view', 'create', 'edit', 'delete', 'export', 'manage', 'credentials', 'purge' ) as $a ) {
+		foreach ( array( 'view', 'create', 'edit', 'delete', 'export', 'manage', 'credentials', 'purge', 'view_all' ) as $a ) {
 			$perms[ $m ][ $a ] = class_exists( 'AM' ) && AM::can( $m, $a );
 		}
 	}

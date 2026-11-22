@@ -118,3 +118,11 @@ The template is not part of the JSON/ZIP backup.
 ## 3.20.0 – tender amendments, contract link, automatic tenders
 * Tender fields added: `contractId` (related contract; unknown ids are dropped), `status: pending` (Pending Approval, not counted in the budget), `autoCreated` / `autoAt` (set only by the server-side automatic run; ignored on write), `amendments[]` (append-only like contracts: `{id,date,description,at,changes[{label,old,new}],costBefore,costAfter,before}`; audit event `ledger.tender_amended`). Amendments apply to active tenders only; promote clears them.
 * `POST /rl/v1/auto-tenders/run` (settings manager + `create` on tenders) → `{created:n}`. Creates a pending tender for every non-archived contract ending in current year +1..+3 that has no related tender; cost = contract total (cost + extras × years, no VAT) × 10%, start = day after contract end. Idempotent. The same run happens once a year on/after 5 January (`init` + daily cron `rl_daily_reminders`, option `rl_auto_tn_year`).
+
+## 3.21.0 – record owners
+* Record items carry `owner` (user id) and `ownerName`. `PUT /records/{coll}/{id}` accepts `ownerId` (software, contracts, tenders, provisions). Invalid id (not a user with application access) → 400 `rl_bad_owner`. Existing record: only `view_all` holders may change it. For contracts `data.coordinator` is set to the owner's display name.
+* `GET /rl/v1/owners` → `{users:[{id,name}], me, ...}` (users who may own records).
+* `GET /rl/v1/owners/unassigned` (settings manager) → records with no owner, each with a `suggested` user id (unique match on name/login/e-mail).
+* `POST /rl/v1/owners/assign` (settings manager) `{items:[{coll,id,owner}]}` → `{ok,assigned}`; audit `ledger.owner_assigned`.
+* `POST /records/tenders/{id}/promote` accepts `ownerId`; the contract inherits the tender owner by default.
+* Records table: new column `owner_id` (key `collection,owner_id`).

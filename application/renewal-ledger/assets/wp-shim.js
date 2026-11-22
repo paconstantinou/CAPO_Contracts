@@ -30,6 +30,10 @@
   function onRc(){var t=document.getElementById("tabRc");return !!t&&t.getAttribute("aria-selected")==="true"}
   function onAr(){var t=document.getElementById("tabAr");return !!t&&t.getAttribute("aria-selected")==="true"}
   function P(c,a){return !!(perms[c]&&perms[c][a])}
+  /* Record owners (3.21): in these modules a user without "view_all" only gets the records he or she owns. */
+  var OWN={software:1,contracts:1,tenders:1,provisions:1};
+  function restricted(c){return !!OWN[c]&&P(c,"view")&&!P(c,"view_all")}
+  function anyRestricted(){return restricted("software")||restricted("contracts")||restricted("tenders")||restricted("provisions")}
   var cache={},subs=[],loaded={};
   function snapFor(name){
     var m=cache[name]||{},ids=Object.keys(m);
@@ -39,7 +43,7 @@
   function notify(name){subs.forEach(function(l){if(l.name===name){try{l.cb(snapFor(name))}catch(e){console.error(e)}}})}
   function refresh(name,first,errcb){
     return api("GET","records/"+name).then(function(res){
-      var m={};(res.items||[]).forEach(function(it){m[it.id]=it.data});
+      var m={};(res.items||[]).forEach(function(it){m[it.id]=OWN[name]?Object.assign({},it.data,{_owner:it.owner||0,_ownerName:it.ownerName||""}):it.data});
       var changed=JSON.stringify(m)!==JSON.stringify(cache[name]||{});
       cache[name]=m;
       if(changed||first)notify(name);
@@ -48,7 +52,18 @@
   function colRef(name){
     return {
       doc:function(id){return {
-        set:function(d){var v=JSON.parse(JSON.stringify(d));return api("PUT","records/"+name+"/"+id,{data:v}).then(function(){(cache[name]=cache[name]||{})[id]=v;notify(name)})},
+        set:function(d){
+          var v=JSON.parse(JSON.stringify(d)),ow=Number(v._owner)||0,body;
+          delete v._owner;delete v._ownerName;
+          body={data:v};if(OWN[name]&&ow>0)body.ownerId=ow;
+          return api("PUT","records/"+name+"/"+id,body).then(function(){
+            var old=(cache[name]||{})[id]||{};
+            if(OWN[name]){v._owner=ow>0?ow:(old._owner||Number(cfg.userId)||0);v._ownerName=ow>0&&owners.names[ow]||old._ownerName||""}
+            (cache[name]=cache[name]||{})[id]=v;notify(name);
+            /* the owner may have changed: a user who sees only his or her own records no longer sees a record given to somebody else */
+            if(OWN[name])refresh(name,false);
+          })
+        },
         delete:function(){return api("DELETE","records/"+name+"/"+id).then(function(){if(cache[name])delete cache[name][id];notify(name)})}
       }},
       onSnapshot:function(cb,errcb){
@@ -60,6 +75,21 @@
       }
     };
   }
+  /* Owners: who can own records (users with access to the application), and the administrator's screen that assigns records that have no owner. */
+  var owners={names:{},list:null};
+  window.RL_OWN={
+    me:Number(cfg.userId)||0,
+    restricted:restricted,
+    anyRestricted:anyRestricted,
+    canAssign:!!cfg.canManage,
+    users:function(){
+      if(owners.list)return Promise.resolve(owners.list);
+      return api("GET","owners").then(function(r){owners.list=r.items||[];owners.list.forEach(function(u){owners.names[u.id]=u.name});return owners.list},function(){owners.list=[];return owners.list});
+    },
+    name:function(id){return owners.names[id]||""},
+    unassigned:function(){return api("GET","owners/unassigned")},
+    assign:function(items){return api("POST","owners/assign",{items:items}).then(function(r){return Promise.all(["software","contracts","tenders","provisions"].map(function(n){return refresh(n,false)})).then(function(){return r})})}
+  };
   /* Trash: deleting a record moves it to the trash on the server. These calls list, restore and permanently delete from it. */
   function url(path,params){return path+(cfg.rest.indexOf("?")>=0?"&":"?")+params}
   window.RL_TRASH={
@@ -72,7 +102,9 @@
   };
   /* Promote a tender to a contract in one server step (the server copies the attachments and marks the tender as promoted). */
   window.RL_PROMOTE=function(tid,cid,rec){
-    return api("POST","records/tenders/"+tid+"/promote",{contractId:cid,data:JSON.parse(JSON.stringify(rec))}).then(function(){return Promise.all([refresh("contracts",false),refresh("tenders",false)])});
+    var body={contractId:cid,data:JSON.parse(JSON.stringify(rec))},ow=Number(body.data._owner)||0;
+    delete body.data._owner;delete body.data._ownerName;if(ow>0)body.ownerId=ow;
+    return api("POST","records/tenders/"+tid+"/promote",body).then(function(){return Promise.all([refresh("contracts",false),refresh("tenders",false)])});
   };
   /* the page asks for db.doc("data/users/<id>/app").collection("software") */
   var db={doc:function(){return {collection:function(n){return colRef(n)}}},collection:colRef};
@@ -134,11 +166,14 @@
       var root=document.getElementById("rl-app");if(!root)return;
       var c=curColl();
       var bdt=document.getElementById("tabBd");
+      /* The budget and the reconciliation table add up ALL the records: they are not offered to a user who sees only his or her own. */
+      var noTotals=anyRestricted();
       var anyView=P("software","view")||P("contracts","view")||P("tenders","view")||P("contractors","view")||P("provisions","view");
-      if(bdt)bdt.style.display=anyView?"":"none";
+      if(bdt)bdt.style.display=anyView&&!noTotals?"":"none";
       var art=document.getElementById("tabAr");if(art)art.style.display=anyView?"":"none";
       var stt=document.getElementById("tabSt");if(stt)stt.style.display=cfg.canManage?"":"none";
-      var rct=document.getElementById("tabRc");if(rct)rct.style.display=anyView?"":"none";
+      var rct=document.getElementById("tabRc");if(rct)rct.style.display=anyView&&!noTotals?"":"none";
+      if(noTotals&&(onBd()||onRc())){setTimeout(function(){var x=document.getElementById("tabSw");x&&x.click()},0);return}
       var pvt=document.getElementById("tabPv");if(pvt)pvt.style.display=P("provisions","view")?"":"none";
       if(onRc()){
         /* the reconciliation table is calculated from tenders and contracts; nothing to add or import */

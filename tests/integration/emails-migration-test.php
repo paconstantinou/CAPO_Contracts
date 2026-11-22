@@ -30,10 +30,11 @@ update_option( 'rl_recipients', 'default@t.test' );
 $mk = function ( $coll, $id, $extra ) use ( $day ) {
 	if ( 'software' === $coll ) { $d = array_merge( array( 'name' => "T$id", 'dateFrom' => $day( -300 ), 'dateTo' => $day( 10 ), 'remindDays' => 30 ), $extra ); }
 	else { $d = array_merge( array( 'title' => "T$id", 'months' => 12, 'dateFrom' => $day( -300 ), 'dateTo' => $day( 400 ), 'years' => array() ), $extra ); }
-	RL_DB::save_record( $coll, $id, RL_DB::sanitize_record( $coll, $d ), 1 );
+	RL_DB::save_record( $coll, $id, RL_DB::sanitize_record( $coll, $d ), 1, isset( $d['_owner'] ) ? (int) $d['_owner'] : 0 ); // no owner unless asked (3.21: the owner would get the mail too)
 };
 $mk( 'software', 'rt_a', array( 'emails' => 'x@t.test, y@t.test' ) );
 $mk( 'software', 'rt_b', array() );
+$mk( 'software', 'rt_o', array( 'emails' => 'w@t.test', '_owner' => 1 ) );
 $mk( 'contracts', 'rt_c', array( 'emails' => 'z@t.test', 'milestones' => array( array( 'id' => 'q1', 'year' => 1, 'description' => 'Milestone Q', 'due' => $day( 5 ), 'remind' => 30 ) ) ) );
 $mails = array();
 add_filter( 'pre_wp_mail', function ( $null, $atts ) use ( &$mails ) { $mails[] = array( 'to' => (array) $atts['to'], 'body' => $atts['message'] ); return true; }, 10, 2 );
@@ -43,6 +44,8 @@ $ab = $find( array( 'x@t.test', 'y@t.test' ) ); $cb = $find( array( 'z@t.test' )
 t( 'record with 2 e-mails: one message to both', null !== $ab && false !== strpos( $ab, 'Trt_a' ) );
 t( '...and it contains only its own items', null !== $ab && false === strpos( $ab, 'Trt_b' ) && false === strpos( $ab, 'Trt_c' ) );
 t( 'milestone reminder goes to the contract e-mail', null !== $cb && false !== strpos( $cb, 'Milestone Q' ) && false === strpos( $cb, 'Trt_a' ) );
+$ow = get_userdata( 1 )->user_email; $ob = $find( array_values( array_unique( array( 'w@t.test', $ow ) ) ) ) ?? $find( array( $ow, 'w@t.test' ) );
+t( 'owner of the record also gets the reminder (3.21)', null !== $ob && false !== strpos( $ob, 'Trt_o' ), json_encode( array_map( function ( $m ) { return $m['to']; }, $mails ) ) );
 t( 'record without e-mails goes to default recipients', null !== $db && false !== strpos( $db, 'Trt_b' ) && false === strpos( $db, 'Trt_a' ) && false === strpos( $db, 'Milestone Q' ) );
 foreach ( array( 'rt_a', 'rt_b' ) as $i ) { RL_DB::delete_record( 'software', $i ); } RL_DB::delete_record( 'contracts', 'rt_c' );
 echo "\n$pass passed, $fail failed\n"; exit( $fail ? 1 : 0 );

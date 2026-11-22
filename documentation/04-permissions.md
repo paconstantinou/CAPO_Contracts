@@ -23,3 +23,12 @@ Default presets for a newly seen module: Administrator = all standard; Manager =
 
 ## What each permission means in PROCURE360
 View: list records, open attachments · Create: add records/upload · Edit: change, renew, attach, remove attachments · Delete · Export: server-side CSV/XLSX · Credentials (software): see/change the username; without it the username is blanked in responses and the stored value is preserved on edit. Passwords are **not stored at all** (removed in 2.2.0; the upgrade deletes any stored by older versions).
+
+## Record owners and `view_all` (3.21.0)
+* New action `view_all` ("Sees all records") on **software, contracts, tenders, provisions**. Grantable per role, per user override and per module like any other action.
+* Without `view_all` a user with `view` sees and changes **only the records he or she owns**. Foreign records answer **404** on read/PUT/DELETE/restore/purge/promote, are filtered out of lists, exports, file downloads (a file must belong to an own record or be uploaded by the user) and are masked in duplicate/"in use" messages.
+* Owner: contracts = the coordinator (a WordPress user with application access), software/tenders/provisions = the person responsible. Default = creator. Only holders of `view_all` can change the owner of an existing record; restricted users can name an owner only at creation.
+* Budget and Reconciliation are computed from all records and are hidden from users without `view_all`.
+* Upgrade: a one-off migration grants `view_all` to every role and per-user override that has `view`, so nothing changes until an administrator removes it. Roles created later do not get it.
+* Records with no owner (old contracts whose coordinator text matches no user) are visible only with `view_all` until assigned in the Settings card "Record owners".
+* Not owner-restricted: contractors, articles, settings.

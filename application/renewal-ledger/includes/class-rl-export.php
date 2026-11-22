@@ -52,7 +52,8 @@ class RL_Export {
 	/** Per contractor id: { active: number of active contracts, tenders: distinct tender numbers of those contracts }. Active = in force or expiring soon. */
 	public static function contractor_stats() {
 		$out = array();
-		foreach ( RL_DB::list_records( 'contracts' ) as $r ) {
+		// Only the contracts the current user may see are counted.
+		foreach ( RL_DB::list_records( 'contracts', false, RL_Owners::scope( 'contracts' ) ) as $r ) {
 			$d  = $r['data'];
 			$id = isset( $d['contractorId'] ) ? (string) $d['contractorId'] : '';
 			if ( '' === $id ) {
@@ -120,8 +121,9 @@ class RL_Export {
 	 * @param bool   $with_credentials include usernames (software only)
 	 * @return array [ header[], rows[][] ]
 	 */
-	public static function table( $collection, $with_credentials ) {
-		$items = RL_DB::list_records( $collection );
+	/** @param int|null $owner only the records of this owner (users without "view_all"); null = all */
+	public static function table( $collection, $with_credentials, $owner = null ) {
+		$items = RL_DB::list_records( $collection, false, $owner );
 		usort( $items, function ( $a, $b ) {
 			return strcmp( isset( $a['data']['dateTo'] ) ? $a['data']['dateTo'] : '', isset( $b['data']['dateTo'] ) ? $b['data']['dateTo'] : '' );
 		} );

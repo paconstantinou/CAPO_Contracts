@@ -60,16 +60,22 @@ class RL_Cron {
 	public static function collect() {
 		$items = self::collect_raw();
 		$emails = array();
+		$owners = array(); // record key => e-mail address of the owner (the contract coordinator, or the person responsible)
 		foreach ( array( 'software', 'contracts' ) as $coll ) {
 			foreach ( RL_DB::list_records( $coll ) as $r ) {
-				$emails[ ( 'software' === $coll ? 'sw' : 'ct' ) . ':' . $r['id'] ] = self::parse_emails( isset( $r['data']['emails'] ) ? $r['data']['emails'] : '' );
-				$emails[ 'ms:' . $coll . ':' . $r['id'] ] = $emails[ ( 'software' === $coll ? 'sw' : 'ct' ) . ':' . $r['id'] ];
+				$k0 = ( 'software' === $coll ? 'sw' : 'ct' ) . ':' . $r['id'];
+				$em = RL_Owners::email_of( $r['owner'] );
+				$emails[ $k0 ]                          = self::parse_emails( isset( $r['data']['emails'] ) ? $r['data']['emails'] : '' );
+				$emails[ 'ms:' . $coll . ':' . $r['id'] ] = $emails[ $k0 ];
+				$owners[ $k0 ]                          = '' !== $em ? array( $em ) : array();
+				$owners[ 'ms:' . $coll . ':' . $r['id'] ] = $owners[ $k0 ];
 			}
 		}
 		foreach ( $items as $i => $it ) {
 			$parts = explode( ':', $it['key'] );
 			$k     = 'ms' === $parts[0] ? 'ms:' . $parts[1] . ':' . $parts[2] : $parts[0] . ':' . $parts[1];
-			$items[ $i ]['to'] = isset( $emails[ $k ] ) ? $emails[ $k ] : array();
+			$items[ $i ]['to']       = isset( $emails[ $k ] ) ? $emails[ $k ] : array();
+			$items[ $i ]['owner_to'] = isset( $owners[ $k ] ) ? $owners[ $k ] : array();
 		}
 		return $items;
 	}
@@ -208,6 +214,8 @@ class RL_Cron {
 		$groups = array();
 		foreach ( $send as $it ) {
 			$to  = ! empty( $it['to'] ) ? $it['to'] : $default;
+			// The owner of the record (contract coordinator) also gets the reminder, in addition to the addresses of the record or the default recipients.
+			$to  = array_values( array_unique( array_merge( $to, isset( $it['owner_to'] ) ? $it['owner_to'] : array() ) ) );
 			$set = array_values( array_unique( array_map( 'strtolower', $to ) ) );
 			sort( $set );
 			$key = implode( ',', $set );

@@ -155,15 +155,21 @@ class RL_Auto {
 
 	/** Creates the planned tenders. @return string[] ids of the new tenders */
 	public static function run( $today, $user_id = 0 ) {
-		$plan = self::plan( RL_DB::list_records( 'contracts' ), RL_DB::list_records( 'tenders' ), $today );
-		$ids  = array();
+		$contracts = RL_DB::list_records( 'contracts' );
+		$plan      = self::plan( $contracts, RL_DB::list_records( 'tenders' ), $today );
+		$ids       = array();
+		$owners    = array(); // a planned tender belongs to the owner (coordinator) of its contract
+		foreach ( $contracts as $c ) {
+			$owners[ (string) $c['id'] ] = (int) $c['owner'];
+		}
 		foreach ( $plan as $p ) {
 			$data = RL_DB::sanitize_record( 'tenders', $p['data'] );
 			if ( is_wp_error( $data ) ) {
 				continue;
 			}
 			$id = substr( md5( uniqid( 'rl', true ) ), 0, 16 );
-			if ( true === RL_DB::save_record( 'tenders', $id, $data, $user_id ) ) {
+			$owner = isset( $owners[ (string) $p['contract'] ] ) ? $owners[ (string) $p['contract'] ] : 0;
+			if ( true === RL_DB::save_record( 'tenders', $id, $data, $user_id, $owner ) ) {
 				$ids[] = $id;
 				if ( function_exists( 'am_log' ) ) {
 					am_log( 'ledger.tender_auto_created', 'tenders', array( 'id' => $id, 'title' => $data['title'], 'contract' => $p['contract'] ) );

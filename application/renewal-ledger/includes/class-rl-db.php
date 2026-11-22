@@ -9,6 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 class RL_DB {
 
 	const COLLECTIONS = array( 'software', 'contracts', 'tenders', 'contractors', 'provisions' );
+	/** Collections whose records have an owner. A user without the "view_all" permission only sees records he or she owns. */
+	const OWNED       = array( 'software', 'contracts', 'tenders', 'provisions' );
 	const MAX_FILE    = 20971520; // 20 MB
 	const MAX_JSON    = 262144;   // 256 KB per record
 
@@ -112,6 +114,7 @@ class RL_DB {
   doc_id varchar(64) NOT NULL,
   data longtext NOT NULL,
   created_by bigint(20) unsigned NOT NULL DEFAULT 0,
+  owner_id bigint(20) unsigned NOT NULL DEFAULT 0,
   updated_by bigint(20) unsigned NOT NULL DEFAULT 0,
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
@@ -120,7 +123,8 @@ class RL_DB {
   PRIMARY KEY  (id),
   UNIQUE KEY coll_doc (collection,doc_id),
   KEY coll (collection),
-  KEY trashed (collection,deleted_at)
+  KEY trashed (collection,deleted_at),
+  KEY owner (collection,owner_id)
 ) $charset;"
 		);
 
@@ -176,16 +180,20 @@ class RL_DB {
 	 * Records of a collection. Records in the trash are left out unless $trash is true.
 	 * Trash rows also carry deleted_at (UTC) and deleted_by (display name).
 	 */
-	public static function list_records( $collection, $trash = false ) {
+	public static function list_records( $collection, $trash = false, $owner = null ) {
 		global $wpdb;
 		$t     = self::table_records();
 		$where = $trash ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL';
-		$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT doc_id, data, deleted_at, deleted_by FROM $t WHERE collection = %s AND $where ORDER BY id ASC", $collection ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( null !== $owner ) {
+			$where .= $wpdb->prepare( ' AND owner_id = %d', (int) $owner ); // only the records of one owner (users without "view_all")
+		}
+		$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT doc_id, data, owner_id, deleted_at, deleted_by FROM $t WHERE collection = %s AND $where ORDER BY id ASC", $collection ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$out   = array();
 		foreach ( (array) $rows as $r ) {
 			$row = array(
-				'id'   => $r['doc_id'],
-				'data' => self::unpack( $collection, $r['data'] ),
+				'id'    => $r['doc_id'],
+				'owner' => (int) $r['owner_id'],
+				'data'  => self::unpack( $collection, $r['data'] ),
 			);
 			if ( $trash ) {
 				$u                  = $r['deleted_by'] ? get_userdata( (int) $r['deleted_by'] ) : false;
@@ -300,7 +308,7 @@ class RL_DB {
 	}
 
 	/** @return true|WP_Error */
-	public static function save_record( $collection, $id, $data, $user_id ) {
+	public static function save_record( $collection, $id, $data, $user_id, $owner = null ) {
 		global $wpdb;
 		if ( ! is_array( $data ) ) {
 			return new WP_Error( 'rl_bad_data', 'Invalid data', array( 'status' => 400 ) );
@@ -311,12 +319,16 @@ class RL_DB {
 		}
 		$t   = self::table_records();
 		$now = current_time( 'mysql', true );
+		// $owner: null = a new record is owned by the person who saves it and an existing record keeps its owner; a number sets the owner (0 = nobody).
+		$new_owner = null === $owner ? ( in_array( $collection, self::OWNED, true ) ? (int) $user_id : 0 ) : max( 0, (int) $owner );
+		$upd_owner = null === $owner ? '' : ', owner_id = VALUES(owner_id)';
 		$sql = $wpdb->prepare(
-			"INSERT INTO $t (collection, doc_id, data, created_by, updated_by, created_at, updated_at) VALUES (%s, %s, %s, %d, %d, %s, %s) ON DUPLICATE KEY UPDATE data = VALUES(data), updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			"INSERT INTO $t (collection, doc_id, data, created_by, owner_id, updated_by, created_at, updated_at) VALUES (%s, %s, %s, %d, %d, %d, %s, %s) ON DUPLICATE KEY UPDATE data = VALUES(data), updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)$upd_owner", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$collection,
 			$id,
 			$json,
 			$user_id,
+			$new_owner,
 			$user_id,
 			$now,
 			$now
@@ -363,6 +375,48 @@ class RL_DB {
 		$t   = self::table_records();
 		$row = $wpdb->get_row( $wpdb->prepare( "SELECT data FROM $t WHERE collection = %s AND doc_id = %s", $collection, $id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return $row ? self::unpack( $collection, $row['data'] ) : null;
+	}
+
+	/** The owner of a record (live or in the trash). @return int|null null when there is no such record, 0 when it has no owner */
+	public static function get_owner( $collection, $id ) {
+		global $wpdb;
+		$t = self::table_records();
+		$v = $wpdb->get_var( $wpdb->prepare( "SELECT owner_id FROM $t WHERE collection = %s AND doc_id = %s", $collection, $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return null === $v ? null : (int) $v;
+	}
+
+	/** Records (live and trashed) that have no owner yet. @return array of { coll, id, title, data, created_by } */
+	public static function unowned( $collection ) {
+		global $wpdb;
+		$t    = self::table_records();
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT doc_id, data, created_by, deleted_at FROM $t WHERE collection = %s AND owner_id = 0 ORDER BY id ASC", $collection ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$out  = array();
+		foreach ( (array) $rows as $r ) {
+			$out[] = array( 'coll' => $collection, 'id' => $r['doc_id'], 'data' => self::unpack( $collection, $r['data'] ), 'created_by' => (int) $r['created_by'], 'trashed' => null !== $r['deleted_at'] );
+		}
+		return $out;
+	}
+
+	/** One-off, after the upgrade to 3.21: records of the modules other than Contracts belong to the person who created them. Contracts are assigned by the administrator. */
+	public static function backfill_owners() {
+		global $wpdb;
+		$t = self::table_records();
+		$wpdb->query( "UPDATE $t SET owner_id = created_by WHERE owner_id = 0 AND created_by > 0 AND collection IN ('software','tenders','provisions')" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/** May a person who sees only his or her own records open this file? Yes when he or she uploaded it, or when it is attached to a record he or she owns. */
+	public static function file_visible_to( $file_id, $user_id ) {
+		global $wpdb;
+		$f = self::get_file( $file_id );
+		if ( ! $f ) {
+			return false;
+		}
+		if ( (int) $f['uploaded_by'] === (int) $user_id ) {
+			return true;
+		}
+		$t = self::table_records();
+		$n = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $t WHERE owner_id = %d AND data LIKE %s", (int) $user_id, '%' . $wpdb->esc_like( $file_id ) . '%' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (int) $n > 0;
 	}
 
 	public static function record_exists( $collection, $id ) {
