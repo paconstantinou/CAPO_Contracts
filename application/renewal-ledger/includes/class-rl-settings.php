@@ -158,6 +158,7 @@ class RL_Settings {
 	public static function normalize_app_settings( $in ) {
 		$vat = isset( $in['vat'] ) && is_numeric( $in['vat'] ) ? max( 0, min( 100, round( (float) $in['vat'], 2 ) ) ) : 19;
 		$rem = isset( $in['remindDays'] ) && is_numeric( $in['remindDays'] ) ? max( 1, min( 365, (int) $in['remindDays'] ) ) : 30;
+		$ap  = isset( $in['autoPct'] ) && is_numeric( $in['autoPct'] ) ? max( 0, min( 100, round( (float) $in['autoPct'], 2 ) ) ) : 10;
 		$cf  = array();
 		foreach ( self::CF_COLLECTIONS as $c ) {
 			$cf[ $c ] = array();
@@ -186,7 +187,7 @@ class RL_Settings {
 				$cf[ $c ][] = array( 'id' => $id, 'label' => mb_substr( $label, 0, 80 ), 'type' => $type, 'options' => $opts );
 			}
 		}
-		return array( 'vat' => $vat, 'remindDays' => $rem, 'customFields' => $cf );
+		return array( 'vat' => $vat, 'remindDays' => $rem, 'autoPct' => $ap, 'customFields' => $cf );
 	}
 
 	public static function save_app_settings( $in ) {

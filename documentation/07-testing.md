@@ -47,4 +47,5 @@ Tenders: `php tests/integration/tenders-test.php <base-url>` (HTTP; needs `RL_TE
 
 * 3.21.0: `tests/integration/owners-test.php <base-url> <path/to/wp-load.php>` (HTTP; needs `RL_TEST_ADMIN_PASS`; sets and removes `view_all` overrides for editor1/manager1; covers scoping, 404 on foreign records, owner rules, assignment screen, files, export, promote, duplicate masking). `emails-migration-test.php` also checks that the owner gets the reminder. The AM rate limiter can answer 429 when suites run back to back: clear the `am_*` transients or pause between suites.
 
+* 3.23.0: `node tests/browser/html-autotender-pct-test.js index.html` (standalone: settings field, 100,000 → 110,000, 25% → 125,000). `tests/unit/auto-tender-test.js` (default +10%: 100,000 → 110,000; percentage from settings; budget lines) and `tests/integration/tender-auto-test.php` (5000 → 5500; setting `autoPct` 25 → 6250; limit 0–100).
 * 3.22.0: `tests/integration/software-history-files-test.php <base-url> <path/to/wp-load.php>` (HTTP; `RL_TEST_ADMIN_PASS`): attachments in a previous renewal period are stored, validated, downloadable, exported and removed by a permanent delete.

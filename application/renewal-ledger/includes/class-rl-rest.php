@@ -434,7 +434,7 @@ class RL_REST {
 			return new WP_Error( 'rl_bad_request', 'Missing settings.', array( 'status' => 400 ) );
 		}
 		$s = RL_Settings::save_app_settings( $body['settings'] );
-		self::log( 'settings_saved', 'settings', array( 'vat' => $s['vat'], 'remindDays' => $s['remindDays'] ) );
+		self::log( 'settings_saved', 'settings', array( 'vat' => $s['vat'], 'remindDays' => $s['remindDays'], 'autoPct' => $s['autoPct'] ) );
 		return array( 'settings' => $s );
 	}
 

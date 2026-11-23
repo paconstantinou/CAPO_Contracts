@@ -12,7 +12,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 class RL_Auto {
 
 	const OPT = 'rl_auto_tn_year';
-	const PCT = 0.10;
+	/** Factor of the estimated cost: contract amounts + the increase set in the settings (default +10%: 100,000 becomes 110,000). */
+	public static function factor() {
+		$st = RL_Settings::app_settings();
+		return 1 + ( isset( $st['autoPct'] ) ? (float) $st['autoPct'] : 10 ) / 100;
+	}
 
 	public static function init() {
 		add_action( 'init', array( __CLASS__, 'maybe_run' ), 30 );
@@ -85,6 +89,7 @@ class RL_Auto {
 
 	/** The tenders to create (data arrays, not yet saved). $contracts / $tenders: lists of record data. */
 	public static function plan( $contracts, $tenders, $today ) {
+		$f      = self::factor();
 		$y      = (int) substr( $today, 0, 4 );
 		$linked = array();
 		foreach ( $tenders as $t ) {
@@ -113,13 +118,13 @@ class RL_Auto {
 			$bud   = array();
 			foreach ( isset( $c['budget'] ) && is_array( $c['budget'] ) ? $c['budget'] : array() as $p ) {
 				if ( (int) $p['year'] >= 1 && (int) $p['year'] <= count( $years ) ) {
-					$bud[] = array( 'year' => (int) $p['year'], 'article' => (string) $p['article'], 'amount' => round( (float) $p['amount'] * self::PCT, 2 ) );
+					$bud[] = array( 'year' => (int) $p['year'], 'article' => (string) $p['article'], 'amount' => round( (float) $p['amount'] * $f, 2 ) );
 				}
 			}
 			foreach ( $years as $i => $yr ) {
 				$cy = isset( $c['years'][ $i ]['cost'] ) ? $c['years'][ $i ]['cost'] : '';
 				if ( '' !== $cy && null !== $cy ) {
-					$years[ $i ]['cost'] = round( (float) $cy * self::PCT, 2 );
+					$years[ $i ]['cost'] = round( (float) $cy * $f, 2 );
 				}
 				$has = array_filter( $bud, function ( $p ) use ( $i ) { return (int) $p['year'] === $i + 1; } );
 				if ( $has ) {
@@ -135,7 +140,7 @@ class RL_Auto {
 					'months'      => $m,
 					'dateFrom'    => $from,
 					'dateTo'      => $years ? $years[ count( $years ) - 1 ]['to'] : '',
-					'cost'        => round( self::total( $c ) * self::PCT, 2 ),
+					'cost'        => round( self::total( $c ) * $f, 2 ),
 					'years'       => $years,
 					'budget'      => $bud,
 					'attachments' => array(),

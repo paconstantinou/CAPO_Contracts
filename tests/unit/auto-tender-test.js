@@ -17,8 +17,11 @@ const plan = api.atPlan([C('a', '2027-12-31', 24, 1000), C('b', '2029-12-31', 24
 t('contracts ending Y+1..Y+3 only (not Y, Y+4, archived)', () => assert.deepStrictEqual(plan.map(p => p.contractId), ['a', 'b']));
 t('fields copied / computed', () => {
   const p = plan[0]; assert.strictEqual(p.status, 'pending'); assert.strictEqual(p.title, 'Σa'); assert.strictEqual(p.description, 'Da'); assert.strictEqual(p.months, 24);
-  assert.strictEqual(p.dateFrom, '2028-01-01'); assert.strictEqual(p.dateTo, '2029-12-31'); assert.strictEqual(p.cost, 100); assert.strictEqual(p.autoCreated, true);
+  assert.strictEqual(p.dateFrom, '2028-01-01'); assert.strictEqual(p.dateTo, '2029-12-31'); assert.strictEqual(p.cost, 1100); assert.strictEqual(p.autoCreated, true);
 });
-t('extras included in 10% base', () => { const q = api.atPlan([C('x', '2027-12-31', 24, 1000, { extras: [{ amount: 100 }] })], [], '2026-11-20'); assert.strictEqual(q[0].cost, 120) });
+t('cost is increased by 10% by default (100,000 -> 110,000)', () => { const q = api.atPlan([C('x', '2027-12-31', 24, 100000)], [], '2026-11-20'); assert.strictEqual(q[0].cost, 110000); assert.strictEqual(q[0].years[0].cost, 55000) });
+t('extras included in the base', () => { const q = api.atPlan([C('x', '2027-12-31', 24, 1000, { extras: [{ amount: 100 }] })], [], '2026-11-20'); assert.strictEqual(q[0].cost, 1320) });
+t('percentage from the settings (25% -> 125,000; 0% -> unchanged)', () => { assert.strictEqual(api.atPlan([C('x', '2027-12-31', 24, 100000)], [], '2026-11-20', 25)[0].cost, 125000); assert.strictEqual(api.atPlan([C('x', '2027-12-31', 24, 100000)], [], '2026-11-20', 0)[0].cost, 100000) });
+t('budget lines are increased too', () => { const q = api.atPlan([C('x', '2027-12-31', 24, 100000, { budget: [{ year: 1, article: 'A1', amount: 100000 }] })], [], '2026-11-20', 10); assert.strictEqual(q[0].budget[0].amount, 110000); assert.strictEqual(q[0].years[0].cost, 110000) });
 t('idempotent: contract with linked tender skipped', () => assert.strictEqual(api.atPlan([C('a', '2027-12-31', 24, 1000)], [{ contractId: 'a' }], '2026-11-20').length, 0));
 process.exit(bad ? 1 : 0);

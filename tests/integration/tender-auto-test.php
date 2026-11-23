@@ -79,7 +79,15 @@ $r = $c->rl( 'POST', 'auto-tenders/run', array() ); t( 'run creates tender(s)', 
 $r = $c->rl( 'GET', 'records/tenders' ); $a = null; foreach ( $r['json']['items'] as $i ) { if ( 'tac1' === ( $i['data']['contractId'] ?? '' ) ) { $a = $i['data']; } }
 t( 'auto tender is pending, linked, automatic', $a && 'pending' === $a['status'] && ! empty( $a['autoCreated'] ), json_encode( $a ) );
 t( 'auto tender copies name/description/duration', $a && 'TAT-Contract' === $a['title'] && 'D' === $a['description'] && 12 === (int) $a['months'] );
-t( 'auto tender starts the day after the contract ends, cost = 10%', $a && ( $yr + 3 ) . '-01-01' === $a['dateFrom'] && ( $yr + 3 ) . '-12-31' === $a['dateTo'] && 500.0 === (float) $a['cost'], json_encode( $a ) );
+t( 'auto tender starts the day after the contract ends, cost = contract cost + 10% (5000 -> 5500)', $a && ( $yr + 3 ) . '-01-01' === $a['dateFrom'] && ( $yr + 3 ) . '-12-31' === $a['dateTo'] && 5500.0 === (float) $a['cost'], json_encode( $a ) );
+/* the percentage is a setting: 25% -> 5000 becomes 6250 */
+$st = $c->rl( 'GET', 'settings' )['json']['settings']; t( 'default increase is 10%', 10.0 === (float) $st['autoPct'], json_encode( $st ) );
+$st['autoPct'] = 25; $sv = $c->rl( 'PUT', 'settings', array( 'settings' => $st ) ); t( 'settings saved with autoPct 25', 200 === $sv['code'] && 25.0 === (float) $sv['json']['settings']['autoPct'], $sv['body'] );
+$st['autoPct'] = 500; t( 'autoPct is limited to 0..100', 100.0 === (float) $c->rl( 'PUT', 'settings', array( 'settings' => $st ) )['json']['settings']['autoPct'] ); $st['autoPct'] = 25; $c->rl( 'PUT', 'settings', array( 'settings' => $st ) );
+$r = $c->rl( 'GET', 'records/tenders' ); foreach ( $r['json']['items'] as $i ) { if ( 'tac1' === ( $i['data']['contractId'] ?? '' ) ) { $c->rl( 'DELETE', 'records/tenders/' . $i['id'] ); $c->rl( 'DELETE', 'records/tenders/' . $i['id'] . '&purge=1' ); } }
+$c->rl( 'POST', 'auto-tenders/run', array() ); $r = $c->rl( 'GET', 'records/tenders' ); $b = null; foreach ( $r['json']['items'] as $i ) { if ( 'tac1' === ( $i['data']['contractId'] ?? '' ) ) { $b = $i['data']; } }
+t( 'with 25% the auto tender costs 6250', $b && 6250.0 === (float) $b['cost'], json_encode( $b ) );
+$st['autoPct'] = 10; $c->rl( 'PUT', 'settings', array( 'settings' => $st ) );
 $v = client( $base, 'viewer1', 'Pw-viewer1-12345!' );
 t( 'viewer cannot run the automatic creation', 403 === $v->rl( 'POST', 'auto-tenders/run', array() )['code'] );
 $clean( $c );

@@ -130,3 +130,6 @@ The template is not part of the JSON/ZIP backup.
 ## 3.22.0 – attachments per renewal period
 * Software `history[]` entries accept `attachments: [{id,name,size}]` (same validation as record attachments: the file must exist and belong to the module; unknown ids are dropped). The browser moves the ticked attachments into the new history entry when the software is renewed; files can also be added to / removed from a previous period later.
 * Permanent delete, the backup ZIP and the CSV/Excel export include the files of the previous periods (export: `name [from – to]`). `RL_DB::file_visible_to()` already covers them.
+
+## 3.23.0 – automatic tender cost increase
+* App settings (`GET/PUT /rl/v1/settings`) have a new field `autoPct` (number 0–100, default 10). The estimated cost of an automatically created tender (total cost, yearly costs and budget lines) = contract amount × (1 + `autoPct`/100): 100,000 → 110,000 at the default. Before 3.23.0 the tender got 10% of the contract cost (× 0.10). Tenders that already exist are not recalculated. The same rule is in `atPlan()` (app.js, standalone builds) and `RL_Auto::plan()` (server).
