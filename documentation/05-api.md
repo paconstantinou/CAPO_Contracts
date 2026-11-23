@@ -126,3 +126,7 @@ The template is not part of the JSON/ZIP backup.
 * `POST /rl/v1/owners/assign` (settings manager) `{items:[{coll,id,owner}]}` → `{ok,assigned}`; audit `ledger.owner_assigned`.
 * `POST /records/tenders/{id}/promote` accepts `ownerId`; the contract inherits the tender owner by default.
 * Records table: new column `owner_id` (key `collection,owner_id`).
+
+## 3.22.0 – attachments per renewal period
+* Software `history[]` entries accept `attachments: [{id,name,size}]` (same validation as record attachments: the file must exist and belong to the module; unknown ids are dropped). The browser moves the ticked attachments into the new history entry when the software is renewed; files can also be added to / removed from a previous period later.
+* Permanent delete, the backup ZIP and the CSV/Excel export include the files of the previous periods (export: `name [from – to]`). `RL_DB::file_visible_to()` already covers them.

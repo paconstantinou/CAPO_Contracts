@@ -356,6 +356,11 @@ class RL_DB {
 						$lists[] = $m['attachments'];
 					}
 				}
+				foreach ( ( ! empty( $data['history'] ) && is_array( $data['history'] ) ) ? $data['history'] : array() as $h ) {
+					if ( is_array( $h ) && ! empty( $h['attachments'] ) && is_array( $h['attachments'] ) ) {
+						$lists[] = $h['attachments'];
+					}
+				}
 			}
 			foreach ( $lists as $list ) {
 				foreach ( $list as $a ) {
@@ -723,6 +728,8 @@ class RL_DB {
 							'to'        => self::v_date( isset( $h['to'] ) ? $h['to'] : '' ),
 							'cost'      => self::v_num( isset( $h['cost'] ) ? $h['cost'] : 0 ),
 							'renewedOn' => self::v_date( isset( $h['renewedOn'] ) ? $h['renewedOn'] : '' ),
+							// 3.22.0: invoices and receipts of that period move here when the software is renewed
+							'attachments' => self::v_attachments( isset( $h['attachments'] ) ? $h['attachments'] : array(), $collection ),
 						);
 					}
 				}

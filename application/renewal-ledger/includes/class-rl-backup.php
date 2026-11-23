@@ -168,6 +168,13 @@ class RL_Backup {
 				}
 			}
 		}
+		foreach ( isset( $rec['history'] ) && is_array( $rec['history'] ) ? $rec['history'] : array() as $h ) {
+			if ( is_array( $h ) && ! empty( $h['attachments'] ) && is_array( $h['attachments'] ) ) {
+				foreach ( $h['attachments'] as $x ) {
+					$a[] = $x;
+				}
+			}
+		}
 		return $a;
 	}
 

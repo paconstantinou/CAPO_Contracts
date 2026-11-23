@@ -46,3 +46,5 @@ Tenders: `php tests/integration/tenders-test.php <base-url>` (HTTP; needs `RL_TE
 * 3.20.0: `tests/unit/auto-tender-test.js` (atPlan), `tests/browser/html-tender-amend-test.js <html>` (tender amendment, pending/approve, link, ΣΤ row), `tests/integration/tender-auto-test.php <base-url>` (append-only amendments, contractId, autoCreated ignored, idempotent run, permissions).
 
 * 3.21.0: `tests/integration/owners-test.php <base-url> <path/to/wp-load.php>` (HTTP; needs `RL_TEST_ADMIN_PASS`; sets and removes `view_all` overrides for editor1/manager1; covers scoping, 404 on foreign records, owner rules, assignment screen, files, export, promote, duplicate masking). `emails-migration-test.php` also checks that the owner gets the reminder. The AM rate limiter can answer 429 when suites run back to back: clear the `am_*` transients or pause between suites.
+
+* 3.22.0: `tests/integration/software-history-files-test.php <base-url> <path/to/wp-load.php>` (HTTP; `RL_TEST_ADMIN_PASS`): attachments in a previous renewal period are stored, validated, downloadable, exported and removed by a permanent delete.

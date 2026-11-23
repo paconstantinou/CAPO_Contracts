@@ -113,6 +113,14 @@ class RL_Export {
 				$n[] = $a['name'];
 			}
 		}
+		// files of the previous renewal periods, marked with the period they belong to
+		foreach ( ( isset( $d['history'] ) && is_array( $d['history'] ) ) ? $d['history'] : array() as $h ) {
+			foreach ( ( is_array( $h ) && ! empty( $h['attachments'] ) && is_array( $h['attachments'] ) ) ? $h['attachments'] : array() as $a ) {
+				if ( ! empty( $a['name'] ) ) {
+					$n[] = $a['name'] . ' [' . ( isset( $h['from'] ) ? $h['from'] : '' ) . ' – ' . ( isset( $h['to'] ) ? $h['to'] : '' ) . ']';
+				}
+			}
+		}
 		return implode( '; ', $n );
 	}
 
